@@ -45,11 +45,7 @@ internal static class LeafPetalMedialAxisBuilder
 
         var span = maxMajor - minMajor;
         if (span < 6d)
-        {
-            Console.Error.WriteLine(
-                $"[leaf-axis-reject] reason=span bbox=({region.MinX},{region.MinY})-({region.MaxX},{region.MaxY}) area={region.Area} sub={region.IsSubLobe} span={span:F2}");
             return false;
-        }
 
         var binCount = Math.Clamp(
             (int)Math.Round(span / TargetBinWidth) + 1,
@@ -80,11 +76,7 @@ internal static class LeafPetalMedialAxisBuilder
         var occupied = bins.Count(bin => bin.Count > 0);
         var coverage = occupied / (double)binCount;
         if (coverage < MinimumCoverage)
-        {
-            Console.Error.WriteLine(
-                $"[leaf-axis-reject] reason=coverage bbox=({region.MinX},{region.MinY})-({region.MaxX},{region.MaxY}) area={region.Area} sub={region.IsSubLobe} coverage={coverage:F3} bins={binCount}");
             return false;
-        }
 
         var maxGap = 0;
         var gap = 0;
@@ -102,11 +94,7 @@ internal static class LeafPetalMedialAxisBuilder
         }
 
         if (maxGap > MaximumEmptyBinRun)
-        {
-            Console.Error.WriteLine(
-                $"[leaf-axis-reject] reason=gap bbox=({region.MinX},{region.MinY})-({region.MaxX},{region.MaxY}) area={region.Area} sub={region.IsSubLobe} gap={maxGap} coverage={coverage:F3}");
             return false;
-        }
 
         var samples = new List<LeafPetalAxisSample>(occupied);
         for (var index = 0; index < bins.Length; index++)
@@ -124,11 +112,7 @@ internal static class LeafPetalMedialAxisBuilder
         }
 
         if (samples.Count < 7)
-        {
-            Console.Error.WriteLine(
-                $"[leaf-axis-reject] reason=samples bbox=({region.MinX},{region.MinY})-({region.MaxX},{region.MaxY}) area={region.Area} sub={region.IsSubLobe} samples={samples.Count}");
             return false;
-        }
 
         for (var i = 1; i < samples.Count; i++)
         {
@@ -149,11 +133,7 @@ internal static class LeafPetalMedialAxisBuilder
             // continuous. Keep the strict interior discontinuity gate, but allow this bounded
             // terminal fan-out so a single full leaf is not forced through the lobe splitter.
             if (jump > maximumJump)
-            {
-                Console.Error.WriteLine(
-                    $"[leaf-axis-reject] reason=jump bbox=({region.MinX},{region.MinY})-({region.MaxX},{region.MaxY}) area={region.Area} sub={region.IsSubLobe} jump={jump:F2} max={maximumJump:F2} at={i}/{samples.Count}");
                 return false;
-            }
         }
 
         var edgeWindow = Math.Clamp(samples.Count / 8, 2, 5);
