@@ -6,6 +6,8 @@
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Assets\rugscale-motif-memory.seed.gz.b64" />
+    <EmbeddedResource Include="Assets\rugscale-motif-memory.seed.gz.b64">
+      <LogicalName>RugScale.Core.Assets.rugscale-motif-memory.seed.gz.b64</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 </Project>
