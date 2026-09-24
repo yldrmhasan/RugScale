@@ -1080,6 +1080,41 @@ internal static class Program
         var directSeconds =
             watch.Elapsed.TotalSeconds;
 
+        var ribbonStages =
+            CurveFillRibbonArcRefiner.AnalyzeCandidateStages(
+                source);
+
+        WriteRibbonCandidateAudit(
+            Path.Combine(
+                outputDir,
+                fixture.Name +
+                "_ribbon_candidates.csv"),
+            ribbonStages);
+
+        if (string.Equals(
+                fixture.Name,
+                "C069A_CREAM_N69",
+                StringComparison.Ordinal))
+        {
+            foreach (var stage in ribbonStages
+                         .Where(stage =>
+                             stage.MinX <= 440 &&
+                             stage.MaxX >= 200 &&
+                             stage.MinY <= 190)
+                         .Take(24))
+            {
+                Console.WriteLine(
+                    $"[ribbon-candidate] C069 color={stage.Color}, " +
+                    $"bbox=({stage.MinX},{stage.MinY})-({stage.MaxX},{stage.MaxY}), " +
+                    $"area={stage.Area}, elong={stage.Elongation:0.000}, fill={stage.BoundingFillRatio:0.000}, " +
+                    $"broad={stage.BroadSparseArch}, centerline={stage.CenterlineBuilt}, " +
+                    $"coverage={stage.PrincipalPathCoverage:0.000}, ribbon={stage.DesignerRibbon}, " +
+                    $"fit={stage.FitKind}/{stage.CurveFamily}, r={stage.Roundness:0.000}, " +
+                    $"safe={stage.FitSafe}, dev={stage.MaximumDeviation:0.000}, " +
+                    $"flips={stage.CurvatureSignFlips}, accepted={stage.Accepted}, status={stage.Status}");
+            }
+        }
+
         if (string.Equals(
                 fixture.Name,
                 "B996A_BEIGE_N69",
@@ -1554,6 +1589,50 @@ internal static class Program
                 targetWeft);
 
         return result;
+    }
+
+    private static void WriteRibbonCandidateAudit(
+        string path,
+        IReadOnlyList<RibbonArcCandidateStage> stages)
+    {
+        var sb =
+            new StringBuilder();
+
+        sb.AppendLine(
+            "color,min_x,min_y,max_x,max_y,area,elongation,boundary_ratio,bounding_fill,broad_sparse_arch,prefilter,centerline,skeleton_pixels,endpoints,principal_path_pixels,path_coverage,designer_ribbon,fit_kind,curve_family,roundness,fit_safe,max_deviation,curvature_flips,accepted,status");
+
+        foreach (var stage in stages)
+        {
+            sb.Append(stage.Color).Append(',');
+            sb.Append(stage.MinX).Append(',');
+            sb.Append(stage.MinY).Append(',');
+            sb.Append(stage.MaxX).Append(',');
+            sb.Append(stage.MaxY).Append(',');
+            sb.Append(stage.Area).Append(',');
+            sb.Append(stage.Elongation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.BoundaryRatio.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.BoundingFillRatio.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.BroadSparseArch ? 1 : 0).Append(',');
+            sb.Append(stage.PrefilterAccepted ? 1 : 0).Append(',');
+            sb.Append(stage.CenterlineBuilt ? 1 : 0).Append(',');
+            sb.Append(stage.SkeletonPixels).Append(',');
+            sb.Append(stage.Endpoints).Append(',');
+            sb.Append(stage.PrincipalPathPixels).Append(',');
+            sb.Append(stage.PrincipalPathCoverage.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.DesignerRibbon ? 1 : 0).Append(',');
+            sb.Append(stage.FitKind).Append(',');
+            sb.Append(stage.CurveFamily).Append(',');
+            sb.Append(stage.Roundness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.FitSafe ? 1 : 0).Append(',');
+            sb.Append(stage.MaximumDeviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CurvatureSignFlips).Append(',');
+            sb.Append(stage.Accepted ? 1 : 0).Append(',');
+            sb.Append(stage.Status).AppendLine();
+        }
+
+        File.WriteAllText(
+            path,
+            sb.ToString());
     }
 
     private static void WriteLeafPetalRawLobeAudit(
