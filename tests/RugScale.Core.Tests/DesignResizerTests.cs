@@ -827,7 +827,8 @@ public class DesignResizerTests
             $"Soft oval drifted too far from the target Curve-tool raster: exact={exactScore:P2}, " +
             $"learned={diagnostics.LearnedCurves}, through={diagnostics.LearnedThroughPoints}, " +
             $"fallback={diagnostics.GraphFallbacks}, safetyFallback={diagnostics.CurveSafetyFallbacks}, " +
-            $"completePath={diagnostics.CompletePathRecoveries}, clipped={diagnostics.CorridorClippedPixels}.");
+            $"completePath={diagnostics.CompletePathRecoveries}, clipped={diagnostics.CorridorClippedPixels}, " +
+            $"roundness={diagnostics.MeanLearnedRoundness:0.000}.");
         Assert.True(
             diagnostics.CompletePathRecoveries >= 1,
             "Soft Pixel-Cord oval should be recovered as one complete source drawing path.");
