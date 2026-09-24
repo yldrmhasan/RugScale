@@ -438,6 +438,257 @@ internal static class CurveFillRibbonArcRefiner
             BoundaryPixelsChanged: changed);
     }
 
+    internal static IReadOnlyList<RibbonArcCandidateStage> AnalyzeCandidateStages(
+        DesignDocument source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        var protectedStrokeColors =
+            ToolFaithfulPixelCordOverlay.DetectStrokePaletteRoles(
+                source);
+        var regions =
+            LeafPetalRegionExtractor.Extract(
+                source);
+        var result =
+            new List<RibbonArcCandidateStage>();
+
+        foreach (var region in regions)
+        {
+            if (protectedStrokeColors.Contains(
+                    region.Color) ||
+                !LeafPetalArcClassifier.TryClassify(
+                    region,
+                    source.Width,
+                    out var candidate))
+            {
+                continue;
+            }
+
+            var boundingFillRatio =
+                region.Area /
+                (double)Math.Max(
+                    1,
+                    region.Width *
+                    region.Height);
+            var broadSparseArch =
+                candidate.Elongation >=
+                    MinimumBroadArchElongation &&
+                boundingFillRatio <=
+                    MaximumBroadArchBoundingFill &&
+                candidate.BoundaryRatio <=
+                    MaximumBroadArchBoundaryRatio;
+            var prefilterAccepted =
+                (candidate.Elongation >=
+                     MinimumRibbonElongation ||
+                 broadSparseArch) &&
+                candidate.BoundaryRatio <=
+                    MaximumBoundaryRatio;
+
+            var centerlineBuilt = false;
+            var designerRibbon = false;
+            var fitSafe = false;
+            var accepted = false;
+            var fitKind = "none";
+            var curveFamily = "none";
+            var status =
+                prefilterAccepted
+                    ? "centerline"
+                    : "prefilter";
+            var roundness = 0d;
+            var maximumDeviation = 0d;
+            var curvatureFlips = 0;
+            var skeletonPixels = 0;
+            var endpoints = 0;
+            var principalPathPixels = 0;
+            var principalPathCoverage = 0d;
+
+            if (prefilterAccepted)
+            {
+                centerlineBuilt =
+                    CurveFillRibbonCenterlineBuilder.TryBuild(
+                        candidate,
+                        source.Width,
+                        out var model,
+                        out var centerlineDiagnostics);
+                skeletonPixels =
+                    centerlineDiagnostics.SkeletonPixels;
+                endpoints =
+                    centerlineDiagnostics.Endpoints;
+                principalPathPixels =
+                    centerlineDiagnostics.PrincipalPathPixels;
+                principalPathCoverage =
+                    centerlineDiagnostics.PrincipalPathCoverage;
+
+                if (!centerlineBuilt)
+                {
+                    status =
+                        "centerline-" +
+                        centerlineDiagnostics.Reason;
+                }
+                else
+                {
+                    designerRibbon =
+                        LooksLikeDesignerRibbon(
+                            model);
+
+                    if (!designerRibbon)
+                    {
+                        status =
+                            "ribbon-shape";
+                    }
+                    else
+                    {
+                        ElegantArcFit fit;
+
+                        if (CurveFillRibbonToolFitter.TryFit(
+                                model,
+                                out var toolFit,
+                                out var toolStyle))
+                        {
+                            fit =
+                                toolFit;
+                            fitKind =
+                                "curve-tool";
+                            curveFamily =
+                                toolStyle.Type.ToString();
+                            roundness =
+                                toolStyle.Roundness;
+                        }
+                        else if (broadSparseArch)
+                        {
+                            if (CurveFillRibbonThroughPointsFitter.TryFit(
+                                    model,
+                                    out var throughFit,
+                                    out var throughDiagnostics))
+                            {
+                                fit =
+                                    throughFit;
+                                fitKind =
+                                    "through-geometry";
+                                curveFamily =
+                                    CurveType.SplineThroughPoints.ToString();
+                                roundness =
+                                    throughDiagnostics.Roundness;
+                            }
+                            else if (CurveFillBroadOvalArcFitter.TryFit(
+                                         model,
+                                         out var ovalFit,
+                                         out _))
+                            {
+                                fit =
+                                    ovalFit;
+                                fitKind =
+                                    "half-ellipse";
+                                curveFamily =
+                                    "Ellipse";
+                            }
+                            else if (CurveFillRibbonBezierFitter.TryFit(
+                                         model,
+                                         out var bezierFit,
+                                         out _))
+                            {
+                                fit =
+                                    bezierFit;
+                                fitKind =
+                                    "cubic";
+                                curveFamily =
+                                    CurveType.Bezier.ToString();
+                            }
+                            else
+                            {
+                                fit =
+                                    ElegantArcFitter.Fit(
+                                        model,
+                                        taperApex: false,
+                                        maximumAnchors: 8,
+                                        smoothingPasses: 2);
+                                fitKind =
+                                    "macro-spline";
+                                curveFamily =
+                                    CurveType.Spline.ToString();
+                            }
+                        }
+                        else if (CurveFillRibbonBezierFitter.TryFit(
+                                     model,
+                                     out var bezierFit,
+                                     out _))
+                        {
+                            fit =
+                                bezierFit;
+                            fitKind =
+                                "cubic";
+                            curveFamily =
+                                CurveType.Bezier.ToString();
+                        }
+                        else
+                        {
+                            fit =
+                                ElegantArcFitter.Fit(
+                                    model,
+                                    taperApex: false,
+                                    maximumAnchors: 8,
+                                    smoothingPasses: 2);
+                            fitKind =
+                                "macro-spline";
+                            curveFamily =
+                                CurveType.Spline.ToString();
+                        }
+
+                        fitSafe =
+                            fit.IsSafe &&
+                            fit.CurvatureSignFlips <=
+                                1;
+                        accepted =
+                            fitSafe;
+                        maximumDeviation =
+                            fit.MaximumCenterlineDeviation;
+                        curvatureFlips =
+                            fit.CurvatureSignFlips;
+                        status =
+                            accepted
+                                ? "accepted"
+                                : "fit-unsafe";
+                    }
+                }
+            }
+
+            result.Add(
+                new RibbonArcCandidateStage(
+                    region.Color,
+                    region.MinX,
+                    region.MinY,
+                    region.MaxX,
+                    region.MaxY,
+                    region.Area,
+                    candidate.Elongation,
+                    candidate.BoundaryRatio,
+                    boundingFillRatio,
+                    broadSparseArch,
+                    prefilterAccepted,
+                    centerlineBuilt,
+                    skeletonPixels,
+                    endpoints,
+                    principalPathPixels,
+                    principalPathCoverage,
+                    designerRibbon,
+                    fitKind,
+                    curveFamily,
+                    roundness,
+                    fitSafe,
+                    maximumDeviation,
+                    curvatureFlips,
+                    accepted,
+                    status));
+        }
+
+        return result
+            .OrderBy(stage =>
+                stage.MinY)
+            .ThenBy(stage =>
+                stage.MinX)
+            .ToArray();
+    }
+
     private static bool LooksLikeDesignerRibbon(
         LeafPetalArcModel model)
     {
@@ -564,6 +815,33 @@ internal static class CurveFillRibbonArcRefiner
     }
 }
 
+
+internal readonly record struct RibbonArcCandidateStage(
+    byte Color,
+    int MinX,
+    int MinY,
+    int MaxX,
+    int MaxY,
+    int Area,
+    double Elongation,
+    double BoundaryRatio,
+    double BoundingFillRatio,
+    bool BroadSparseArch,
+    bool PrefilterAccepted,
+    bool CenterlineBuilt,
+    int SkeletonPixels,
+    int Endpoints,
+    int PrincipalPathPixels,
+    double PrincipalPathCoverage,
+    bool DesignerRibbon,
+    string FitKind,
+    string CurveFamily,
+    double Roundness,
+    bool FitSafe,
+    double MaximumDeviation,
+    int CurvatureSignFlips,
+    bool Accepted,
+    string Status);
 
 internal readonly record struct RibbonArcRefinementDiagnostics(
     int Regions,
