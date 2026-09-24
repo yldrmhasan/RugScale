@@ -12,7 +12,10 @@ namespace RugScale.Core.Drawing;
 internal static class LeafPetalRegionExtractor
 {
     private const int MinimumArea = 48;
-    private const double MaximumDocumentAreaRatio = 0.18;
+    // Synthetic/unit fixtures and close-cropped production fragments can contain one dominant
+    // leaf that occupies well above 18% of the image. Background rejection belongs to the shape
+    // classifier (elongation/fill/boundary rules), not to a hard document-area cutoff.
+    private const double MaximumDocumentAreaRatio = 0.45;
 
     private static readonly (int X, int Y)[] Directions =
     [
