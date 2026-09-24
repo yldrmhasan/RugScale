@@ -1174,10 +1174,12 @@ public class DesignResizerTests
                 expected,
                 radius: 1);
 
-        var changed =
-            CurveFillRibbonArcRefiner.Apply(
+        var ribbonDiagnostics =
+            CurveFillRibbonArcRefiner.ApplyWithDiagnostics(
                 source,
                 nearest);
+        var changed =
+            ribbonDiagnostics.BoundaryPixelsChanged;
         var after =
             GetColorPixels(
                 nearest,
@@ -1190,7 +1192,10 @@ public class DesignResizerTests
 
         Assert.True(
             changed > 0,
-            "A stable-width, strongly curved filled ribbon should be geometrically refined.");
+            $"A stable-width, strongly curved filled ribbon should be geometrically refined. " +
+            $"regions={ribbonDiagnostics.Regions}, classified={ribbonDiagnostics.Classified}, " +
+            $"axis={ribbonDiagnostics.AxisBuilt}, ribbon={ribbonDiagnostics.RibbonGeometryAccepted}, " +
+            $"fitSafe={ribbonDiagnostics.FitSafe}, refined={ribbonDiagnostics.Refined}.");
         Assert.True(
             afterScore >= beforeScore + 0.005,
             $"Ribbon refiner did not improve the target oval geometry: before={beforeScore:P2}, after={afterScore:P2}.");
