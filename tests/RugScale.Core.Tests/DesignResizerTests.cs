@@ -1203,7 +1203,9 @@ public class DesignResizerTests
             $"refined={ribbonDiagnostics.Refined}.");
         Assert.True(
             afterScore >= beforeScore + 0.005,
-            $"Ribbon refiner did not improve exact target oval geometry: before={beforeScore:P2}, after={afterScore:P2}.");
+            $"Ribbon refiner did not improve exact target oval geometry: before={beforeScore:P2}, after={afterScore:P2}; " +
+            $"toolFit={ribbonDiagnostics.CurveToolFits}, fitDev={ribbonDiagnostics.MaxFitDeviation:0.000}, " +
+            $"flips={ribbonDiagnostics.MaxFitCurvatureFlips}, changed={ribbonDiagnostics.BoundaryPixelsChanged}.");
         Assert.Equal(
             1,
             CountComponents(
