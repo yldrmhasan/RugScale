@@ -68,6 +68,11 @@ internal static class CurveFillRibbonArcRefiner
         var fitSafe = 0;
         var curveToolFits = 0;
         var cubicBezierFits = 0;
+        var cubicAttempts = 0;
+        var maxCubicDeviation = 0d;
+        var maxCubicP95Deviation = 0d;
+        var maxCubicHandleRatio = 0d;
+        var lastCubicReason = "not-attempted";
         var maxFitDeviation = 0d;
         var maxFitCurvatureFlips = 0;
         var accepted =
@@ -170,25 +175,46 @@ internal static class CurveFillRibbonArcRefiner
                     toolFit;
                 curveToolFits++;
             }
-            else if (CurveFillRibbonBezierFitter.TryFit(
-                         model,
-                         out var bezierFit))
-            {
-                // A single cubic removes the last source-staircase phase from simple oval/arch
-                // ribbons while staying source-bounded. Complex or inflected shapes still fall
-                // through to the conservative multi-anchor fitter below.
-                fit =
-                    bezierFit;
-                cubicBezierFits++;
-            }
             else
             {
-                fit =
-                    ElegantArcFitter.Fit(
+                cubicAttempts++;
+
+                if (CurveFillRibbonBezierFitter.TryFit(
                         model,
-                        taperApex: false,
-                        maximumAnchors: 8,
-                        smoothingPasses: 2);
+                        out var bezierFit,
+                        out var cubicDiagnostics))
+                {
+                    // A single cubic removes the last source-staircase phase from simple oval/arch
+                    // ribbons while staying source-bounded. Complex or inflected shapes still fall
+                    // through to the conservative multi-anchor fitter below.
+                    fit =
+                        bezierFit;
+                    cubicBezierFits++;
+                }
+                else
+                {
+                    fit =
+                        ElegantArcFitter.Fit(
+                            model,
+                            taperApex: false,
+                            maximumAnchors: 8,
+                            smoothingPasses: 2);
+                }
+
+                lastCubicReason =
+                    cubicDiagnostics.Reason;
+                maxCubicDeviation =
+                    Math.Max(
+                        maxCubicDeviation,
+                        cubicDiagnostics.MaximumDeviation);
+                maxCubicP95Deviation =
+                    Math.Max(
+                        maxCubicP95Deviation,
+                        cubicDiagnostics.Percentile95Deviation);
+                maxCubicHandleRatio =
+                    Math.Max(
+                        maxCubicHandleRatio,
+                        cubicDiagnostics.MaximumHandleToChordRatio);
             }
 
             maxFitDeviation =
@@ -257,6 +283,11 @@ internal static class CurveFillRibbonArcRefiner
             FitSafe: fitSafe,
             CurveToolFits: curveToolFits,
             CubicBezierFits: cubicBezierFits,
+            CubicAttempts: cubicAttempts,
+            MaxCubicDeviation: maxCubicDeviation,
+            MaxCubicP95Deviation: maxCubicP95Deviation,
+            MaxCubicHandleRatio: maxCubicHandleRatio,
+            LastCubicReason: lastCubicReason,
             MaxFitDeviation: maxFitDeviation,
             MaxFitCurvatureFlips: maxFitCurvatureFlips,
             Refined: accepted.Count,
@@ -404,6 +435,11 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     int FitSafe,
     int CurveToolFits,
     int CubicBezierFits,
+    int CubicAttempts,
+    double MaxCubicDeviation,
+    double MaxCubicP95Deviation,
+    double MaxCubicHandleRatio,
+    string LastCubicReason,
     double MaxFitDeviation,
     int MaxFitCurvatureFlips,
     int Refined,
