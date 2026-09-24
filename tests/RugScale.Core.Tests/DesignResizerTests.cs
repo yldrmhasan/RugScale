@@ -1194,8 +1194,11 @@ public class DesignResizerTests
             changed > 0,
             $"A stable-width, strongly curved filled ribbon should be geometrically refined. " +
             $"regions={ribbonDiagnostics.Regions}, classified={ribbonDiagnostics.Classified}, " +
-            $"axis={ribbonDiagnostics.AxisBuilt}, ribbon={ribbonDiagnostics.RibbonGeometryAccepted}, " +
-            $"fitSafe={ribbonDiagnostics.FitSafe}, refined={ribbonDiagnostics.Refined}.");
+            $"axis={ribbonDiagnostics.AxisBuilt}, skeleton={ribbonDiagnostics.MaxSkeletonPixels}, " +
+            $"endpoints={ribbonDiagnostics.MaxEndpoints}, path={ribbonDiagnostics.MaxPrincipalPathPixels}, " +
+            $"coverage={ribbonDiagnostics.MaxPrincipalPathCoverage:0.000}, reason={ribbonDiagnostics.LastCenterlineReason}, " +
+            $"ribbon={ribbonDiagnostics.RibbonGeometryAccepted}, fitSafe={ribbonDiagnostics.FitSafe}, " +
+            $"refined={ribbonDiagnostics.Refined}.");
         Assert.True(
             afterScore >= beforeScore + 0.005,
             $"Ribbon refiner did not improve the target oval geometry: before={beforeScore:P2}, after={afterScore:P2}.");
