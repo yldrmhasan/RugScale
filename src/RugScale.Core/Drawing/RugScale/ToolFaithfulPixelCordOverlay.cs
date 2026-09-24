@@ -2011,6 +2011,58 @@ internal static class ToolFaithfulPixelCordOverlay
             endpoints[0];
         var goal =
             endpoints[1];
+
+        var startX =
+            start %
+            sourceWidth;
+        var startY =
+            start /
+            sourceWidth;
+        var goalX =
+            goal %
+            sourceWidth;
+        var goalY =
+            goal /
+            sourceWidth;
+        var dominantAxisIsX =
+            Math.Abs(
+                goalX -
+                startX) >=
+            Math.Abs(
+                goalY -
+                startY);
+        var dominantDirection =
+            Math.Sign(
+                dominantAxisIsX
+                    ? goalX - startX
+                    : goalY - startY);
+
+        int AxisCoordinate(
+            int pixel) =>
+            dominantAxisIsX
+                ? pixel %
+                  sourceWidth
+                : pixel /
+                  sourceWidth;
+
+        int BacktrackPenalty(
+            int current,
+            int next)
+        {
+            if (dominantDirection == 0)
+                return 0;
+
+            var delta =
+                AxisCoordinate(next) -
+                AxisCoordinate(current);
+
+            return delta *
+                   dominantDirection <
+                   0
+                ? 1
+                : 0;
+        }
+
         var visited =
             new HashSet<int>
             {
@@ -2061,6 +2113,20 @@ internal static class ToolFaithfulPixelCordOverlay
                         next == goal
                             ? int.MaxValue
                             : RemainingDegree(next))
+                    // Pixel Cord adds orthogonal bridge cells around diagonal Curve samples.
+                    // Local bridge contacts can create several valid Hamiltonian traversals.
+                    // For an open oval, prefer the traversal that keeps progressing from one
+                    // endpoint toward the other along the dominant axis instead of taking a
+                    // visually equivalent but learner-hostile zigzag/backtracking shortcut.
+                    .ThenBy(next =>
+                        BacktrackPenalty(
+                            current,
+                            next))
+                    .ThenByDescending(next =>
+                        dominantDirection *
+                        (
+                            AxisCoordinate(next) -
+                            AxisCoordinate(current)))
                     .ThenBy(next =>
                         next)
                     .ToArray();
