@@ -3158,4 +3158,7 @@ internal readonly record struct ToolFaithfulOverlayReport(
     double MeanLearnedRoundness,
     int RegionOwnershipCorrections = 0,
     int BarrierCrossingCorrections = 0,
-    int CompletePathRecoveries = 0);
+    int CompletePathRecoveries = 0,
+    int RibbonArcCandidates = 0,
+    int RibbonArcRefined = 0,
+    int RibbonArcPixelsChanged = 0);
