@@ -64,6 +64,7 @@ internal static class CurveFillRibbonArcRefiner
         var ribbonGeometryAccepted = 0;
         var fitSafe = 0;
         var curveToolFits = 0;
+        var cubicBezierFits = 0;
         var maxFitDeviation = 0d;
         var maxFitCurvatureFlips = 0;
         var accepted =
@@ -147,6 +148,17 @@ internal static class CurveFillRibbonArcRefiner
                     toolFit;
                 curveToolFits++;
             }
+            else if (CurveFillRibbonBezierFitter.TryFit(
+                         model,
+                         out var bezierFit))
+            {
+                // A single cubic removes the last source-staircase phase from simple oval/arch
+                // ribbons while staying source-bounded. Complex or inflected shapes still fall
+                // through to the conservative multi-anchor fitter below.
+                fit =
+                    bezierFit;
+                cubicBezierFits++;
+            }
             else
             {
                 fit =
@@ -222,6 +234,7 @@ internal static class CurveFillRibbonArcRefiner
             RibbonGeometryAccepted: ribbonGeometryAccepted,
             FitSafe: fitSafe,
             CurveToolFits: curveToolFits,
+            CubicBezierFits: cubicBezierFits,
             MaxFitDeviation: maxFitDeviation,
             MaxFitCurvatureFlips: maxFitCurvatureFlips,
             Refined: accepted.Count,
@@ -368,6 +381,7 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     int RibbonGeometryAccepted,
     int FitSafe,
     int CurveToolFits,
+    int CubicBezierFits,
     double MaxFitDeviation,
     int MaxFitCurvatureFlips,
     int Refined,
