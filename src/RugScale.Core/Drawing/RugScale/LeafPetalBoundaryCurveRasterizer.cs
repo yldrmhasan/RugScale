@@ -254,18 +254,6 @@ internal static class LeafPetalBoundaryCurveRasterizer
                     (x + 0.5) /
                     scaleX -
                     0.5;
-
-                if (!IsNearSourceOuterPath(
-                        model.SourceOuterPath,
-                        source.Width,
-                        source.Height,
-                        sourceX,
-                        sourceY,
-                        SourceOuterCorridor))
-                {
-                    continue;
-                }
-
                 var targetKey =
                     y *
                     destination.Width +
@@ -278,6 +266,11 @@ internal static class LeafPetalBoundaryCurveRasterizer
                 if (newOutline.Contains(
                         targetKey))
                 {
+                    // The paired left/right model already passed whole-curve source support AND
+                    // width-profile safety above. Do not clip individual validated target pixels
+                    // against the source corridor a second time: integer target raster phase can
+                    // move isolated bridge cells slightly outside that corridor and would split an
+                    // otherwise correct Pixel-Cord curve into visible fragments.
                     if (current !=
                             model.OutlineColor &&
                         (!protectedStrokeColors.Contains(
@@ -292,6 +285,17 @@ internal static class LeafPetalBoundaryCurveRasterizer
                         changed++;
                     }
 
+                    continue;
+                }
+
+                if (!IsNearSourceOuterPath(
+                        model.SourceOuterPath,
+                        source.Width,
+                        source.Height,
+                        sourceX,
+                        sourceY,
+                        SourceOuterCorridor))
+                {
                     continue;
                 }
 
