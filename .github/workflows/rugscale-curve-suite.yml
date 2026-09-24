@@ -9,6 +9,14 @@ on:
       - "tests/RugScale.Core.Tests/**"
       - "tests/fixtures/rugscale-curves/**"
       - ".github/workflows/rugscale-curve-suite.yml"
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "src/RugScale.Core/**"
+      - "tools/RugScale.CurveScaleAudit/**"
+      - "tests/RugScale.Core.Tests/**"
+      - "tests/fixtures/rugscale-curves/**"
+      - ".github/workflows/rugscale-curve-suite.yml"
   workflow_dispatch:
 
 permissions:
