@@ -66,6 +66,8 @@ internal static class CurveFillRibbonArcRefiner
         var lastCenterlineReason = "not-attempted";
         var ribbonGeometryAccepted = 0;
         var fitSafe = 0;
+        var symmetryRecoveries = 0;
+        var maxSymmetrySampleShift = 0d;
         var curveToolFits = 0;
         var curveToolThroughPointsFits = 0;
         var curveToolSplineFits = 0;
@@ -173,6 +175,23 @@ internal static class CurveFillRibbonArcRefiner
                     model))
             {
                 continue;
+            }
+
+            if (broadSparseArch &&
+                centerlineDiagnostics.Endpoints > 2 &&
+                CurveFillRibbonSymmetryRecovery.TryRecover(
+                    model,
+                    source.Width,
+                    out var symmetricModel,
+                    out var symmetryDiagnostics))
+            {
+                model =
+                    symmetricModel;
+                symmetryRecoveries++;
+                maxSymmetrySampleShift =
+                    Math.Max(
+                        maxSymmetrySampleShift,
+                        symmetryDiagnostics.MaximumSampleShift);
             }
 
             ribbonGeometryAccepted++;
@@ -401,6 +420,8 @@ internal static class CurveFillRibbonArcRefiner
             LastCenterlineReason: lastCenterlineReason,
             RibbonGeometryAccepted: ribbonGeometryAccepted,
             FitSafe: fitSafe,
+            SymmetryRecoveries: symmetryRecoveries,
+            MaxSymmetrySampleShift: maxSymmetrySampleShift,
             CurveToolFits: curveToolFits,
             CurveToolThroughPointsFits: curveToolThroughPointsFits,
             CurveToolSplineFits: curveToolSplineFits,
@@ -486,6 +507,11 @@ internal static class CurveFillRibbonArcRefiner
 
             var centerlineBuilt = false;
             var designerRibbon = false;
+            var symmetryRecovered = false;
+            var symmetryAxis = "none";
+            var mirrorAgreement = 0d;
+            var symmetryMeanShift = 0d;
+            var symmetryMaxShift = 0d;
             var fitSafe = false;
             var accepted = false;
             var fitKind = "none";
@@ -538,6 +564,27 @@ internal static class CurveFillRibbonArcRefiner
                     }
                     else
                     {
+                        if (broadSparseArch &&
+                            centerlineDiagnostics.Endpoints > 2 &&
+                            CurveFillRibbonSymmetryRecovery.TryRecover(
+                                model,
+                                source.Width,
+                                out var symmetricModel,
+                                out var symmetryDiagnostics))
+                        {
+                            model =
+                                symmetricModel;
+                            symmetryRecovered = true;
+                            symmetryAxis =
+                                symmetryDiagnostics.Axis;
+                            mirrorAgreement =
+                                symmetryDiagnostics.MirrorAgreement;
+                            symmetryMeanShift =
+                                symmetryDiagnostics.MeanSampleShift;
+                            symmetryMaxShift =
+                                symmetryDiagnostics.MaximumSampleShift;
+                        }
+
                         ElegantArcFit fit;
 
                         if (CurveFillRibbonToolFitter.TryFit(
@@ -671,6 +718,11 @@ internal static class CurveFillRibbonArcRefiner
                     principalPathPixels,
                     principalPathCoverage,
                     designerRibbon,
+                    symmetryRecovered,
+                    symmetryAxis,
+                    mirrorAgreement,
+                    symmetryMeanShift,
+                    symmetryMaxShift,
                     fitKind,
                     curveFamily,
                     roundness,
@@ -834,6 +886,11 @@ internal readonly record struct RibbonArcCandidateStage(
     int PrincipalPathPixels,
     double PrincipalPathCoverage,
     bool DesignerRibbon,
+    bool SymmetryRecovered,
+    string SymmetryAxis,
+    double MirrorAgreement,
+    double SymmetryMeanShift,
+    double SymmetryMaxShift,
     string FitKind,
     string CurveFamily,
     double Roundness,
@@ -854,6 +911,8 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     string LastCenterlineReason,
     int RibbonGeometryAccepted,
     int FitSafe,
+    int SymmetryRecoveries,
+    double MaxSymmetrySampleShift,
     int CurveToolFits,
     int CurveToolThroughPointsFits,
     int CurveToolSplineFits,
