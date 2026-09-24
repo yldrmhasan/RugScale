@@ -9,7 +9,10 @@ namespace RugScale.Core.Drawing;
 /// </summary>
 internal static class LeafPetalArcClassifier
 {
-    private const double MinimumElongation = 1.80;
+    // Inner veins/slits remove mass from the centre and can reduce PCA elongation even when the
+    // visible outer silhouette is an unmistakably long leaf. Keep the classifier permissive and
+    // let medial-axis + paired-boundary safety decide whether specialist redraw is allowed.
+    private const double MinimumElongation = 1.55;
     private const double MinimumMajorExtent = 9.0;
     private const double MinimumMinorExtent = 2.5;
     private const double MaximumBoundaryRatio = 0.62;
