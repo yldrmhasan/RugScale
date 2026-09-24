@@ -114,8 +114,7 @@ internal static class ToolFaithfulPixelCordOverlay
         var corridorClippedPixels = 0;
         var learnedRoundnessSum = 0d;
         var styleFitCacheHits = 0;
-        var ovalCenterlineRecoveries = 0;
-        var dominantPathRecoveries = 0;
+        var completePathRecoveries = 0;
 
         // Repeated carpet ornaments frequently contain the exact same 1x1 curve translated many
         // times. Learn its Curve family once and reuse the translation-invariant fit. This both
@@ -262,11 +261,9 @@ internal static class ToolFaithfulPixelCordOverlay
             // Pixel Cord inserts orthogonal bridge cells between diagonal Curve pixels. On a
             // smooth oval those bridge cells can touch a nearby part of the same stroke and make
             // the raw graph look artificially branched, causing TraceChains to split one designer
-            // curve into many fragments. Recover the endpoint-to-endpoint 4-connected main path
-            // only when it covers almost the whole component; true branched networks therefore
-            // keep the conservative multi-chain path below.
-            var fitPixelCord =
-                pixelCord;
+            // curve into many fragments. For a small two-endpoint component, recover the COMPLETE
+            // endpoint-to-endpoint Pixel-Cord drawing order. True branched networks continue through
+            // the conservative multi-chain path below.
             var recoveredSmoothOval =
                 false;
 
@@ -287,7 +284,7 @@ internal static class ToolFaithfulPixelCordOverlay
                 {
                     completePath,
                 };
-                dominantPathRecoveries++;
+                completePathRecoveries++;
                 recoveredSmoothOval =
                     true;
             }
@@ -310,7 +307,7 @@ internal static class ToolFaithfulPixelCordOverlay
                             ? null
                             : ResolveStyleFit(
                                 chain,
-                                fitPixelCord,
+                                pixelCord,
                                 styleFitCache,
                                 out cacheHit);
 
@@ -569,10 +566,8 @@ internal static class ToolFaithfulPixelCordOverlay
                 ? 0d
                 : learnedRoundnessSum /
                   learnedCurves,
-            OvalCenterlineRecoveries:
-                ovalCenterlineRecoveries,
-            DominantPathRecoveries:
-                dominantPathRecoveries);
+            CompletePathRecoveries:
+                completePathRecoveries);
     }
 
     private static void ClearProjectedStrokeResidue(
@@ -2197,285 +2192,6 @@ internal static class ToolFaithfulPixelCordOverlay
                extent * 0.75;
     }
 
-    private static bool TryBuildMonotonicOvalCenterline(
-        StrokeComponent component,
-        int sourceWidth,
-        out List<(int X, int Y)> centerline)
-    {
-        centerline =
-            new List<(int X, int Y)>();
-
-        var width =
-            component.MaxX -
-            component.MinX +
-            1;
-        var height =
-            component.MaxY -
-            component.MinY +
-            1;
-
-        if (width < 8 ||
-            height < 5 ||
-            component.Pixels.Count < 20)
-        {
-            return false;
-        }
-
-        var useX =
-            width >=
-            height;
-        var axisLength =
-            useX
-                ? width
-                : height;
-        var slices =
-            new Dictionary<int, List<int>>();
-
-        foreach (var pixel in component.Pixels)
-        {
-            var x =
-                pixel %
-                sourceWidth;
-            var y =
-                pixel /
-                sourceWidth;
-            var axis =
-                useX
-                    ? x
-                    : y;
-            var perpendicular =
-                useX
-                    ? y
-                    : x;
-
-            if (!slices.TryGetValue(
-                    axis,
-                    out var values))
-            {
-                values =
-                    new List<int>();
-                slices[axis] =
-                    values;
-            }
-
-            values.Add(
-                perpendicular);
-        }
-
-        if (slices.Count <
-            axisLength * 0.75)
-        {
-            return false;
-        }
-
-        var broadSlices = 0;
-        var totalSlicePixels = 0;
-
-        foreach (var (axis, values) in slices
-                     .OrderBy(pair =>
-                         pair.Key))
-        {
-            values.Sort();
-            totalSlicePixels +=
-                values.Count;
-
-            if (values[^1] -
-                values[0] >
-                3)
-            {
-                broadSlices++;
-            }
-
-            var perpendicular =
-                values[
-                    values.Count /
-                    2];
-
-            centerline.Add(
-                useX
-                    ? (
-                        axis,
-                        perpendicular)
-                    : (
-                        perpendicular,
-                        axis));
-        }
-
-        if (broadSlices >
-            slices.Count * 0.15 ||
-            totalSlicePixels /
-            (double)slices.Count >
-            3.0)
-        {
-            centerline.Clear();
-            return false;
-        }
-
-        // A dominant-axis oval/arch should span most of its own bounding box. This excludes small
-        // local branches cut from a much larger stroke network.
-        var first =
-            centerline[0];
-        var last =
-            centerline[^1];
-        var endpointSpan =
-            useX
-                ? Math.Abs(
-                    last.X -
-                    first.X)
-                : Math.Abs(
-                    last.Y -
-                    first.Y);
-
-        if (endpointSpan <
-            (axisLength - 1) *
-            0.85)
-        {
-            centerline.Clear();
-            return false;
-        }
-
-        return centerline.Count >=
-               MinimumPathPixels;
-    }
-
-    private static bool TryTraceDominantPixelCordPath(
-        StrokeComponent component,
-        int sourceWidth,
-        out List<(int X, int Y)> path)
-    {
-        path =
-            new List<(int X, int Y)>();
-
-        if (component.Pixels.Count <
-            MinimumPathPixels)
-        {
-            return false;
-        }
-
-        var set =
-            component.Pixels
-                .ToHashSet();
-        var endpoints =
-            new List<int>(2);
-
-        foreach (var pixel in component.Pixels)
-        {
-            var x =
-                pixel %
-                sourceWidth;
-            var y =
-                pixel /
-                sourceWidth;
-            var degree = 0;
-
-            foreach (var (dx, dy) in FourDirections)
-            {
-                if (set.Contains(
-                        (y + dy) *
-                        sourceWidth +
-                        (x + dx)))
-                {
-                    degree++;
-                }
-            }
-
-            if (degree == 1)
-                endpoints.Add(pixel);
-        }
-
-        if (endpoints.Count != 2)
-            return false;
-
-        var start =
-            endpoints[0];
-        var goal =
-            endpoints[1];
-        var queue =
-            new Queue<int>();
-        var previous =
-            new Dictionary<int, int>(
-                set.Count);
-
-        queue.Enqueue(start);
-        previous[start] =
-            start;
-
-        while (queue.Count > 0 &&
-               !previous.ContainsKey(goal))
-        {
-            var current =
-                queue.Dequeue();
-            var x =
-                current %
-                sourceWidth;
-            var y =
-                current /
-                sourceWidth;
-
-            foreach (var (dx, dy) in FourDirections)
-            {
-                var next =
-                    (y + dy) *
-                    sourceWidth +
-                    (x + dx);
-
-                if (!set.Contains(next) ||
-                    previous.ContainsKey(next))
-                {
-                    continue;
-                }
-
-                previous[next] =
-                    current;
-                queue.Enqueue(next);
-            }
-        }
-
-        if (!previous.ContainsKey(goal))
-            return false;
-
-        var pixels =
-            new List<int>();
-        var cursor =
-            goal;
-
-        while (true)
-        {
-            pixels.Add(cursor);
-
-            if (cursor == start)
-                break;
-
-            cursor =
-                previous[cursor];
-        }
-
-        pixels.Reverse();
-
-        // A simple Pixel-Cord curve may contain a few incidental graph contacts, but the dominant
-        // endpoint path should still explain nearly all of its pixels. A real branch/network does
-        // not satisfy this and must remain split by TraceChains.
-        if (pixels.Count <
-            component.Pixels.Count *
-            0.85)
-        {
-            return false;
-        }
-
-        path =
-            pixels
-                .Select(pixel =>
-                    (
-                        X: pixel %
-                           sourceWidth,
-                        Y: pixel /
-                           sourceWidth))
-                .ToList();
-
-        return path.Count >=
-               MinimumPathPixels;
-    }
-
     private static IReadOnlyList<List<(int X, int Y)>> TraceChains(
         StrokeComponent component,
         int sourceWidth,
@@ -3128,5 +2844,4 @@ internal readonly record struct ToolFaithfulOverlayReport(
     double MeanLearnedRoundness,
     int RegionOwnershipCorrections = 0,
     int BarrierCrossingCorrections = 0,
-    int OvalCenterlineRecoveries = 0,
-    int DominantPathRecoveries = 0);
+    int CompletePathRecoveries = 0);
