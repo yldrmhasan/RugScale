@@ -372,14 +372,29 @@ internal static class LeafPetalArcScaleEngine
 
         foreach (var region in regions)
         {
-            if (!protectedStrokeColors.Contains(
+            if (protectedStrokeColors.Contains(
                     region.Color))
             {
-                analysisRegions.AddRange(
-                    LeafPetalLobeExtractor.Extract(
-                        source,
-                        region));
+                continue;
             }
+
+            // If the complete connected region already has the geometry of one safe leaf/petal,
+            // keep it intact. Running the lobe splitter on a single broad leaf can interpret a
+            // harmless skeleton fork near the wide base as a branch junction and return only the
+            // apex half as a sub-lobe. Lobe extraction is intended for compound connected floral
+            // masses that FAIL whole-region leaf/petal classification.
+            if (LeafPetalArcClassifier.TryClassify(
+                    region,
+                    source.Width,
+                    out _))
+            {
+                continue;
+            }
+
+            analysisRegions.AddRange(
+                LeafPetalLobeExtractor.Extract(
+                    source,
+                    region));
         }
 
         analysisRegions.AddRange(
