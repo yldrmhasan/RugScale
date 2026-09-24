@@ -108,4 +108,6 @@ internal readonly record struct LeafPetalArcDiagnostics(
     int BoundaryCurveRefined = 0,
     int CenterlineRefined = 0,
     int BoundaryCurvePixelsChanged = 0,
-    int CenterlinePixelsChanged = 0);
+    int CenterlinePixelsChanged = 0,
+    int BoundaryCurveBuilt = 0,
+    int BoundaryCurveRasterRejected = 0);
