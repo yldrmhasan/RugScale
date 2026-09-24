@@ -9,6 +9,14 @@ on:
       - "tests/RugScale.Core.Tests/**"
       - "tests/fixtures/rugscale/**"
       - ".github/workflows/rugscale-b163a-audit.yml"
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "src/RugScale.Core/**"
+      - "tools/RugScale.RugScaleAudit/**"
+      - "tests/RugScale.Core.Tests/**"
+      - "tests/fixtures/rugscale/**"
+      - ".github/workflows/rugscale-b163a-audit.yml"
   workflow_dispatch:
 
 permissions:
