@@ -172,7 +172,7 @@ internal static class LeafPetalArcScaleEngine
             }
         }
 
-        // The Curve & Fill baseline already contains strict ownership + RugCAD tool replay.
+        // The Curve & Fill baseline already contains strict ownership + RugScale tool replay.
         // Specialist refinement is deliberately LAST. LeafPetalArcRasterizer protects those
         // separator palette roles itself and allows only a local two-colour boundary displacement;
         // re-running the global ownership guard here would erase the aesthetic correction.
