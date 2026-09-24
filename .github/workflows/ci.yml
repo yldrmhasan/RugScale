@@ -1,10 +1,8 @@
 name: RugScale CI
 
+# GitHub Actions quota is currently exhausted.
+# Keep CI manual-only so normal development commits do not create failed/queued runs.
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 permissions:
