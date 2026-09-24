@@ -87,7 +87,7 @@ internal static class CurveFillRibbonArcRefiner
                 continue;
             }
 
-            if (!LeafPetalMedialAxisBuilder.TryBuild(
+            if (!CurveFillRibbonCenterlineBuilder.TryBuild(
                     candidate,
                     source.Width,
                     out var model))
