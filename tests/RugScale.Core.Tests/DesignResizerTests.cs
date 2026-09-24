@@ -1073,14 +1073,16 @@ public class DesignResizerTests
             new RugColor(218, 210, 184),
             new RugColor(134, 162, 125),
         });
-        var source = new DesignDocument(72, 56, palette);
+        // Match the real C069 top-centre green ornament: one long half-oval ribbon rather than a
+        // complete U-shaped arch. This is the filled geometry that motivated the regression.
+        var source = new DesignDocument(56, 92, palette);
         var controls = new (int X, int Y)[]
         {
-            (7, 44),
-            (13, 20),
-            (29, 8),
-            (50, 15),
-            (64, 43),
+            (45, 6),
+            (33, 12),
+            (19, 30),
+            (12, 54),
+            (11, 82),
         };
 
         var sourceCenterline =
@@ -1107,8 +1109,8 @@ public class DesignResizerTests
             }
         }
 
-        var targetWidth = 115;
-        var targetHeight = 90;
+        var targetWidth = 90;
+        var targetHeight = 147;
         var nearest =
             DesignResizer.Scale(
                 source,
@@ -1116,9 +1118,9 @@ public class DesignResizerTests
                 targetHeight,
                 ScaleMode.NearestNeighbor,
                 40,
-                50,
+                60,
                 40,
-                50);
+                60);
 
         var mappedControls =
             controls
