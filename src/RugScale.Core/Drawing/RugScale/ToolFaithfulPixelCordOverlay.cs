@@ -2007,185 +2007,302 @@ internal static class ToolFaithfulPixelCordOverlay
         if (endpoints.Length != 2)
             return false;
 
-        var start =
-            endpoints[0];
-        var goal =
-            endpoints[1];
-
-        var startX =
-            start %
-            sourceWidth;
-        var startY =
-            start /
-            sourceWidth;
-        var goalX =
-            goal %
-            sourceWidth;
-        var goalY =
-            goal /
-            sourceWidth;
-        var dominantAxisIsX =
-            Math.Abs(
-                goalX -
-                startX) >=
-            Math.Abs(
-                goalY -
-                startY);
-        var dominantDirection =
-            Math.Sign(
-                dominantAxisIsX
-                    ? goalX - startX
-                    : goalY - startY);
-
-        int AxisCoordinate(
-            int pixel) =>
-            dominantAxisIsX
-                ? pixel %
-                  sourceWidth
-                : pixel /
-                  sourceWidth;
-
-        int BacktrackPenalty(
-            int current,
-            int next)
+        bool TrySearch(
+            int startPixel,
+            int goalPixel,
+            out List<int> result)
         {
-            if (dominantDirection == 0)
-                return 0;
+            result =
+                new List<int>();
 
-            var delta =
-                AxisCoordinate(next) -
-                AxisCoordinate(current);
+            var startX =
+                startPixel %
+                sourceWidth;
+            var startY =
+                startPixel /
+                sourceWidth;
+            var goalX =
+                goalPixel %
+                sourceWidth;
+            var goalY =
+                goalPixel /
+                sourceWidth;
+            var dominantAxisIsX =
+                Math.Abs(
+                    goalX -
+                    startX) >=
+                Math.Abs(
+                    goalY -
+                    startY);
+            var dominantDirection =
+                Math.Sign(
+                    dominantAxisIsX
+                        ? goalX - startX
+                        : goalY - startY);
 
-            return delta *
-                   dominantDirection <
-                   0
-                ? 1
-                : 0;
+            int AxisCoordinate(
+                int pixel) =>
+                dominantAxisIsX
+                    ? pixel %
+                      sourceWidth
+                    : pixel /
+                      sourceWidth;
+
+            int BacktrackPenalty(
+                int current,
+                int next)
+            {
+                if (dominantDirection == 0)
+                    return 0;
+
+                var delta =
+                    AxisCoordinate(next) -
+                    AxisCoordinate(current);
+
+                return delta *
+                       dominantDirection <
+                       0
+                    ? 1
+                    : 0;
+            }
+
+            var visited =
+                new HashSet<int>
+                {
+                    startPixel,
+                };
+            var ordered =
+                new List<int>(
+                    set.Count)
+                {
+                    startPixel,
+                };
+            var states = 0;
+
+            int RemainingDegree(
+                int pixel) =>
+                adjacency[pixel].Count(next =>
+                    !visited.Contains(next));
+
+            bool Search(
+                int current)
+            {
+                states++;
+
+                if (states >
+                    MaximumSearchStates)
+                {
+                    return false;
+                }
+
+                if (ordered.Count ==
+                    set.Count)
+                {
+                    return current ==
+                           goalPixel;
+                }
+
+                if (current ==
+                    goalPixel)
+                {
+                    return false;
+                }
+
+                var candidates =
+                    adjacency[current]
+                        .Where(next =>
+                            !visited.Contains(next))
+                        .OrderBy(next =>
+                            next == goalPixel
+                                ? int.MaxValue
+                                : RemainingDegree(next))
+                        .ThenBy(next =>
+                            BacktrackPenalty(
+                                current,
+                                next))
+                        .ThenByDescending(next =>
+                            dominantDirection *
+                            (
+                                AxisCoordinate(next) -
+                                AxisCoordinate(current)))
+                        .ThenBy(next =>
+                            next)
+                        .ToArray();
+
+                foreach (var next in candidates)
+                {
+                    // The goal is the final endpoint. Entering it early would strand remaining
+                    // Pixel-Cord cells.
+                    if (next == goalPixel &&
+                        ordered.Count + 1 <
+                        set.Count)
+                    {
+                        continue;
+                    }
+
+                    visited.Add(next);
+                    ordered.Add(next);
+
+                    var stranded = false;
+
+                    foreach (var pixel in set)
+                    {
+                        if (visited.Contains(pixel) ||
+                            pixel == goalPixel)
+                        {
+                            continue;
+                        }
+
+                        if (adjacency[pixel].Any(candidate =>
+                                !visited.Contains(candidate) ||
+                                candidate == next))
+                        {
+                            continue;
+                        }
+
+                        stranded = true;
+                        break;
+                    }
+
+                    if (!stranded &&
+                        Search(next))
+                    {
+                        return true;
+                    }
+
+                    ordered.RemoveAt(
+                        ordered.Count - 1);
+                    visited.Remove(next);
+                }
+
+                return false;
+            }
+
+            if (!Search(
+                    startPixel))
+            {
+                return false;
+            }
+
+            result =
+                ordered;
+            return true;
         }
 
-        var visited =
-            new HashSet<int>
-            {
-                start,
-            };
-        var ordered =
-            new List<int>(
-                set.Count)
-            {
-                start,
-            };
-        var states = 0;
-
-        int RemainingDegree(
-            int pixel) =>
-            adjacency[pixel].Count(next =>
-                !visited.Contains(next));
-
-        bool Search(
-            int current)
+        static int PixelCordDirectionScore(
+            IReadOnlyList<int> orderedPixels,
+            int width)
         {
-            states++;
+            var score = 0;
 
-            if (states >
-                MaximumSearchStates)
+            for (var index = 1;
+                 index + 1 <
+                 orderedPixels.Count;
+                 index++)
             {
-                return false;
-            }
+                var previous =
+                    orderedPixels[index - 1];
+                var bridge =
+                    orderedPixels[index];
+                var next =
+                    orderedPixels[index + 1];
 
-            if (ordered.Count ==
-                set.Count)
-            {
-                return current ==
-                       goal;
-            }
+                var previousX =
+                    previous %
+                    width;
+                var previousY =
+                    previous /
+                    width;
+                var bridgeX =
+                    bridge %
+                    width;
+                var bridgeY =
+                    bridge /
+                    width;
+                var nextX =
+                    next %
+                    width;
+                var nextY =
+                    next /
+                    width;
 
-            if (current ==
-                goal)
-            {
-                return false;
-            }
-
-            var candidates =
-                adjacency[current]
-                    .Where(next =>
-                        !visited.Contains(next))
-                    .OrderBy(next =>
-                        next == goal
-                            ? int.MaxValue
-                            : RemainingDegree(next))
-                    // Pixel Cord adds orthogonal bridge cells around diagonal Curve samples.
-                    // Local bridge contacts can create several valid Hamiltonian traversals.
-                    // For an open oval, prefer the traversal that keeps progressing from one
-                    // endpoint toward the other along the dominant axis instead of taking a
-                    // visually equivalent but learner-hostile zigzag/backtracking shortcut.
-                    .ThenBy(next =>
-                        BacktrackPenalty(
-                            current,
-                            next))
-                    .ThenByDescending(next =>
-                        dominantDirection *
-                        (
-                            AxisCoordinate(next) -
-                            AxisCoordinate(current)))
-                    .ThenBy(next =>
-                        next)
-                    .ToArray();
-
-            foreach (var next in candidates)
-            {
-                // The goal is the final endpoint. Entering it early would strand remaining pixels.
-                if (next == goal &&
-                    ordered.Count + 1 <
-                    set.Count)
+                if (Math.Abs(
+                        nextX -
+                        previousX) != 1 ||
+                    Math.Abs(
+                        nextY -
+                        previousY) != 1)
                 {
                     continue;
                 }
 
-                visited.Add(next);
-                ordered.Add(next);
-
-                var stranded = false;
-
-                // Cheap Hamiltonian pruning: every still-unvisited non-goal pixel must retain at
-                // least one route into the remaining graph.
-                foreach (var pixel in set)
+                // Rasterizer.ConnectDiagonalSteps emits (newX, oldY) before the diagonal target.
+                // Therefore horizontal -> vertical is the encoded drawing direction. Traversing
+                // the same raster backwards produces the opposite corner grammar.
+                if (bridgeX == nextX &&
+                    bridgeY == previousY)
                 {
-                    if (visited.Contains(pixel) ||
-                        pixel == goal)
-                    {
-                        continue;
-                    }
-
-                    if (adjacency[pixel].Any(candidate =>
-                            !visited.Contains(candidate) ||
-                            candidate == next))
-                    {
-                        continue;
-                    }
-
-                    stranded = true;
-                    break;
+                    score += 2;
                 }
-
-                if (!stranded &&
-                    Search(next))
+                else if (bridgeX == previousX &&
+                         bridgeY == nextY)
                 {
-                    return true;
+                    score -= 2;
                 }
-
-                ordered.RemoveAt(
-                    ordered.Count - 1);
-                visited.Remove(next);
             }
 
+            return score;
+        }
+
+        var firstSucceeded =
+            TrySearch(
+                endpoints[0],
+                endpoints[1],
+                out var firstOrder);
+        var secondSucceeded =
+            TrySearch(
+                endpoints[1],
+                endpoints[0],
+                out var secondOrder);
+
+        if (!firstSucceeded &&
+            !secondSucceeded)
+        {
             return false;
         }
 
-        if (!Search(start))
-            return false;
+        IReadOnlyList<int> selected;
+
+        if (!firstSucceeded)
+        {
+            selected =
+                secondOrder;
+        }
+        else if (!secondSucceeded)
+        {
+            selected =
+                firstOrder;
+        }
+        else
+        {
+            var firstScore =
+                PixelCordDirectionScore(
+                    firstOrder,
+                    sourceWidth);
+            var secondScore =
+                PixelCordDirectionScore(
+                    secondOrder,
+                    sourceWidth);
+
+            selected =
+                secondScore >
+                firstScore
+                    ? secondOrder
+                    : firstOrder;
+        }
 
         path =
-            ordered
+            selected
                 .Select(pixel =>
                     (
                         X: pixel %
