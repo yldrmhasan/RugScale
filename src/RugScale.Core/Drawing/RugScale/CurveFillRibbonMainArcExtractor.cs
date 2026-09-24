@@ -340,14 +340,14 @@ internal static class CurveFillRibbonMainArcExtractor
             result[index] =
                 source[index] with
                 {
-                    X:
+                    X =
                         source[index - 1].X *
                             0.25 +
                         source[index].X *
                             0.50 +
                         source[index + 1].X *
                             0.25,
-                    Y:
+                    Y =
                         source[index - 1].Y *
                             0.25 +
                         source[index].Y *
