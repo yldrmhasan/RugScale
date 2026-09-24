@@ -1359,6 +1359,9 @@ public class DesignResizerTests
             diagnostics.BoundaryPixelsChanged > 0,
             $"Broad sparse oval arch was not redrawn: refined={diagnostics.Refined}, " +
             $"changed={diagnostics.BoundaryPixelsChanged}, tool={diagnostics.CurveToolFits}, " +
+            $"oval={diagnostics.BroadOvalFits}/{diagnostics.BroadOvalAttempts}, " +
+            $"ovalReason={diagnostics.LastBroadOvalReason}, ovalP95={diagnostics.MaxBroadOvalP95Deviation:0.000}, " +
+            $"ovalMax={diagnostics.MaxBroadOvalDeviation:0.000}, " +
             $"cubic={diagnostics.CubicBezierFits}/{diagnostics.CubicAttempts}, " +
             $"cubicReason={diagnostics.LastCubicReason}, cubicP95={diagnostics.MaxCubicP95Deviation:0.000}, " +
             $"cubicMax={diagnostics.MaxCubicDeviation:0.000}, handle={diagnostics.MaxCubicHandleRatio:0.000}, " +
@@ -1369,7 +1372,7 @@ public class DesignResizerTests
                 0.003,
             $"Broad arch did not move toward continuous target geometry: " +
             $"before={beforeScore:P2}, after={afterScore:P2}, " +
-            $"tool={diagnostics.CurveToolFits}, cubic={diagnostics.CubicBezierFits}.");
+            $"tool={diagnostics.CurveToolFits}, oval={diagnostics.BroadOvalFits}, cubic={diagnostics.CubicBezierFits}.");
         Assert.Equal(
             1,
             CountComponents(
