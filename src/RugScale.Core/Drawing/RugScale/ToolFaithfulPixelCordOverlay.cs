@@ -272,43 +272,24 @@ internal static class ToolFaithfulPixelCordOverlay
 
             if (component.TrustedStrokeRole &&
                 pixelCord &&
-                TryTraceDominantPixelCordPath(
+                TryTraceCompletePixelCordPath(
                     component,
                     source.Width,
-                    out var dominantPath) &&
+                    out var completePath) &&
                 LooksLikeSmoothOvalRecovery(
-                    dominantPath))
+                    completePath))
             {
-                // Keep the real ordered Pixel-Cord raster for fitting. False local graph contacts
-                // are removed by choosing the dominant endpoint path, while genuine high-roundness
-                // shoulder reversals are allowed here instead of being misclassified as cusps.
+                // Recover the original bridge-connected drawing order rather than taking a graph
+                // shortest path. The complete path must visit every component pixel exactly once,
+                // so false local contacts cannot cut across an oval shoulder.
                 chains =
                 new[]
                 {
-                    dominantPath,
+                    completePath,
                 };
                 dominantPathRecoveries++;
                 recoveredSmoothOval =
                     true;
-            }
-            else if (component.TrustedStrokeRole &&
-                     pixelCord &&
-                     TryBuildMonotonicOvalCenterline(
-                         component,
-                         source.Width,
-                         out var ovalCenterline) &&
-                     !HasSourceCusp(
-                         ovalCenterline))
-            {
-                // Conservative fallback for monotonic thin arcs where graph recovery is ambiguous.
-                chains =
-                new[]
-                {
-                    ovalCenterline,
-                };
-                fitPixelCord =
-                    false;
-                ovalCenterlineRecoveries++;
             }
 
             if (component.TrustedStrokeRole)
@@ -1965,6 +1946,195 @@ internal static class ToolFaithfulPixelCordOverlay
 
             previous = current;
         }
+    }
+
+    private static bool TryTraceCompletePixelCordPath(
+        StrokeComponent component,
+        int sourceWidth,
+        out List<(int X, int Y)> path)
+    {
+        path =
+            new List<(int X, int Y)>();
+
+        const int MaximumSearchPixels = 512;
+        const int MaximumSearchStates = 250_000;
+
+        if (component.Pixels.Count <
+                MinimumPathPixels ||
+            component.Pixels.Count >
+                MaximumSearchPixels)
+        {
+            return false;
+        }
+
+        var set =
+            component.Pixels
+                .ToHashSet();
+        var adjacency =
+            new Dictionary<int, List<int>>(
+                set.Count);
+
+        foreach (var pixel in set)
+        {
+            var x =
+                pixel %
+                sourceWidth;
+            var y =
+                pixel /
+                sourceWidth;
+            var neighbors =
+                new List<int>(4);
+
+            foreach (var (dx, dy) in FourDirections)
+            {
+                var next =
+                    (y + dy) *
+                    sourceWidth +
+                    (x + dx);
+
+                if (set.Contains(next))
+                    neighbors.Add(next);
+            }
+
+            adjacency[pixel] =
+                neighbors;
+        }
+
+        var endpoints =
+            adjacency
+                .Where(pair =>
+                    pair.Value.Count == 1)
+                .Select(pair =>
+                    pair.Key)
+                .Order()
+                .ToArray();
+
+        if (endpoints.Length != 2)
+            return false;
+
+        var start =
+            endpoints[0];
+        var goal =
+            endpoints[1];
+        var visited =
+            new HashSet<int>
+            {
+                start,
+            };
+        var ordered =
+            new List<int>(
+                set.Count)
+            {
+                start,
+            };
+        var states = 0;
+
+        int RemainingDegree(
+            int pixel) =>
+            adjacency[pixel].Count(next =>
+                !visited.Contains(next));
+
+        bool Search(
+            int current)
+        {
+            states++;
+
+            if (states >
+                MaximumSearchStates)
+            {
+                return false;
+            }
+
+            if (ordered.Count ==
+                set.Count)
+            {
+                return current ==
+                       goal;
+            }
+
+            if (current ==
+                goal)
+            {
+                return false;
+            }
+
+            var candidates =
+                adjacency[current]
+                    .Where(next =>
+                        !visited.Contains(next))
+                    .OrderBy(next =>
+                        next == goal
+                            ? int.MaxValue
+                            : RemainingDegree(next))
+                    .ThenBy(next =>
+                        next)
+                    .ToArray();
+
+            foreach (var next in candidates)
+            {
+                // The goal is the final endpoint. Entering it early would strand remaining pixels.
+                if (next == goal &&
+                    ordered.Count + 1 <
+                    set.Count)
+                {
+                    continue;
+                }
+
+                visited.Add(next);
+                ordered.Add(next);
+
+                var stranded = false;
+
+                // Cheap Hamiltonian pruning: every still-unvisited non-goal pixel must retain at
+                // least one route into the remaining graph.
+                foreach (var pixel in set)
+                {
+                    if (visited.Contains(pixel) ||
+                        pixel == goal)
+                    {
+                        continue;
+                    }
+
+                    if (adjacency[pixel].Any(candidate =>
+                            !visited.Contains(candidate) ||
+                            candidate == next))
+                    {
+                        continue;
+                    }
+
+                    stranded = true;
+                    break;
+                }
+
+                if (!stranded &&
+                    Search(next))
+                {
+                    return true;
+                }
+
+                ordered.RemoveAt(
+                    ordered.Count - 1);
+                visited.Remove(next);
+            }
+
+            return false;
+        }
+
+        if (!Search(start))
+            return false;
+
+        path =
+            ordered
+                .Select(pixel =>
+                    (
+                        X: pixel %
+                           sourceWidth,
+                        Y: pixel /
+                           sourceWidth))
+                .ToList();
+
+        return path.Count ==
+               component.Pixels.Count;
     }
 
     private static bool LooksLikeSmoothOvalRecovery(
