@@ -12,8 +12,12 @@ internal static class LeafPetalBoundaryCurveRasterizer
     private const double SourceOuterCorridor = 2.35;
     private const double SourceOutlineEraseCorridor = 1.20;
     private const double MaximumFillShift = 1.75;
-    private const double MaximumCurveSourceDeviation = 1.65;
-    private const double MinimumCurveSourceSupport = 0.985;
+    // Source support is measured after integer target rasterization. An anisotropically scaled
+    // 1x1 Curve/Pixel-Cord path can shift about two source cells at isolated high-curvature
+    // shoulders without changing the intended designer arc. The paired-width and indexed-fill
+    // gates below still reject real geometric drift.
+    private const double MaximumCurveSourceDeviation = 2.00;
+    private const double MinimumCurveSourceSupport = 0.960;
 
     public static int Apply(
         DesignDocument source,
@@ -466,9 +470,9 @@ internal static class LeafPetalBoundaryCurveRasterizer
                     expectedR);
             var tolerance =
                 Math.Max(
-                    2.25,
+                    2.75,
                     expectedWidth *
-                    0.24);
+                    0.28);
 
             if (Math.Abs(
                     actualWidth -
@@ -502,13 +506,13 @@ internal static class LeafPetalBoundaryCurveRasterizer
                 actualWidth;
         }
 
-        // A leaf may naturally taper quickly close to its apex, therefore one abrupt sample is
-        // tolerated. Repeated width shocks mean the two independently-fitted curves no longer
-        // describe the same source body.
+        // Raster phase and a real sharp apex can consume a few samples even when the paired
+        // designer curves are visually faithful. Require 87.5% width support and allow two local
+        // jumps; repeated shocks still reject mismatched/bulged sides.
         return supported >=
                    SampleCount -
-                   2 &&
-               abruptJumps <= 1;
+                   4 &&
+               abruptJumps <= 2;
     }
 
     private static (double X, double Y) SamplePath(
