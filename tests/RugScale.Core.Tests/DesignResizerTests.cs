@@ -1066,6 +1066,142 @@ public class DesignResizerTests
     }
 
     [Fact]
+    public void CurveFillRibbonArcRefiner_RebuildsStableWidthOvalRibbonFromGeometry()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(218, 210, 184),
+            new RugColor(134, 162, 125),
+        });
+        var source = new DesignDocument(72, 56, palette);
+        var controls = new (int X, int Y)[]
+        {
+            (7, 44),
+            (13, 20),
+            (29, 8),
+            (50, 15),
+            (64, 43),
+        };
+
+        var sourceCenterline =
+            CurveRasterizer.Draw(
+                    controls,
+                    CurveType.SplineThroughPoints,
+                    0.85)
+                .ToArray();
+
+        foreach (var point in Rasterizer.Dilate(
+                     sourceCenterline,
+                     5,
+                     5))
+        {
+            if (point.X >= 0 &&
+                point.X < source.Width &&
+                point.Y >= 0 &&
+                point.Y < source.Height)
+            {
+                source.SetPixel(
+                    point.X,
+                    point.Y,
+                    1);
+            }
+        }
+
+        var targetWidth = 115;
+        var targetHeight = 90;
+        var nearest =
+            DesignResizer.Scale(
+                source,
+                targetWidth,
+                targetHeight,
+                ScaleMode.NearestNeighbor,
+                40,
+                50,
+                40,
+                50);
+
+        var mappedControls =
+            controls
+                .Select(point =>
+                    (
+                        X: (int)Math.Round(
+                            (point.X + 0.5) *
+                            targetWidth /
+                            source.Width -
+                            0.5),
+                        Y: (int)Math.Round(
+                            (point.Y + 0.5) *
+                            targetHeight /
+                            source.Height -
+                            0.5)))
+                .ToArray();
+        var targetPenX =
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    5d *
+                    targetWidth /
+                    source.Width));
+        var targetPenY =
+            Math.Max(
+                1,
+                (int)Math.Round(
+                    5d *
+                    targetHeight /
+                    source.Height));
+        var expected =
+            Rasterizer.Dilate(
+                    CurveRasterizer.Draw(
+                        mappedControls,
+                        CurveType.SplineThroughPoints,
+                        0.85),
+                    targetPenX,
+                    targetPenY)
+                .Where(point =>
+                    point.X >= 0 &&
+                    point.X < targetWidth &&
+                    point.Y >= 0 &&
+                    point.Y < targetHeight)
+                .ToHashSet();
+
+        var before =
+            GetColorPixels(
+                nearest,
+                1);
+        var beforeScore =
+            PixelNearF1(
+                before,
+                expected,
+                radius: 1);
+
+        var changed =
+            CurveFillRibbonArcRefiner.Apply(
+                source,
+                nearest);
+        var after =
+            GetColorPixels(
+                nearest,
+                1);
+        var afterScore =
+            PixelNearF1(
+                after,
+                expected,
+                radius: 1);
+
+        Assert.True(
+            changed > 0,
+            "A stable-width, strongly curved filled ribbon should be geometrically refined.");
+        Assert.True(
+            afterScore >= beforeScore + 0.005,
+            $"Ribbon refiner did not improve the target oval geometry: before={beforeScore:P2}, after={afterScore:P2}.");
+        Assert.Equal(
+            1,
+            CountComponents(
+                nearest,
+                1));
+    }
+
+    [Fact]
     public void Scale_CurveFill_DoesNotEraseNestedFillWhenOutlineAndInteriorShareCurvature()
     {
         var palette = new Palette(new[]
