@@ -12,7 +12,10 @@ internal static class LeafPetalArcClassifier
     // Inner veins/slits remove mass from the centre and can reduce PCA elongation even when the
     // visible outer silhouette is an unmistakably long leaf. Keep the classifier permissive and
     // let medial-axis + paired-boundary safety decide whether specialist redraw is allowed.
-    private const double MinimumElongation = 1.55;
+    // A long curved leaf can have a surprisingly low PCA aspect once an internal slit/vein
+    // removes centre mass. This stage is only a candidate gate; medial-axis continuity and paired
+    // designer-boundary reconstruction remain the strict authority.
+    private const double MinimumElongation = 1.25;
     private const double MinimumMajorExtent = 9.0;
     private const double MinimumMinorExtent = 2.5;
     private const double MaximumBoundaryRatio = 0.62;
