@@ -1171,10 +1171,9 @@ public class DesignResizerTests
                 nearest,
                 1);
         var beforeScore =
-            PixelNearF1(
+            PixelF1(
                 before,
-                expected,
-                radius: 1);
+                expected);
 
         var ribbonDiagnostics =
             CurveFillRibbonArcRefiner.ApplyWithDiagnostics(
@@ -1187,10 +1186,9 @@ public class DesignResizerTests
                 nearest,
                 1);
         var afterScore =
-            PixelNearF1(
+            PixelF1(
                 after,
-                expected,
-                radius: 1);
+                expected);
 
         Assert.True(
             changed > 0,
@@ -1200,11 +1198,12 @@ public class DesignResizerTests
             $"endpoints={ribbonDiagnostics.MaxEndpoints}, path={ribbonDiagnostics.MaxPrincipalPathPixels}, " +
             $"coverage={ribbonDiagnostics.MaxPrincipalPathCoverage:0.000}, reason={ribbonDiagnostics.LastCenterlineReason}, " +
             $"ribbon={ribbonDiagnostics.RibbonGeometryAccepted}, fitSafe={ribbonDiagnostics.FitSafe}, " +
-            $"fitDev={ribbonDiagnostics.MaxFitDeviation:0.000}, flips={ribbonDiagnostics.MaxFitCurvatureFlips}, " +
+            $"toolFit={ribbonDiagnostics.CurveToolFits}, fitDev={ribbonDiagnostics.MaxFitDeviation:0.000}, " +
+            $"flips={ribbonDiagnostics.MaxFitCurvatureFlips}, " +
             $"refined={ribbonDiagnostics.Refined}.");
         Assert.True(
             afterScore >= beforeScore + 0.005,
-            $"Ribbon refiner did not improve the target oval geometry: before={beforeScore:P2}, after={afterScore:P2}.");
+            $"Ribbon refiner did not improve exact target oval geometry: before={beforeScore:P2}, after={afterScore:P2}.");
         Assert.Equal(
             1,
             CountComponents(
