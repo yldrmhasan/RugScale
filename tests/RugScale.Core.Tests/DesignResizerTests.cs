@@ -1359,8 +1359,10 @@ public class DesignResizerTests
             diagnostics.BoundaryPixelsChanged > 0,
             $"Broad sparse oval arch was not redrawn: refined={diagnostics.Refined}, " +
             $"changed={diagnostics.BoundaryPixelsChanged}, tool={diagnostics.CurveToolFits}, " +
-            $"cubic={diagnostics.CubicBezierFits}, dev={diagnostics.MaxFitDeviation:0.000}, " +
-            $"flips={diagnostics.MaxFitCurvatureFlips}.");
+            $"cubic={diagnostics.CubicBezierFits}/{diagnostics.CubicAttempts}, " +
+            $"cubicReason={diagnostics.LastCubicReason}, cubicP95={diagnostics.MaxCubicP95Deviation:0.000}, " +
+            $"cubicMax={diagnostics.MaxCubicDeviation:0.000}, handle={diagnostics.MaxCubicHandleRatio:0.000}, " +
+            $"dev={diagnostics.MaxFitDeviation:0.000}, flips={diagnostics.MaxFitCurvatureFlips}.");
         Assert.True(
             afterScore >=
                 beforeScore +
