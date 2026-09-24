@@ -76,7 +76,11 @@ public sealed class LeafPetalBoundaryCurveRasterizerTests
 
         Assert.True(
             diagnostics.BoundaryCurveRefined >= 1,
-            "A fully outlined tapered leaf should use paired designer-boundary reconstruction.");
+            $"A fully outlined tapered leaf should use paired designer-boundary reconstruction. " +
+            $"regions={diagnostics.Regions}, candidates={diagnostics.Candidates}, " +
+            $"axisReject={diagnostics.RejectedByAxis}, fitReject={diagnostics.RejectedByFit}, " +
+            $"boundaryBuilt={diagnostics.BoundaryCurveBuilt}, " +
+            $"rasterReject={diagnostics.BoundaryCurveRasterRejected}.");
 
         var scaleX = TargetWidth / (double)source.Width;
         var scaleY = TargetHeight / (double)source.Height;
