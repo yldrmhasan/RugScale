@@ -14,6 +14,7 @@ RGB colours that do not exist in the source design.
 - **Tool-faithful redraw** — RugScale Curve, Pixel Cord and ellipse raster behaviour.
 - **Motif learning** — portable motif memory, source catalogue, candidate repair and feedback data.
 - **Real-raster training fixtures** — B163A plus the four curve-heavy validation designs.
+- **Standalone Workbench** — Windows UI for indexed-BMP preview, source-motif detection, target selection and Good/Bad learning without RugCAD editor dependencies.
 - **Audit tools / CI** — deterministic tests and real-design validation.
 
 RugCAD itself is deliberately **not** a project dependency.
@@ -43,6 +44,11 @@ src/RugScale.Core
   Assets/
     rugscale-motif-memory.seed.gz.b64
 
+src/RugScale.Workbench
+  App.xaml
+  MainWindow.xaml
+  MainWindow.xaml.cs
+
 tests/RugScale.Core.Tests
 tools/RugScale.Cli
 tools/RugScale.RugScaleAudit
@@ -59,6 +65,22 @@ dotnet restore RugScale.sln
 dotnet build RugScale.sln -c Release --no-restore
 dotnet test tests/RugScale.Core.Tests/RugScale.Core.Tests.csproj -c Release --no-build
 ```
+
+## Standalone training workbench
+
+On Windows, RugScale can now be developed and trained without opening RugCAD:
+
+```powershell
+dotnet run --project .\src\RugScale.Workbench\RugScale.Workbench.csproj -c Release
+```
+
+The workbench opens 8-bit indexed BMPs, runs every RugScale scale mode, provides zoom/pan plus rectangular or square target selection, isolates detected source motifs, and implements the source-first feedback loop:
+
+`Detect motif → inspect source → choose target → Preview repair → Good / learn or Bad / improve`.
+
+**Bad / improve always redraws again from the immutable original source motif.** It does not use the previous failed result as input and it does not switch source candidates. **Different source** is the explicit action for rejecting the detected source motif.
+
+See [Workbench](docs/WORKBENCH.md).
 
 ## Run RugScale on any indexed BMP
 
@@ -159,7 +181,7 @@ The standalone snapshot was taken from:
 - source commit: `e2abb825be96c3bddc1f8a47d532dd0af963e154`
 
 The migration includes engine code, supporting indexed-raster primitives, tests, real fixtures,
-audit tools, motif-memory seed/store and documentation.
+audit tools, motif-memory seed/store, the standalone Windows training workbench and documentation.
 
 **RugCAD has not been cleaned yet.** RugScale code should be removed from RugCAD only after this
 standalone repository is green and the RugCAD host has been switched to reference this engine.
@@ -171,3 +193,5 @@ See:
 - [Migration gate](docs/MIGRATION_FROM_RUGCAD.md)
 - [Host integration boundary](docs/HOST_INTEGRATION.md)
 - [Migration inventory](docs/MIGRATION_INVENTORY.md)
+- [Standalone Workbench](docs/WORKBENCH.md)
+- [RugCAD development-log snapshot](docs/RUGCAD_DEVELOPMENT_LOG_SNAPSHOT.md)
