@@ -28,6 +28,14 @@ internal static class CurveFillRibbonArcRefiner
 
     public static int Apply(
         DesignDocument source,
+        DesignDocument destination) =>
+        ApplyWithDiagnostics(
+            source,
+            destination)
+        .BoundaryPixelsChanged;
+
+    internal static RibbonArcRefinementDiagnostics ApplyWithDiagnostics(
+        DesignDocument source,
         DesignDocument destination)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -36,7 +44,7 @@ internal static class CurveFillRibbonArcRefiner
         if (source.Width == destination.Width &&
             source.Height == destination.Height)
         {
-            return 0;
+            return default;
         }
 
         var protectedStrokeColors =
@@ -46,6 +54,10 @@ internal static class CurveFillRibbonArcRefiner
             LeafPetalRegionExtractor.Extract(
                 source);
 
+        var classified = 0;
+        var axisBuilt = 0;
+        var ribbonGeometryAccepted = 0;
+        var fitSafe = 0;
         var accepted =
             new List<(LeafPetalArcModel Model, ElegantArcFit Fit)>();
 
@@ -60,8 +72,14 @@ internal static class CurveFillRibbonArcRefiner
             if (!LeafPetalArcClassifier.TryClassify(
                     region,
                     source.Width,
-                    out var candidate) ||
-                candidate.Elongation <
+                    out var candidate))
+            {
+                continue;
+            }
+
+            classified++;
+
+            if (candidate.Elongation <
                     MinimumRibbonElongation ||
                 candidate.BoundaryRatio >
                     MaximumBoundaryRatio)
@@ -72,12 +90,20 @@ internal static class CurveFillRibbonArcRefiner
             if (!LeafPetalMedialAxisBuilder.TryBuild(
                     candidate,
                     source.Width,
-                    out var model) ||
-                !LooksLikeDesignerRibbon(
+                    out var model))
+            {
+                continue;
+            }
+
+            axisBuilt++;
+
+            if (!LooksLikeDesignerRibbon(
                     model))
             {
                 continue;
             }
+
+            ribbonGeometryAccepted++;
 
             // Ribbon geometry is deliberately NOT apex-tapered. The source width profile already
             // contains the designer's constant/slowly-varying band thickness.
@@ -91,6 +117,8 @@ internal static class CurveFillRibbonArcRefiner
             {
                 continue;
             }
+
+            fitSafe++;
 
             accepted.Add(
                 (model, fit));
@@ -113,7 +141,14 @@ internal static class CurveFillRibbonArcRefiner
                     protectedStrokeColors);
         }
 
-        return changed;
+        return new RibbonArcRefinementDiagnostics(
+            Regions: regions.Count,
+            Classified: classified,
+            AxisBuilt: axisBuilt,
+            RibbonGeometryAccepted: ribbonGeometryAccepted,
+            FitSafe: fitSafe,
+            Refined: accepted.Count,
+            BoundaryPixelsChanged: changed);
     }
 
     private static bool LooksLikeDesignerRibbon(
@@ -241,3 +276,13 @@ internal static class CurveFillRibbonArcRefiner
                requiredBend;
     }
 }
+
+
+internal readonly record struct RibbonArcRefinementDiagnostics(
+    int Regions,
+    int Classified,
+    int AxisBuilt,
+    int RibbonGeometryAccepted,
+    int FitSafe,
+    int Refined,
+    int BoundaryPixelsChanged);
