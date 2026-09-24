@@ -32,12 +32,14 @@ internal static class LeafPetalBoundaryCurveRasterizer
         int sourceWarpDensity,
         int sourceWeftDensity,
         int targetWarpDensity,
-        int targetWeftDensity)
+        int targetWeftDensity,
+        ISet<int> committedOutlinePixels)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(protectedStrokeColors);
+        ArgumentNullException.ThrowIfNull(committedOutlinePixels);
 
         var scaleX =
             destination.Width /
@@ -275,10 +277,15 @@ internal static class LeafPetalBoundaryCurveRasterizer
                     // otherwise correct Pixel-Cord curve into visible fragments.
                     if (current !=
                             model.OutlineColor &&
-                        (!protectedStrokeColors.Contains(
-                             current) ||
-                         current ==
-                         model.OutlineColor))
+                        protectedStrokeColors.Contains(
+                            current))
+                    {
+                        // A different proven separator/tool colour still owns this pixel.
+                        continue;
+                    }
+
+                    if (current !=
+                        model.OutlineColor)
                     {
                         destination.SetPixel(
                             x,
@@ -287,6 +294,10 @@ internal static class LeafPetalBoundaryCurveRasterizer
                         changed++;
                     }
 
+                    // Once an accepted paired fit owns an outline pixel, a later overlapping
+                    // leaf/petal candidate may not erase it while cleaning its own old outline.
+                    committedOutlinePixels.Add(
+                        targetKey);
                     continue;
                 }
 
@@ -320,6 +331,14 @@ internal static class LeafPetalBoundaryCurveRasterizer
                     source.GetPixel(
                         sx,
                         sy);
+
+                if (current ==
+                        model.OutlineColor &&
+                    committedOutlinePixels.Contains(
+                        targetKey))
+                {
+                    continue;
+                }
 
                 if (inside)
                 {
