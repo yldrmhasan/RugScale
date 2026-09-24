@@ -63,6 +63,8 @@ internal static class CurveFillRibbonArcRefiner
         var lastCenterlineReason = "not-attempted";
         var ribbonGeometryAccepted = 0;
         var fitSafe = 0;
+        var maxFitDeviation = 0d;
+        var maxFitCurvatureFlips = 0;
         var accepted =
             new List<(LeafPetalArcModel Model, ElegantArcFit Fit)>();
 
@@ -138,6 +140,15 @@ internal static class CurveFillRibbonArcRefiner
                     model,
                     taperApex: false);
 
+            maxFitDeviation =
+                Math.Max(
+                    maxFitDeviation,
+                    fit.MaximumCenterlineDeviation);
+            maxFitCurvatureFlips =
+                Math.Max(
+                    maxFitCurvatureFlips,
+                    fit.CurvatureSignFlips);
+
             if (!fit.IsSafe ||
                 fit.CurvatureSignFlips > 1)
             {
@@ -178,6 +189,8 @@ internal static class CurveFillRibbonArcRefiner
             LastCenterlineReason: lastCenterlineReason,
             RibbonGeometryAccepted: ribbonGeometryAccepted,
             FitSafe: fitSafe,
+            MaxFitDeviation: maxFitDeviation,
+            MaxFitCurvatureFlips: maxFitCurvatureFlips,
             Refined: accepted.Count,
             BoundaryPixelsChanged: changed);
     }
@@ -320,5 +333,7 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     string LastCenterlineReason,
     int RibbonGeometryAccepted,
     int FitSafe,
+    double MaxFitDeviation,
+    int MaxFitCurvatureFlips,
     int Refined,
     int BoundaryPixelsChanged);
