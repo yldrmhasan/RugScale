@@ -605,13 +605,15 @@ internal static class LeafPetalBoundaryCurveRasterizer
                 actualWidth;
         }
 
-        // Raster phase and a real sharp apex can consume a few samples even when the paired
-        // designer curves are visually faithful. Require 87.5% width support and allow two local
-        // jumps; repeated shocks still reject mismatched/bulged sides.
+        // Raster phase, a broad base and a real sharp apex can consume a few samples even when
+        // BOTH individual curves have already passed the strict source-path support gate above.
+        // 27/32 (84.375%) keeps the paired-width check conservative while avoiding a false reject
+        // caused by one terminal raster-phase sample. Repeated shocks still reject mismatched or
+        // bulged sides.
         var accepted =
             supported >=
                 SampleCount -
-                4 &&
+                5 &&
             abruptJumps <= 2;
 
         if (!accepted)
