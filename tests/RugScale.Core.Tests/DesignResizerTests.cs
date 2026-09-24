@@ -1200,6 +1200,7 @@ public class DesignResizerTests
             $"endpoints={ribbonDiagnostics.MaxEndpoints}, path={ribbonDiagnostics.MaxPrincipalPathPixels}, " +
             $"coverage={ribbonDiagnostics.MaxPrincipalPathCoverage:0.000}, reason={ribbonDiagnostics.LastCenterlineReason}, " +
             $"ribbon={ribbonDiagnostics.RibbonGeometryAccepted}, fitSafe={ribbonDiagnostics.FitSafe}, " +
+            $"fitDev={ribbonDiagnostics.MaxFitDeviation:0.000}, flips={ribbonDiagnostics.MaxFitCurvatureFlips}, " +
             $"refined={ribbonDiagnostics.Refined}.");
         Assert.True(
             afterScore >= beforeScore + 0.005,
