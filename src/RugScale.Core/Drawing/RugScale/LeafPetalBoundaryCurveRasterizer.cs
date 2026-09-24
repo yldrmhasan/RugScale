@@ -92,17 +92,6 @@ internal static class LeafPetalBoundaryCurveRasterizer
             return 0;
         }
 
-        static string Box(IReadOnlyCollection<(int X, int Y)> points) =>
-            points.Count == 0
-                ? "empty"
-                : $"({points.Min(p => p.X)},{points.Min(p => p.Y)})-({points.Max(p => p.X)},{points.Max(p => p.Y)})";
-
-        Console.Error.WriteLine(
-            $"[leaf-boundary-box] srcL={model.LeftSourcePath.Count}:{Box(model.LeftSourcePath)}, " +
-            $"fitL={model.LeftFit.Controls.Count}:{Box(model.LeftFit.Controls)}, dstL={left.Count}:{Box(left)}, " +
-            $"srcR={model.RightSourcePath.Count}:{Box(model.RightSourcePath)}, " +
-            $"fitR={model.RightFit.Controls.Count}:{Box(model.RightFit.Controls)}, dstR={right.Count}:{Box(right)}");
-
         var leftSourceSupported =
             HasSourcePathSupport(
                 left,
@@ -131,10 +120,7 @@ internal static class LeafPetalBoundaryCurveRasterizer
         if (!leftSourceSupported ||
             !rightSourceSupported ||
             !widthProfileSupported)
-        {
-            Console.Error.WriteLine(
-                $"[leaf-boundary-reject] left={leftSourceSupported}, right={rightSourceSupported}, width={widthProfileSupported}");
-            // Reject the WHOLE paired fit. Applying only the locally-supported pieces would mix
+        {            // Reject the WHOLE paired fit. Applying only the locally-supported pieces would mix
             // old and new outlines and create the exact small shoulders/kinks the specialist mode
             // is intended to remove.
             return 0;
@@ -475,40 +461,6 @@ internal static class LeafPetalBoundaryCurveRasterizer
             }
         }
 
-        var missingOutline =
-            newOutline
-                .Where(key =>
-                {
-                    var x = key % destination.Width;
-                    var y = key / destination.Width;
-                    return destination.GetPixel(x, y) != model.OutlineColor;
-                })
-                .ToArray();
-
-        if (missingOutline.Length > 0)
-        {
-            var colorGroups =
-                missingOutline
-                    .GroupBy(key =>
-                    {
-                        var x = key % destination.Width;
-                        var y = key / destination.Width;
-                        return destination.GetPixel(x, y);
-                    })
-                    .Select(group =>
-                        $"{group.Key}:{group.Count()}")
-                    .ToArray();
-
-            var minMissingX = missingOutline.Min(key => key % destination.Width);
-            var maxMissingX = missingOutline.Max(key => key % destination.Width);
-            var minMissingY = missingOutline.Min(key => key / destination.Width);
-            var maxMissingY = missingOutline.Max(key => key / destination.Width);
-
-            Console.Error.WriteLine(
-                $"[leaf-boundary-missing] outline={model.OutlineColor}, missing={missingOutline.Length}/{newOutline.Count}, " +
-                $"colors={string.Join(",", colorGroups)}, bbox=({minMissingX},{minMissingY})-({maxMissingX},{maxMissingY})");
-        }
-
         return changed;
     }
 
@@ -616,11 +568,6 @@ internal static class LeafPetalBoundaryCurveRasterizer
                 5 &&
             abruptJumps <= 2;
 
-        if (!accepted)
-        {
-            Console.Error.WriteLine(
-                $"[leaf-width-reject] supported={supported}/{SampleCount}, abruptJumps={abruptJumps}");
-        }
 
         return accepted;
     }
