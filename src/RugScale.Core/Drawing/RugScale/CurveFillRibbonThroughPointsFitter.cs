@@ -662,6 +662,9 @@ internal static class CurveFillRibbonThroughPointsFitter
         var result =
             new List<ElegantArcPoint>(
                 ContinuousSamples);
+        var halfWidth =
+            RobustRibbonHalfWidth(
+                source);
 
         for (var index = 0;
              index < ContinuousSamples;
@@ -683,45 +686,58 @@ internal static class CurveFillRibbonThroughPointsFitter
                 new ElegantArcPoint(
                     point.X,
                     point.Y,
-                    InterpolateHalfWidth(
-                        source,
-                        t)));
+                    halfWidth));
         }
 
         return result;
     }
 
-    private static double InterpolateHalfWidth(
-        IReadOnlyList<LeafPetalAxisSample> source,
-        double t)
+    private static double RobustRibbonHalfWidth(
+        IReadOnlyList<LeafPetalAxisSample> source)
     {
-        var position =
-            Math.Clamp(
-                t,
-                0d,
-                1d) *
-            (source.Count -
-             1);
-        var left =
-            Math.Clamp(
-                (int)Math.Floor(
-                    position),
-                0,
-                source.Count - 1);
-        var right =
-            Math.Min(
-                source.Count - 1,
-                left + 1);
-        var local =
-            position -
-            left;
+        var widths =
+            source
+                .Select(sample =>
+                    Math.Max(
+                        0.5,
+                        sample.HalfWidth))
+                .Order()
+                .ToArray();
 
-        return Math.Max(
-            0.5,
-            source[left].HalfWidth +
-            (source[right].HalfWidth -
-             source[left].HalfWidth) *
-            local);
+        if (widths.Length == 0)
+            return 0.5;
+
+        // Digital skeletons over a square-dilated curve report wider shoulders on some diagonal
+        // phases even when the designer used one constant-width ribbon. A trimmed median recovers
+        // the intended parallel-band thickness while ignoring cap and staircase outliers.
+        var first =
+            (int)Math.Floor(
+                widths.Length *
+                0.10);
+        var lastExclusive =
+            Math.Max(
+                first + 1,
+                (int)Math.Ceiling(
+                    widths.Length *
+                    0.90));
+        lastExclusive =
+            Math.Min(
+                widths.Length,
+                lastExclusive);
+        var trimmed =
+            widths[
+                first..
+                lastExclusive];
+
+        var middle =
+            trimmed.Length /
+            2;
+
+        return trimmed.Length % 2 == 0
+            ? (trimmed[middle - 1] +
+               trimmed[middle]) *
+              0.5
+            : trimmed[middle];
     }
 
     private readonly record struct Candidate(
