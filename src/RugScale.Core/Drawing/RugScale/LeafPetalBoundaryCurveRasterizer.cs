@@ -1222,12 +1222,17 @@ internal static class LeafPetalBoundaryCurveRasterizer
         int width,
         int height)
     {
+        // Caps are part of the same 1x1 / Pixel-Cord drawing language as the side
+        // curves. A plain Bresenham diagonal can be only 8-connected and split the final outline
+        // under RugCAD's 4-connected pixel semantics; bridge its diagonal steps before applying
+        // the quality-owned pen size.
         foreach (var point in Rasterizer.Dilate(
-                     Rasterizer.Line(
-                         start.X,
-                         start.Y,
-                         end.X,
-                         end.Y),
+                     Rasterizer.ConnectDiagonalSteps(
+                         Rasterizer.Line(
+                             start.X,
+                             start.Y,
+                             end.X,
+                             end.Y)),
                      penSizeX,
                      penSizeY))
         {
