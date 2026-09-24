@@ -268,9 +268,10 @@ internal static class CurveFillScaleEngine
         // protects separator palette roles and only moves the local two-colour boundary band, so
         // do not run the global ownership guard again afterwards (that would undo the aesthetic
         // correction by snapping it back onto the source staircase).
-        _ = CurveFillRibbonArcRefiner.Apply(
-            source,
-            destination);
+        var ribbonArc =
+            CurveFillRibbonArcRefiner.ApplyWithDiagnostics(
+                source,
+                destination);
 
         PreserveExactSourceSymmetry(
             source,
@@ -284,6 +285,12 @@ internal static class CurveFillScaleEngine
             BarrierCrossingCorrections =
                 ownership.BarrierCrossingCorrections +
                 finalOwnership.BarrierCrossingCorrections,
+            RibbonArcCandidates =
+                ribbonArc.RibbonGeometryAccepted,
+            RibbonArcRefined =
+                ribbonArc.Refined,
+            RibbonArcPixelsChanged =
+                ribbonArc.BoundaryPixelsChanged,
         };
     }
 
