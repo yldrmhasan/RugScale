@@ -1355,6 +1355,20 @@ public class DesignResizerTests
             $"classified={diagnostics.Classified}, axis={diagnostics.AxisBuilt}, " +
             $"coverage={diagnostics.MaxPrincipalPathCoverage:0.000}, reason={diagnostics.LastCenterlineReason}.");
         Assert.True(
+            diagnostics.GeometricThroughFits >= 1,
+            $"The synthetic broad arch was drawn with Through Points and must be recovered by " +
+            $"the geometric Through Points inverse model, not a generic fallback. " +
+            $"through={diagnostics.GeometricThroughFits}/{diagnostics.GeometricThroughAttempts}, " +
+            $"reason={diagnostics.LastGeometricThroughReason}, " +
+            $"p95={diagnostics.MaxGeometricThroughP95Deviation:0.000}, " +
+            $"max={diagnostics.MaxGeometricThroughDeviation:0.000}, " +
+            $"roundness={diagnostics.MeanGeometricThroughRoundness:0.000}.");
+        Assert.InRange(
+            diagnostics.MeanGeometricThroughRoundness,
+            0.60,
+            1.00);
+
+        Assert.True(
             diagnostics.Refined >= 1 &&
             diagnostics.BoundaryPixelsChanged > 0,
             $"Broad sparse oval arch was not redrawn: refined={diagnostics.Refined}, " +
