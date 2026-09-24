@@ -3,7 +3,7 @@ using RugScale.Core.Models;
 namespace RugScale.Core.Drawing;
 
 /// <summary>
-/// RugCAD's indexed-pattern resize engine. RugScale treats palette indexes as categorical design
+/// RugScale's indexed-pattern resize engine. RugScale treats palette indexes as categorical design
 /// information rather than RGB samples. Progressive shrink combines a motif atlas (connected
 /// source motif primitives + colour-independent repeated shape families) with contour/branch
 /// topology, rapport/repeat phase and designer-symmetry constraints.
