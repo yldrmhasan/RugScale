@@ -201,16 +201,12 @@ internal static class ToolFaithfulCurveStyleLearner
         bool pixelCord,
         ref ToolFaithfulCurveStyleFit? best)
     {
-        // Pixel Cord inserts orthogonal bridge pixels around diagonal curve steps. They belong to
-        // the PEN rasterization, not to the designer's centreline. Fit controls against the
-        // de-bridged chain while still scoring the final candidate against the complete source
-        // raster. This is especially important for oval arcs: otherwise diagonal quadrants receive
-        // artificial extra weight and the recovered oval becomes asymmetric/flat.
+        // Keep the complete source chain for Through-Points fitting. Pixel Cord bridge pixels
+        // are part of the designer-visible indexed raster; removing them produced smoother-looking
+        // hypotheses but measurably reduced target exact-F1 on oval curves. The multi-seed search
+        // below addresses local optima without changing the source grid evidence.
         var modelChain =
-            pixelCord
-                ? RemovePixelCordBridges(
-                    sourceChain)
-                : sourceChain.ToArray();
+            sourceChain.ToArray();
 
         if (modelChain.Count < MinimumChainPixels)
             return;
