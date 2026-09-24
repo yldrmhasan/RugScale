@@ -291,6 +291,12 @@ internal static class CurveFillScaleEngine
                 ribbonArc.Refined,
             RibbonArcPixelsChanged =
                 ribbonArc.BoundaryPixelsChanged,
+            RibbonArcCurveToolFits =
+                ribbonArc.CurveToolFits,
+            RibbonArcCubicBezierFits =
+                ribbonArc.CubicBezierFits,
+            RibbonArcOutlinedRefined =
+                ribbonArc.OutlinedRefined,
         };
     }
 
