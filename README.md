@@ -183,8 +183,14 @@ The standalone snapshot was taken from:
 The migration includes engine code, supporting indexed-raster primitives, tests, real fixtures,
 audit tools, motif-memory seed/store, the standalone Windows training workbench and documentation.
 
-**RugCAD has not been cleaned yet.** RugScale code should be removed from RugCAD only after this
-standalone repository is green and the RugCAD host has been switched to reference this engine.
+RugCAD cleanup is complete on its active development branch. RugScale-owned engine/state/test/
+fixture/audit code was removed in RugCAD cleanup commit
+`a1e3ab88691852969ece5dbbc77b6d829f05e33d`. RugCAD `main` never contained the RugScale
+development branch. RugScale development and training now happen here, primarily through
+`RugScale.Workbench`, the CLI and the real-raster audits.
+
+RugCAD does not currently reference RugScale. If integration is reintroduced later, use a versioned
+package/project boundary instead of copying RugScale source back into RugCAD.
 
 See:
 
