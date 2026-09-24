@@ -270,16 +270,33 @@ internal static class ToolFaithfulPixelCordOverlay
 
             if (component.TrustedStrokeRole &&
                 pixelCord &&
-                TryBuildMonotonicOvalCenterline(
+                TryTraceDominantPixelCordPath(
                     component,
                     source.Width,
-                    out var ovalCenterline) &&
-                !HasSourceCusp(
-                    ovalCenterline))
+                    out var dominantPath) &&
+                LooksLikeSmoothOvalRecovery(
+                    dominantPath))
             {
-                // Fit the recovered geometric centreline without Pixel-Cord bridge cells. Target
-                // rendering still uses the real source Pixel-Cord flag below, so the final carpet
-                // raster keeps edge-connected pixels while the inverse model sees the smooth oval.
+                // Keep the real ordered Pixel-Cord raster for fitting. False local graph contacts
+                // are removed by choosing the dominant endpoint path, while genuine high-roundness
+                // shoulder reversals are allowed here instead of being misclassified as cusps.
+                chains =
+                new[]
+                {
+                    dominantPath,
+                };
+                dominantPathRecoveries++;
+            }
+            else if (component.TrustedStrokeRole &&
+                     pixelCord &&
+                     TryBuildMonotonicOvalCenterline(
+                         component,
+                         source.Width,
+                         out var ovalCenterline) &&
+                     !HasSourceCusp(
+                         ovalCenterline))
+            {
+                // Conservative fallback for monotonic thin arcs where graph recovery is ambiguous.
                 chains =
                 new[]
                 {
@@ -288,22 +305,6 @@ internal static class ToolFaithfulPixelCordOverlay
                 fitPixelCord =
                     false;
                 ovalCenterlineRecoveries++;
-            }
-            else if (component.TrustedStrokeRole &&
-                     pixelCord &&
-                     TryTraceDominantPixelCordPath(
-                         component,
-                         source.Width,
-                         out var dominantPath) &&
-                     !HasSourceCusp(
-                         dominantPath))
-            {
-                chains =
-                new[]
-                {
-                    dominantPath,
-                };
-                dominantPathRecoveries++;
             }
 
             if (component.TrustedStrokeRole)
@@ -1944,6 +1945,66 @@ internal static class ToolFaithfulPixelCordOverlay
 
             previous = current;
         }
+    }
+
+    private static bool LooksLikeSmoothOvalRecovery(
+        IReadOnlyList<(int X, int Y)> path)
+    {
+        if (path.Count < 20)
+            return false;
+
+        var simplified =
+            Simplify(
+                path,
+                tolerance: 0.80);
+
+        // A literal L/V corner collapses to roughly three RDP vertices. A broad oval/arch keeps
+        // several gradual direction changes, even when high roundness creates a short shoulder
+        // reversal in the raster. Require that richer curve evidence before bypassing cusp logic.
+        if (simplified.Count < 5)
+            return false;
+
+        var minX =
+            path.Min(point =>
+                point.X);
+        var maxX =
+            path.Max(point =>
+                point.X);
+        var minY =
+            path.Min(point =>
+                point.Y);
+        var maxY =
+            path.Max(point =>
+                point.Y);
+        var width =
+            maxX -
+            minX;
+        var height =
+            maxY -
+            minY;
+        var first =
+            path[0];
+        var last =
+            path[^1];
+        var useX =
+            width >=
+            height;
+        var extent =
+            useX
+                ? width
+                : height;
+        var endpointSpan =
+            useX
+                ? Math.Abs(
+                    last.X -
+                    first.X)
+                : Math.Abs(
+                    last.Y -
+                    first.Y);
+
+        return extent >= 8 &&
+               endpointSpan >=
+               extent * 0.75;
     }
 
     private static bool TryBuildMonotonicOvalCenterline(
