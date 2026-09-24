@@ -575,15 +575,19 @@ public class DesignResizerTests
                 1);
         }
 
-        var result = DesignResizer.Scale(
-            source,
-            109,
-            77,
-            ScaleMode.CurveFill,
-            40,
-            50,
-            40,
-            50);
+        var result =
+            new DesignDocument(
+                109,
+                77,
+                palette);
+        var diagnostics =
+            CurveFillScaleEngine.ResizeWithDiagnostics(
+                source,
+                result,
+                40,
+                50,
+                40,
+                50);
 
         var mappedControls =
             controls
@@ -619,11 +623,16 @@ public class DesignResizerTests
                 expected,
                 radius: 1) >= 0.98,
             "Wide oval redraw lost the source Curve-tool shoulders.");
-        Assert.True(
+        var exactScore =
             PixelF1(
                 actual,
-                expected) >= 0.80,
-            "Wide oval redraw drifted too far from the target Curve-tool raster.");
+                expected);
+
+        Assert.True(
+            exactScore >= 0.80,
+            $"Wide oval redraw drifted too far from the target Curve-tool raster: exact={exactScore:P2}, " +
+            $"learned={diagnostics.LearnedCurves}, fallback={diagnostics.GraphFallbacks}, " +
+            $"safetyFallback={diagnostics.CurveSafetyFallbacks}, clipped={diagnostics.CorridorClippedPixels}.");
         Assert.Equal(
             1,
             CountFourConnectedComponents(
