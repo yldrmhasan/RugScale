@@ -92,6 +92,17 @@ internal static class LeafPetalBoundaryCurveRasterizer
             return 0;
         }
 
+        static string Box(IReadOnlyCollection<(int X, int Y)> points) =>
+            points.Count == 0
+                ? "empty"
+                : $"({points.Min(p => p.X)},{points.Min(p => p.Y)})-({points.Max(p => p.X)},{points.Max(p => p.Y)})";
+
+        Console.Error.WriteLine(
+            $"[leaf-boundary-box] srcL={model.LeftSourcePath.Count}:{Box(model.LeftSourcePath)}, " +
+            $"fitL={model.LeftFit.Controls.Count}:{Box(model.LeftFit.Controls)}, dstL={left.Count}:{Box(left)}, " +
+            $"srcR={model.RightSourcePath.Count}:{Box(model.RightSourcePath)}, " +
+            $"fitR={model.RightFit.Controls.Count}:{Box(model.RightFit.Controls)}, dstR={right.Count}:{Box(right)}");
+
         if (!HasSourcePathSupport(
                 left,
                 model.LeftSourcePath,
