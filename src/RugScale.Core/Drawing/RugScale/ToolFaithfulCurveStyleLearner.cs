@@ -1,11 +1,11 @@
 namespace RugScale.Core.Drawing;
 
 /// <summary>
-/// Fits an ordered 1x1 source raster chain back to the RugCAD Curve-tool family that most
+/// Fits an ordered 1x1 source raster chain back to the RugScale Curve-tool family that most
 /// plausibly produced it.
 ///
 /// This is deliberately a deterministic source-trained model. The source raster is ground truth,
-/// and RugCAD's own CurveRasterizer is the hypothesis family. The learner compares:
+/// and RugScale's own CurveRasterizer is the hypothesis family. The learner compares:
 /// - Spline Through Points with recovered source-through vertices + roundness search,
 /// - compact effective cubic Bezier fits,
 /// - clamped B-spline candidates,
@@ -78,7 +78,7 @@ internal static class ToolFaithfulCurveStyleLearner
         var last =
             sourceChain[^1];
 
-        // RugCAD's current Curve tool families in CurveRasterizer are open-path models. A closed
+        // RugScale's current Curve tool families in CurveRasterizer are open-path models. A closed
         // 1x1 outline loop has no uniquely recoverable start/tangent pair from raster alone.
         // Preserve it edge-for-edge instead of forcing an open spline/Bezier interpretation that
         // could move an enclosed fill boundary.
@@ -162,7 +162,7 @@ internal static class ToolFaithfulCurveStyleLearner
             ref best);
 
         // Bezier handles usually do NOT lie on the rasterized path. Recover an effective cubic by
-        // least squares, then optimize its two hidden handles directly against RugCAD's rasterizer.
+        // least squares, then optimize its two hidden handles directly against RugScale's rasterizer.
         EvaluateOptimizedBezierFit(
             sourceChain,
             sourceSet,
