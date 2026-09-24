@@ -136,10 +136,22 @@ internal static class LeafPetalMedialAxisBuilder
             var dy = samples[i].Y - samples[i - 1].Y;
             var jump =
                 Math.Sqrt(dx * dx + dy * dy);
-            if (jump > 5.50)
+            var nearTerminal =
+                i <= 2 ||
+                i >= samples.Count - 2;
+            var maximumJump =
+                nearTerminal
+                    ? 7.0
+                    : 5.50;
+
+            // A broad blunt base or sharp apex can move the centroid of the first/last projected
+            // bins by more than an interior bin even though the filled region is completely
+            // continuous. Keep the strict interior discontinuity gate, but allow this bounded
+            // terminal fan-out so a single full leaf is not forced through the lobe splitter.
+            if (jump > maximumJump)
             {
                 Console.Error.WriteLine(
-                    $"[leaf-axis-reject] reason=jump bbox=({region.MinX},{region.MinY})-({region.MaxX},{region.MaxY}) area={region.Area} sub={region.IsSubLobe} jump={jump:F2} at={i}/{samples.Count}");
+                    $"[leaf-axis-reject] reason=jump bbox=({region.MinX},{region.MinY})-({region.MaxX},{region.MaxY}) area={region.Area} sub={region.IsSubLobe} jump={jump:F2} max={maximumJump:F2} at={i}/{samples.Count}");
                 return false;
             }
         }
