@@ -73,6 +73,10 @@ internal static class LeafPetalArcScaleEngine
         var centerlineChanged = 0;
         var boundaryCurveBuilt = 0;
         var boundaryCurveRasterRejected = 0;
+        // A whole paired boundary fit that passed the source/path safety gates becomes authoritative
+        // target geometry. Later overlapping leaf/petal candidates may add to it, but must not erase
+        // it as if it were stale Curve & Fill residue.
+        var committedBoundaryOutlinePixels = new HashSet<int>();
 
         foreach (var candidate in candidates)
         {
@@ -123,7 +127,8 @@ internal static class LeafPetalArcScaleEngine
                         sourceWarpDensity,
                         sourceWeftDensity,
                         targetWarpDensity,
-                        targetWeftDensity);
+                        targetWeftDensity,
+                        committedBoundaryOutlinePixels);
 
                 usedBoundaryCurve =
                     regionChanges > 0;
