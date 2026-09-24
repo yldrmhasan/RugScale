@@ -19,10 +19,20 @@ internal static class CurveFillRibbonBezierFitter
 
     public static bool TryFit(
         LeafPetalArcModel model,
-        out ElegantArcFit fit)
+        out ElegantArcFit fit) =>
+        TryFit(
+            model,
+            out fit,
+            out _);
+
+    public static bool TryFit(
+        LeafPetalArcModel model,
+        out ElegantArcFit fit,
+        out RibbonCubicFitDiagnostics diagnostics)
     {
         ArgumentNullException.ThrowIfNull(model);
 
+        diagnostics = default;
         fit =
             new ElegantArcFit(
                 Array.Empty<ElegantArcPoint>(),
@@ -35,7 +45,16 @@ internal static class CurveFillRibbonBezierFitter
             model.Samples;
 
         if (source.Count < 8)
+        {
+            diagnostics =
+                new RibbonCubicFitDiagnostics(
+                    "too-few-samples",
+                    0d,
+                    0d,
+                    0d,
+                    0);
             return false;
+        }
 
         var parameters =
             BuildChordLengthParameters(
@@ -59,7 +78,16 @@ internal static class CurveFillRibbonBezierFitter
                 chordY);
 
         if (chordLength < 6d)
+        {
+            diagnostics =
+                new RibbonCubicFitDiagnostics(
+                    "chord-too-short",
+                    0d,
+                    0d,
+                    0d,
+                    0);
             return false;
+        }
 
         var a11 = 0d;
         var a12 = 0d;
@@ -143,6 +171,13 @@ internal static class CurveFillRibbonBezierFitter
                 determinant) <
             1e-9)
         {
+            diagnostics =
+                new RibbonCubicFitDiagnostics(
+                    "singular-fit",
+                    0d,
+                    0d,
+                    0d,
+                    0);
             return false;
         }
 
@@ -184,13 +219,22 @@ internal static class CurveFillRibbonBezierFitter
                 p2,
                 p3);
 
-        if (firstHandle >
-                chordLength *
-                MaximumHandleToChordRatio ||
-            secondHandle >
-                chordLength *
-                MaximumHandleToChordRatio)
+        var maximumHandleRatio =
+            Math.Max(
+                firstHandle,
+                secondHandle) /
+            chordLength;
+
+        if (maximumHandleRatio >
+            MaximumHandleToChordRatio)
         {
+            diagnostics =
+                new RibbonCubicFitDiagnostics(
+                    "handle-ratio",
+                    0d,
+                    0d,
+                    maximumHandleRatio,
+                    0);
             return false;
         }
 
@@ -238,6 +282,21 @@ internal static class CurveFillRibbonBezierFitter
                 MaximumTypicalCenterlineDeviation &&
             deviation.Maximum <=
                 MaximumOutlierCenterlineDeviation;
+
+        diagnostics =
+            new RibbonCubicFitDiagnostics(
+                safe
+                    ? "ok"
+                    : curvatureFlips != 0
+                        ? "curvature-flip"
+                        : deviation.Percentile95 >
+                          MaximumTypicalCenterlineDeviation
+                            ? "typical-deviation"
+                            : "maximum-deviation",
+                deviation.Maximum,
+                deviation.Percentile95,
+                maximumHandleRatio,
+                curvatureFlips);
 
         fit =
             new ElegantArcFit(
@@ -556,3 +615,11 @@ internal static class CurveFillRibbonBezierFitter
                 dy);
     }
 }
+
+
+internal readonly record struct RibbonCubicFitDiagnostics(
+    string Reason,
+    double MaximumDeviation,
+    double Percentile95Deviation,
+    double MaximumHandleToChordRatio,
+    int CurvatureSignFlips);
