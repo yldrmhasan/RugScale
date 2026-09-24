@@ -1,0 +1,90 @@
+name: RugScale four-design curve suite
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "src/RugScale.Core/**"
+      - "tools/RugScale.CurveScaleAudit/**"
+      - "tests/RugScale.Core.Tests/**"
+      - "tests/fixtures/rugscale-curves/**"
+      - ".github/workflows/rugscale-curve-suite.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  curve-suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: |
+          dotnet restore ./tests/RugScale.Core.Tests/RugScale.Core.Tests.csproj
+          dotnet restore ./tools/RugScale.CurveScaleAudit/RugScale.CurveScaleAudit.csproj
+
+      - name: Decode exact curve fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rugscale-curves"
+
+          decode_fixture () {
+            local name="$1"
+            local payload="$2"
+            local expected="$3"
+            echo "::group::decode $name"
+            eval "$payload" > "$RUNNER_TEMP/rugscale-curves/$name.bmp.xz"
+            xz -t "$RUNNER_TEMP/rugscale-curves/$name.bmp.xz"
+            xz -dc "$RUNNER_TEMP/rugscale-curves/$name.bmp.xz" > "$RUNNER_TEMP/rugscale-curves/$name.bmp"
+            echo "$expected  $RUNNER_TEMP/rugscale-curves/$name.bmp" | sha256sum -c -
+            echo "::endgroup::"
+          }
+
+          decode_fixture "C071C_BEIGE_N69"             "cat ./tests/fixtures/rugscale-curves/C071C_BEIGE_N69.bmp.xz.b64/part*.txt | base64 -d"             "795b1cb0a3223624304d4ab8454955fa369dfaa0110d5d62d4ecfac3546a6775"
+
+          decode_fixture "B996A_BEIGE_N69"             "cat ./tests/fixtures/rugscale-curves/B996A_BEIGE_N69.bmp.xz.b64/part*.txt | base64 -d"             "a9735397f70d09b44e9f02d1e6db41cc7a9488f0ced55e58d9f48920a3df4e5c"
+
+          decode_fixture "C004A_BEIGE_N69"             "cat ./tests/fixtures/rugscale-curves/C004A_BEIGE_N69.part*.txt | base64 -d"             "5b63035e5e65bff99c63d5e1e915b5ee43a53efb58035914ab91264472c361de"
+
+          decode_fixture "C069A_CREAM_N69"             "cat ./tests/fixtures/rugscale-curves/C069A_CREAM_N69.bmp.xz.b64/part*.txt | base64 -d"             "d22e56ba9a5d9cf43c8ff0e7dea599246490b6ff394be00dfade39ea5930c456"
+
+      - name: Core regression tests
+        id: core_regression
+        continue-on-error: true
+        run: dotnet test ./tests/RugScale.Core.Tests/RugScale.Core.Tests.csproj -c Release --no-restore
+
+      - name: Run four-design curve audit
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ./artifacts/rugscale-curves
+          dotnet run             --project ./tools/RugScale.CurveScaleAudit/RugScale.CurveScaleAudit.csproj             -c Release --no-restore --             --input-dir "$RUNNER_TEMP/rugscale-curves"             --output "$GITHUB_WORKSPACE/artifacts/rugscale-curves"
+
+      - name: Publish curve-suite summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f ./artifacts/rugscale-curves/curve-suite-report.md ]; then
+            cat ./artifacts/rugscale-curves/curve-suite-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload curve audit outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rugscale-four-design-curve-suite
+          path: ./artifacts/rugscale-curves
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Enforce core regression gate
+        if: always() && steps.core_regression.outcome != 'success'
+        run: exit 1
