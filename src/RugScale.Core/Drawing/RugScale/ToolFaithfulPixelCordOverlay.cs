@@ -114,6 +114,8 @@ internal static class ToolFaithfulPixelCordOverlay
         var corridorClippedPixels = 0;
         var learnedRoundnessSum = 0d;
         var styleFitCacheHits = 0;
+        var ovalCenterlineRecoveries = 0;
+        var dominantPathRecoveries = 0;
 
         // Repeated carpet ornaments frequently contain the exact same 1x1 curve translated many
         // times. Learn its Curve family once and reuse the translation-invariant fit. This both
@@ -285,6 +287,7 @@ internal static class ToolFaithfulPixelCordOverlay
                 };
                 fitPixelCord =
                     false;
+                ovalCenterlineRecoveries++;
             }
             else if (component.TrustedStrokeRole &&
                      pixelCord &&
@@ -300,6 +303,7 @@ internal static class ToolFaithfulPixelCordOverlay
                 {
                     dominantPath,
                 };
+                dominantPathRecoveries++;
             }
 
             if (component.TrustedStrokeRole)
@@ -567,7 +571,11 @@ internal static class ToolFaithfulPixelCordOverlay
             learnedCurves == 0
                 ? 0d
                 : learnedRoundnessSum /
-                  learnedCurves);
+                  learnedCurves,
+            OvalCenterlineRecoveries:
+                ovalCenterlineRecoveries,
+            DominantPathRecoveries:
+                dominantPathRecoveries);
     }
 
     private static void ClearProjectedStrokeResidue(
@@ -2868,4 +2876,6 @@ internal readonly record struct ToolFaithfulOverlayReport(
     int CorridorClippedPixels,
     double MeanLearnedRoundness,
     int RegionOwnershipCorrections = 0,
-    int BarrierCrossingCorrections = 0);
+    int BarrierCrossingCorrections = 0,
+    int OvalCenterlineRecoveries = 0,
+    int DominantPathRecoveries = 0);
