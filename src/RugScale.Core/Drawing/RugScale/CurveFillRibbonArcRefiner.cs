@@ -56,6 +56,11 @@ internal static class CurveFillRibbonArcRefiner
 
         var classified = 0;
         var axisBuilt = 0;
+        var maxSkeletonPixels = 0;
+        var maxEndpoints = 0;
+        var maxPrincipalPathPixels = 0;
+        var maxPrincipalPathCoverage = 0d;
+        var lastCenterlineReason = "not-attempted";
         var ribbonGeometryAccepted = 0;
         var fitSafe = 0;
         var accepted =
@@ -87,13 +92,34 @@ internal static class CurveFillRibbonArcRefiner
                 continue;
             }
 
-            if (!CurveFillRibbonCenterlineBuilder.TryBuild(
+            var centerlineBuilt =
+                CurveFillRibbonCenterlineBuilder.TryBuild(
                     candidate,
                     source.Width,
-                    out var model))
-            {
+                    out var model,
+                    out var centerlineDiagnostics);
+
+            maxSkeletonPixels =
+                Math.Max(
+                    maxSkeletonPixels,
+                    centerlineDiagnostics.SkeletonPixels);
+            maxEndpoints =
+                Math.Max(
+                    maxEndpoints,
+                    centerlineDiagnostics.Endpoints);
+            maxPrincipalPathPixels =
+                Math.Max(
+                    maxPrincipalPathPixels,
+                    centerlineDiagnostics.PrincipalPathPixels);
+            maxPrincipalPathCoverage =
+                Math.Max(
+                    maxPrincipalPathCoverage,
+                    centerlineDiagnostics.PrincipalPathCoverage);
+            lastCenterlineReason =
+                centerlineDiagnostics.Reason;
+
+            if (!centerlineBuilt)
                 continue;
-            }
 
             axisBuilt++;
 
@@ -145,6 +171,11 @@ internal static class CurveFillRibbonArcRefiner
             Regions: regions.Count,
             Classified: classified,
             AxisBuilt: axisBuilt,
+            MaxSkeletonPixels: maxSkeletonPixels,
+            MaxEndpoints: maxEndpoints,
+            MaxPrincipalPathPixels: maxPrincipalPathPixels,
+            MaxPrincipalPathCoverage: maxPrincipalPathCoverage,
+            LastCenterlineReason: lastCenterlineReason,
             RibbonGeometryAccepted: ribbonGeometryAccepted,
             FitSafe: fitSafe,
             Refined: accepted.Count,
@@ -282,6 +313,11 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     int Regions,
     int Classified,
     int AxisBuilt,
+    int MaxSkeletonPixels,
+    int MaxEndpoints,
+    int MaxPrincipalPathPixels,
+    double MaxPrincipalPathCoverage,
+    string LastCenterlineReason,
     int RibbonGeometryAccepted,
     int FitSafe,
     int Refined,
