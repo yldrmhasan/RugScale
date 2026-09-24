@@ -2,9 +2,11 @@ namespace RugScale.Core.Drawing;
 
 internal static class LeafPetalMedialAxisBuilder
 {
-    private const double TargetBinWidth = 1.25;
-    private const double MinimumCoverage = 0.68;
-    private const int MaximumEmptyBinRun = 3;
+    // A sharp 1x1 apex produces sparse projected bins; slightly wider bins preserve the real
+    // base-to-apex flow while still rejecting genuinely disconnected/branched masses below.
+    private const double TargetBinWidth = 1.50;
+    private const double MinimumCoverage = 0.58;
+    private const int MaximumEmptyBinRun = 4;
 
     private sealed class Bin
     {
@@ -116,7 +118,7 @@ internal static class LeafPetalMedialAxisBuilder
         {
             var dx = samples[i].X - samples[i - 1].X;
             var dy = samples[i].Y - samples[i - 1].Y;
-            if (Math.Sqrt(dx * dx + dy * dy) > 4.25)
+            if (Math.Sqrt(dx * dx + dy * dy) > 5.50)
                 return false;
         }
 
