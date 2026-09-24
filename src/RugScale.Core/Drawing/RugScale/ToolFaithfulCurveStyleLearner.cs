@@ -211,6 +211,15 @@ internal static class ToolFaithfulCurveStyleLearner
         if (modelChain.Count < MinimumChainPixels)
             return;
 
+        // Source raster alone can make a 5-control smooth oval and a 6/7-control overfit look
+        // almost equally good. Keep the best Through-Points candidate locally and use resize
+        // consistency as a tie-break before competing with the other Curve families.
+        (double RawScore,
+         double ModelScore,
+         double ScaleConsistency,
+         double Roundness,
+         (int X, int Y)[] Controls)? bestThroughPoint = null;
+
         var maximumControlCount =
             Math.Min(
                 7,
@@ -463,14 +472,78 @@ internal static class ToolFaithfulCurveStyleLearner
                             modelChain[index])
                         .ToArray();
 
-                ConsiderFit(
-                    CurveType.SplineThroughPoints,
-                    roundness,
-                    controls,
-                    rawScore,
-                    simplifyTolerance: 0d,
-                    ref best);
+                var scaleConsistency =
+                    ScaleConsistencyScore(
+                        controls,
+                        roundness,
+                        sourceSet,
+                        pixelCord);
+                var candidateModelScore =
+                    ModelScore(
+                        rawScore,
+                        controls.Length);
+
+                const double SourceModelTieTolerance = 0.012;
+                const double ScaleConsistencyTieTolerance = 0.003;
+
+                var shouldReplace =
+                    bestThroughPoint is null ||
+                    candidateModelScore >
+                    bestThroughPoint.Value.ModelScore +
+                    SourceModelTieTolerance;
+
+                if (!shouldReplace &&
+                    bestThroughPoint is { } current &&
+                    candidateModelScore >=
+                    current.ModelScore -
+                    SourceModelTieTolerance)
+                {
+                    // Within a source-equivalent band, prefer the candidate that survives a
+                    // physical resize cycle. This is specifically what prevents oval shoulders
+                    // from becoming scalloped/polygonal at the target size.
+                    shouldReplace =
+                        scaleConsistency >
+                        current.ScaleConsistency +
+                        ScaleConsistencyTieTolerance;
+
+                    if (!shouldReplace &&
+                        Math.Abs(
+                            scaleConsistency -
+                            current.ScaleConsistency) <=
+                        ScaleConsistencyTieTolerance)
+                    {
+                        // If both source fit and scale stability are effectively tied, use the
+                        // simpler designer model. Five controls are normally enough for one
+                        // continuous oval arc and generalize better than raster-following 6/7
+                        // control fits.
+                        shouldReplace =
+                            controls.Length <
+                            current.Controls.Length;
+                    }
+                }
+
+                if (shouldReplace)
+                {
+                    bestThroughPoint =
+                        (
+                            rawScore,
+                            candidateModelScore,
+                            scaleConsistency,
+                            roundness,
+                            controls);
+                }
             }
+        }
+
+        if (bestThroughPoint is { } selected)
+        {
+            ConsiderFit(
+                CurveType.SplineThroughPoints,
+                selected.Roundness,
+                selected.Controls,
+                selected.RawScore,
+                simplifyTolerance: 0d,
+                ref best);
         }
     }
 
