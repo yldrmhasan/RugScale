@@ -817,11 +817,17 @@ public class DesignResizerTests
                 expected,
                 radius: 1) >= 0.98,
             "Soft oval lost its smooth target geometry.");
-        Assert.True(
+        var exactScore =
             PixelF1(
                 actual,
-                expected) >= 0.80,
-            "Soft oval drifted too far from the target Curve-tool raster.");
+                expected);
+
+        Assert.True(
+            exactScore >= 0.80,
+            $"Soft oval drifted too far from the target Curve-tool raster: exact={exactScore:P2}, " +
+            $"learned={diagnostics.LearnedCurves}, through={diagnostics.LearnedThroughPoints}, " +
+            $"fallback={diagnostics.GraphFallbacks}, safetyFallback={diagnostics.CurveSafetyFallbacks}, " +
+            $"completePath={diagnostics.CompletePathRecoveries}, clipped={diagnostics.CorridorClippedPixels}.");
         Assert.True(
             diagnostics.CompletePathRecoveries >= 1,
             "Soft Pixel-Cord oval should be recovered as one complete source drawing path.");
