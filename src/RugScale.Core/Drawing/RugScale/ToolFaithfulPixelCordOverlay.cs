@@ -398,9 +398,19 @@ internal static class ToolFaithfulPixelCordOverlay
                                         pixelCord)
                                     .ToHashSet();
 
-                            if (IsLearnedCurveSafeAgainstSourceGraph(
-                                    learnedSet,
-                                    fallbackSet))
+                            var learnedCurveSafe =
+                                recoveredSmoothOval
+                                    ? IsLearnedCurveSafeAgainstSourceGraph(
+                                        learnedSet,
+                                        fallbackSet,
+                                        radius: 2,
+                                        minimumLearnedSupport: 0.96,
+                                        minimumGraphSupport: 0.86)
+                                    : IsLearnedCurveSafeAgainstSourceGraph(
+                                        learnedSet,
+                                        fallbackSet);
+
+                            if (learnedCurveSafe)
                             {
                                 rendered =
                                     learnedSet;
@@ -1719,7 +1729,10 @@ internal static class ToolFaithfulPixelCordOverlay
 
     private static bool IsLearnedCurveSafeAgainstSourceGraph(
         IReadOnlySet<(int X, int Y)> learned,
-        IReadOnlySet<(int X, int Y)> sourceGraph)
+        IReadOnlySet<(int X, int Y)> sourceGraph,
+        int radius = 1,
+        double minimumLearnedSupport = 0.98,
+        double minimumGraphSupport = 0.90)
     {
         if (learned.Count == 0 ||
             sourceGraph.Count == 0)
@@ -1732,7 +1745,7 @@ internal static class ToolFaithfulPixelCordOverlay
                 HasPointNear(
                     sourceGraph,
                     point,
-                    radius: 1)) /
+                    radius)) /
             (double)learned.Count;
 
         var graphSupported =
@@ -1740,14 +1753,16 @@ internal static class ToolFaithfulPixelCordOverlay
                 HasPointNear(
                     learned,
                     point,
-                    radius: 1)) /
+                    radius)) /
             (double)sourceGraph.Count;
 
         // Almost every learned target pixel must be source-graph supported. Recall is slightly
         // looser because a smooth curve may legitimately skip a staircase shoulder while still
         // following exactly the same visual arc.
-        return learnedSupported >= 0.98 &&
-               graphSupported >= 0.90;
+        return learnedSupported >=
+               minimumLearnedSupport &&
+               graphSupported >=
+               minimumGraphSupport;
     }
 
     private static IReadOnlyList<(int X, int Y)> ConstrainToSourceStrokeCorridor(
