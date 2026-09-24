@@ -240,7 +240,7 @@ internal static class LeafPetalArcRasterizer
         return changed;
     }
 
-    private static List<(double X, double Y)> BuildTargetPolygon(
+    internal static List<(double X, double Y)> BuildTargetPolygon(
         IReadOnlyList<ElegantArcPoint> points,
         double scaleX,
         double scaleY)
@@ -329,7 +329,7 @@ internal static class LeafPetalArcRasterizer
             scaleY -
             0.5);
 
-    private static HashSet<int> RasterizePolygon(
+    internal static HashSet<int> RasterizePolygon(
         IReadOnlyList<(double X, double Y)> polygon,
         int width,
         int height)
