@@ -179,6 +179,7 @@ internal static class CurveFillRibbonArcRefiner
         }
 
         var changed = 0;
+        var outlinedRefined = 0;
 
         foreach (var item in accepted
                      .OrderByDescending(pair =>
@@ -186,6 +187,20 @@ internal static class CurveFillRibbonArcRefiner
                          pair.Model.Candidate.Elongation)
                      .Take(MaximumRefinedRegions))
         {
+            if (CurveFillOutlinedRibbonRasterizer.TryApply(
+                    source,
+                    destination,
+                    item.Model,
+                    item.Fit,
+                    protectedStrokeColors,
+                    out var outlinedChanged))
+            {
+                outlinedRefined++;
+                changed +=
+                    outlinedChanged;
+                continue;
+            }
+
             changed +=
                 LeafPetalArcRasterizer.Apply(
                     source,
@@ -210,6 +225,7 @@ internal static class CurveFillRibbonArcRefiner
             MaxFitDeviation: maxFitDeviation,
             MaxFitCurvatureFlips: maxFitCurvatureFlips,
             Refined: accepted.Count,
+            OutlinedRefined: outlinedRefined,
             BoundaryPixelsChanged: changed);
     }
 
@@ -355,4 +371,5 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     double MaxFitDeviation,
     int MaxFitCurvatureFlips,
     int Refined,
+    int OutlinedRefined,
     int BoundaryPixelsChanged);
