@@ -1953,6 +1953,7 @@ internal static class ToolFaithfulPixelCordOverlay
 
         const int MaximumSearchPixels = 512;
         const int MaximumSearchStates = 250_000;
+        const int MaximumOvalSolutions = 48;
 
         if (component.Pixels.Count <
                 MinimumPathPixels ||
@@ -2007,13 +2008,229 @@ internal static class ToolFaithfulPixelCordOverlay
         if (endpoints.Length != 2)
             return false;
 
-        bool TrySearch(
-            int startPixel,
-            int goalPixel,
-            out List<int> result)
+        static int PixelCordDirectionScore(
+            IReadOnlyList<int> orderedPixels,
+            int width)
         {
-            result =
-                new List<int>();
+            var score = 0;
+
+            for (var index = 1;
+                 index + 1 <
+                 orderedPixels.Count;
+                 index++)
+            {
+                var previous =
+                    orderedPixels[index - 1];
+                var bridge =
+                    orderedPixels[index];
+                var next =
+                    orderedPixels[index + 1];
+
+                var previousX =
+                    previous %
+                    width;
+                var previousY =
+                    previous /
+                    width;
+                var bridgeX =
+                    bridge %
+                    width;
+                var bridgeY =
+                    bridge /
+                    width;
+                var nextX =
+                    next %
+                    width;
+                var nextY =
+                    next /
+                    width;
+
+                if (Math.Abs(
+                        nextX -
+                        previousX) != 1 ||
+                    Math.Abs(
+                        nextY -
+                        previousY) != 1)
+                {
+                    continue;
+                }
+
+                // Rasterizer.ConnectDiagonalSteps emits (newX, oldY) before the diagonal target.
+                if (bridgeX == nextX &&
+                    bridgeY == previousY)
+                {
+                    score += 2;
+                }
+                else if (bridgeX == previousX &&
+                         bridgeY == nextY)
+                {
+                    score -= 2;
+                }
+            }
+
+            return score;
+        }
+
+        var minX =
+            component.MinX;
+        var maxX =
+            component.MaxX;
+        var minY =
+            component.MinY;
+        var maxY =
+            component.MaxY;
+        var boxWidth =
+            maxX -
+            minX;
+        var boxHeight =
+            maxY -
+            minY;
+        var endpoint0X =
+            endpoints[0] %
+            sourceWidth;
+        var endpoint0Y =
+            endpoints[0] /
+            sourceWidth;
+        var endpoint1X =
+            endpoints[1] %
+            sourceWidth;
+        var endpoint1Y =
+            endpoints[1] /
+            sourceWidth;
+        var dominantAxisIsXForShape =
+            boxWidth >=
+            boxHeight;
+        var shapeExtent =
+            dominantAxisIsXForShape
+                ? boxWidth
+                : boxHeight;
+        var endpointSpan =
+            dominantAxisIsXForShape
+                ? Math.Abs(
+                    endpoint1X -
+                    endpoint0X)
+                : Math.Abs(
+                    endpoint1Y -
+                    endpoint0Y);
+
+        // Only broad two-endpoint arcs need ambiguity resolution. Ordinary lines / small strokes
+        // keep the old first-solution behaviour.
+        var resolveOvalAmbiguity =
+            component.Pixels.Count >= 20 &&
+            shapeExtent >= 8 &&
+            endpointSpan >=
+            shapeExtent * 0.70;
+
+        List<int>? bestOrder = null;
+        var bestFitScore =
+            double.NegativeInfinity;
+        var bestModelScore =
+            double.NegativeInfinity;
+        var bestDirectionScore =
+            int.MinValue;
+        var solutionCount = 0;
+        var perfectFitFound = false;
+
+        void ConsiderSolution(
+            IReadOnlyList<int> orderedPixels)
+        {
+            solutionCount++;
+
+            var directionScore =
+                PixelCordDirectionScore(
+                    orderedPixels,
+                    sourceWidth);
+
+            if (!resolveOvalAmbiguity)
+            {
+                bestOrder =
+                    orderedPixels.ToList();
+                perfectFitFound = true;
+                return;
+            }
+
+            var points =
+                orderedPixels
+                    .Select(pixel =>
+                        (
+                            X: pixel %
+                               sourceWidth,
+                            Y: pixel /
+                               sourceWidth))
+                    .ToArray();
+
+            if (!LooksLikeSmoothOvalRecovery(
+                    points))
+            {
+                return;
+            }
+
+            var fit =
+                ToolFaithfulCurveStyleLearner.Fit(
+                    points,
+                    pixelCord: true);
+
+            var fitScore =
+                fit?.Score ??
+                double.NegativeInfinity;
+            var modelScore =
+                fit?.ModelScore ??
+                double.NegativeInfinity;
+
+            var better =
+                bestOrder is null ||
+                fitScore >
+                bestFitScore +
+                1e-9 ||
+                (
+                    Math.Abs(
+                        fitScore -
+                        bestFitScore) <=
+                    1e-9 &&
+                    modelScore >
+                    bestModelScore +
+                    1e-9) ||
+                (
+                    Math.Abs(
+                        fitScore -
+                        bestFitScore) <=
+                    1e-9 &&
+                    Math.Abs(
+                        modelScore -
+                        bestModelScore) <=
+                    1e-9 &&
+                    directionScore >
+                    bestDirectionScore);
+
+            if (!better)
+                return;
+
+            bestOrder =
+                orderedPixels.ToList();
+            bestFitScore =
+                fitScore;
+            bestModelScore =
+                modelScore;
+            bestDirectionScore =
+                directionScore;
+
+            // A near-perfect compact source explanation is the original drawing language for all
+            // practical purposes; do not spend the remaining DFS budget looking for another
+            // pixel-order permutation with the same raster.
+            if (fit is { } learned &&
+                learned.Score >= 0.995 &&
+                learned.Controls.Count <= 5)
+            {
+                perfectFitFound = true;
+            }
+        }
+
+        void SearchDirection(
+            int startPixel,
+            int goalPixel)
+        {
+            if (perfectFitFound)
+                return;
 
             var startX =
                 startPixel %
@@ -2084,29 +2301,38 @@ internal static class ToolFaithfulPixelCordOverlay
                 adjacency[pixel].Count(next =>
                     !visited.Contains(next));
 
-            bool Search(
+            void Search(
                 int current)
             {
-                states++;
-
-                if (states >
-                    MaximumSearchStates)
+                if (perfectFitFound ||
+                    states >=
+                    MaximumSearchStates ||
+                    (
+                        resolveOvalAmbiguity &&
+                        solutionCount >=
+                        MaximumOvalSolutions))
                 {
-                    return false;
+                    return;
                 }
+
+                states++;
 
                 if (ordered.Count ==
                     set.Count)
                 {
-                    return current ==
-                           goalPixel;
+                    if (current ==
+                        goalPixel)
+                    {
+                        ConsiderSolution(
+                            ordered);
+                    }
+
+                    return;
                 }
 
                 if (current ==
                     goalPixel)
-                {
-                    return false;
-                }
+                    return;
 
                 var candidates =
                     adjacency[current]
@@ -2131,6 +2357,15 @@ internal static class ToolFaithfulPixelCordOverlay
 
                 foreach (var next in candidates)
                 {
+                    if (perfectFitFound ||
+                        (
+                            resolveOvalAmbiguity &&
+                            solutionCount >=
+                            MaximumOvalSolutions))
+                    {
+                        return;
+                    }
+
                     // The goal is the final endpoint. Entering it early would strand remaining
                     // Pixel-Cord cells.
                     if (next == goalPixel &&
@@ -2164,145 +2399,41 @@ internal static class ToolFaithfulPixelCordOverlay
                         break;
                     }
 
-                    if (!stranded &&
-                        Search(next))
+                    if (!stranded)
                     {
-                        return true;
+                        Search(next);
                     }
 
                     ordered.RemoveAt(
                         ordered.Count - 1);
                     visited.Remove(next);
                 }
-
-                return false;
             }
 
-            if (!Search(
-                    startPixel))
-            {
-                return false;
-            }
-
-            result =
-                ordered;
-            return true;
+            Search(
+                startPixel);
         }
 
-        static int PixelCordDirectionScore(
-            IReadOnlyList<int> orderedPixels,
-            int width)
+        SearchDirection(
+            endpoints[0],
+            endpoints[1]);
+
+        if (!perfectFitFound &&
+            (
+                !resolveOvalAmbiguity ||
+                solutionCount <
+                MaximumOvalSolutions))
         {
-            var score = 0;
-
-            for (var index = 1;
-                 index + 1 <
-                 orderedPixels.Count;
-                 index++)
-            {
-                var previous =
-                    orderedPixels[index - 1];
-                var bridge =
-                    orderedPixels[index];
-                var next =
-                    orderedPixels[index + 1];
-
-                var previousX =
-                    previous %
-                    width;
-                var previousY =
-                    previous /
-                    width;
-                var bridgeX =
-                    bridge %
-                    width;
-                var bridgeY =
-                    bridge /
-                    width;
-                var nextX =
-                    next %
-                    width;
-                var nextY =
-                    next /
-                    width;
-
-                if (Math.Abs(
-                        nextX -
-                        previousX) != 1 ||
-                    Math.Abs(
-                        nextY -
-                        previousY) != 1)
-                {
-                    continue;
-                }
-
-                // Rasterizer.ConnectDiagonalSteps emits (newX, oldY) before the diagonal target.
-                // Therefore horizontal -> vertical is the encoded drawing direction. Traversing
-                // the same raster backwards produces the opposite corner grammar.
-                if (bridgeX == nextX &&
-                    bridgeY == previousY)
-                {
-                    score += 2;
-                }
-                else if (bridgeX == previousX &&
-                         bridgeY == nextY)
-                {
-                    score -= 2;
-                }
-            }
-
-            return score;
+            SearchDirection(
+                endpoints[1],
+                endpoints[0]);
         }
 
-        var firstSucceeded =
-            TrySearch(
-                endpoints[0],
-                endpoints[1],
-                out var firstOrder);
-        var secondSucceeded =
-            TrySearch(
-                endpoints[1],
-                endpoints[0],
-                out var secondOrder);
-
-        if (!firstSucceeded &&
-            !secondSucceeded)
-        {
+        if (bestOrder is null)
             return false;
-        }
-
-        IReadOnlyList<int> selected;
-
-        if (!firstSucceeded)
-        {
-            selected =
-                secondOrder;
-        }
-        else if (!secondSucceeded)
-        {
-            selected =
-                firstOrder;
-        }
-        else
-        {
-            var firstScore =
-                PixelCordDirectionScore(
-                    firstOrder,
-                    sourceWidth);
-            var secondScore =
-                PixelCordDirectionScore(
-                    secondOrder,
-                    sourceWidth);
-
-            selected =
-                secondScore >
-                firstScore
-                    ? secondOrder
-                    : firstOrder;
-        }
 
         path =
-            selected
+            bestOrder
                 .Select(pixel =>
                     (
                         X: pixel %
