@@ -3163,5 +3163,11 @@ internal readonly record struct ToolFaithfulOverlayReport(
     int RibbonArcRefined = 0,
     int RibbonArcPixelsChanged = 0,
     int RibbonArcCurveToolFits = 0,
+    int RibbonArcGeometricThroughFits = 0,
+    int RibbonArcGeometricThroughAttempts = 0,
+    double RibbonArcGeometricThroughMeanRoundness = 0d,
+    double RibbonArcGeometricThroughMaxP95Deviation = 0d,
+    int RibbonArcBroadOvalFits = 0,
+    int RibbonArcBroadOvalAttempts = 0,
     int RibbonArcCubicBezierFits = 0,
     int RibbonArcOutlinedRefined = 0);
