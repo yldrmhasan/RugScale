@@ -436,6 +436,13 @@ public class DesignResizerTests
             matched >= expected.Length * 0.92,
             $"Tool-faithful curve recall is too low: {matched}/{expected.Length}.");
 
+        Assert.True(
+            diagnostics.CompletePathRecoveries >= 1,
+            "The Pixel-Cord oval should be recovered as one complete source drawing path.");
+        Assert.True(
+            diagnostics.LearnedCurves >= 1,
+            "The recovered oval path should reach the Curve inverse learner.");
+
         Assert.Equal(
             1,
             CountFourConnectedComponents(
@@ -634,7 +641,7 @@ public class DesignResizerTests
             $"learned={diagnostics.LearnedCurves}, fallback={diagnostics.GraphFallbacks}, " +
             $"safetyFallback={diagnostics.CurveSafetyFallbacks}, clipped={diagnostics.CorridorClippedPixels}, " +
             $"accepted={diagnostics.AcceptedComponents}, pixelCord={diagnostics.PixelCordComponents}, " +
-            $"ovalCenterline={diagnostics.OvalCenterlineRecoveries}, dominantPath={diagnostics.DominantPathRecoveries}.");
+            $"completePath={diagnostics.CompletePathRecoveries}.");
         Assert.Equal(
             1,
             CountFourConnectedComponents(
