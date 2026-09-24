@@ -3,7 +3,7 @@ namespace RugScale.Core.Drawing;
 /// <summary>
 /// Specialist inverse fitter for the two visible long sides of an outlined leaf/petal.
 ///
-/// The side is known to be an open designer arc, so we deliberately fit RugCAD's
+/// The side is known to be an open designer arc, so we deliberately fit RugScale's
 /// SplineThroughPoints tool instead of searching unrelated curve families. Control points remain
 /// ON the immutable source raster. Their positions along the source arc and the Curve roundness
 /// are optimized together.
