@@ -12,7 +12,7 @@ public enum ResizeAnchor
 
 /// <summary>
 /// How pixels get resampled when "Scale Image" is on — Texcelle offers several named modes
-/// (Normal, With background, Smart, Sequential, With Priority colors); RugCAD's own take on
+/// (Normal, With background, Smart, Sequential, With Priority colors); RugScale's own take on
 /// "a few different scale modes so different distortion trade-offs are available" per the user's
 /// request, built to fit an INDEXED (palette + byte-per-pixel) document rather than true color.
 ///
@@ -62,7 +62,7 @@ public enum ScaleMode
     PreserveDetail,
 
     /// <summary>
-    /// RugCAD's motif/topology scaler for discrete motif-based carpet artwork. This mode owns
+    /// RugScale's motif/topology scaler for discrete motif-based carpet artwork. This mode owns
     /// connected motifs, branches, repeat/rapport and designer symmetry. It deliberately does NOT
     /// run the curve/fill contour engine; curve-heavy outlined floral artwork has its own
     /// <see cref="CurveFill"/> mode.
@@ -98,7 +98,7 @@ public enum ScaleMode
 /// dimensions change but existing pixels keep their original size and position, anchored per
 /// <see cref="ResizeAnchor"/>) or by scaling (the whole image is resampled to fit the new
 /// dimensions, per <see cref="ScaleMode"/>) — mirrors the "Scale Image" checkbox in Texcelle's
-/// Resize Design dialog: checked = scale, unchecked = crop/pad (RugCAD's default, matching the
+/// Resize Design dialog: checked = scale, unchecked = crop/pad (RugScale's default, matching the
 /// user's explicit instruction that crop/pad is what should happen when Scale Image is off).
 /// </summary>
 public static class DesignResizer
