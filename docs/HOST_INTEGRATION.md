@@ -34,9 +34,10 @@ RugScale-specific non-UI state that previously lived under RugCAD.App has been e
 - packaged motif-memory seed -> embedded `RugScale.Core` resource
 - indexed BMP development/test IO -> `RugScale.Core.IO.IndexedBmpCodec`
 
-## Future RugCAD integration
+## Optional future RugCAD integration
 
-The RugCAD resize window should eventually call only the public standalone API:
+RugCAD currently has no RugScale integration. If it is reintroduced, the resize host should call
+only the public standalone API:
 
 ```csharp
 var resized = DesignResizer.Scale(
@@ -68,7 +69,7 @@ RugScale.Core remains responsible for:
 - Curve / Pixel-Cord raster rules used by RugScale,
 - training diagnostics and deterministic fallbacks.
 
-## Recommended integration after migration gate
+## Recommended integration if RugCAD consumes RugScale again
 
 Prefer a versioned package/reference boundary rather than copying RugScale source back into RugCAD.
 
@@ -78,5 +79,13 @@ Development options, in order:
 2. local/private NuGet package for reproducible RugCAD builds,
 3. tagged/released package once API stability is sufficient.
 
-Do not remove the old RugCAD RugScale implementation until the standalone CI/audits are green and a
-RugCAD integration branch reproduces accepted output.
+The old RugCAD RugScale implementation has been removed. Do not copy the standalone source back
+into RugCAD; consume a versioned project/package API if future product integration is required.
+
+
+## Current repository state
+
+RugScale is now independent. RugCAD cleanup was merged as
+`a1e3ab88691852969ece5dbbc77b6d829f05e33d`. Manual RugScale development and Good/Bad motif
+learning are performed in `RugScale.Workbench`, so RugCAD's general drawing tools no longer share
+that experimental surface.

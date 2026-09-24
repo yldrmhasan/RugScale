@@ -122,12 +122,21 @@ Two RugCAD files contain RugScale UI integration mixed with unrelated applicatio
 - `ResizeDesignWindow.xaml(.cs)`
 - `DesignCanvas.DrawingTools.cs`
 
-They remain in RugCAD during the migration gate. RugScale algorithm/state code has been extracted
-from them, but WPF preview/selection/input handling is deliberately not made a dependency of this
-repository.
+They were not copied as engine code. During final cleanup, RugCAD's Resize window was restored to
+its pre-RugScale implementation while unrelated editor/DesignCanvas improvements were preserved.
+The RugScale-specific manual feedback workflow now lives in the standalone
+`src/RugScale.Workbench` project.
 
-This is important: copying those host files would recreate the coupling that previously allowed
-RugScale changes to affect unrelated RugCAD drawing tools.
+This is important: copying those RugCAD host files would recreate the coupling that previously
+allowed RugScale changes to affect unrelated RugCAD drawing tools.
 
-After standalone validation, RugCAD should be changed so those host files call the versioned
-RugScale.Core API. Only then should duplicate RugScale engine source be deleted from RugCAD.
+RugCAD cleanup commit:
+`a1e3ab88691852969ece5dbbc77b6d829f05e33d`.
+
+
+## Final RugCAD cleanup
+
+After standalone validation, the active RugCAD development branch was cleaned. RugScale-owned
+engine source, motif-memory app state, real fixtures, audit tools, migration copies and RugScale-only
+workflows were removed. `src/RugCAD.Core` and `tests/RugCAD.Core.Tests` were restored to the exact
+tree SHAs from RugCAD `main`; no RugScale-named paths remain in RugCAD.
