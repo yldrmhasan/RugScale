@@ -293,6 +293,18 @@ internal static class CurveFillScaleEngine
                 ribbonArc.BoundaryPixelsChanged,
             RibbonArcCurveToolFits =
                 ribbonArc.CurveToolFits,
+            RibbonArcGeometricThroughFits =
+                ribbonArc.GeometricThroughFits,
+            RibbonArcGeometricThroughAttempts =
+                ribbonArc.GeometricThroughAttempts,
+            RibbonArcGeometricThroughMeanRoundness =
+                ribbonArc.MeanGeometricThroughRoundness,
+            RibbonArcGeometricThroughMaxP95Deviation =
+                ribbonArc.MaxGeometricThroughP95Deviation,
+            RibbonArcBroadOvalFits =
+                ribbonArc.BroadOvalFits,
+            RibbonArcBroadOvalAttempts =
+                ribbonArc.BroadOvalAttempts,
             RibbonArcCubicBezierFits =
                 ribbonArc.CubicBezierFits,
             RibbonArcOutlinedRefined =
