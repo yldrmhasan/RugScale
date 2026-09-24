@@ -262,6 +262,20 @@ internal static class ToolFaithfulCurveStyleLearner
                     0.82,
                     1.00,
                 ]);
+
+                var axisSeed =
+                    BuildDominantAxisOvalSeed(
+                        modelChain);
+
+                if (axisSeed is not null)
+                {
+                    seedFractions.Add(
+                        axisSeed
+                            .Select(index =>
+                                index /
+                                (double)(modelChain.Count - 1))
+                            .ToArray());
+                }
             }
 
             var seenSeeds =
@@ -458,6 +472,129 @@ internal static class ToolFaithfulCurveStyleLearner
                     ref best);
             }
         }
+    }
+
+    private static int[]? BuildDominantAxisOvalSeed(
+        IReadOnlyList<(int X, int Y)> points)
+    {
+        if (points.Count < 20)
+            return null;
+
+        var first =
+            points[0];
+        var last =
+            points[^1];
+        var deltaX =
+            Math.Abs(
+                last.X -
+                first.X);
+        var deltaY =
+            Math.Abs(
+                last.Y -
+                first.Y);
+        var useX =
+            deltaX >= deltaY;
+
+        var minimumAxis =
+            points.Min(point =>
+                useX
+                    ? point.X
+                    : point.Y);
+        var maximumAxis =
+            points.Max(point =>
+                useX
+                    ? point.X
+                    : point.Y);
+        var axisExtent =
+            maximumAxis -
+            minimumAxis;
+        var startAxis =
+            useX
+                ? first.X
+                : first.Y;
+        var endAxis =
+            useX
+                ? last.X
+                : last.Y;
+        var endpointSpan =
+            Math.Abs(
+                endAxis -
+                startAxis);
+
+        // This seed is only meaningful for a broad open oval/arch whose endpoints span most of
+        // its dominant axis. Waves/hooks can have a large bounding box but a short endpoint span;
+        // leave those entirely to the generic seeds.
+        if (axisExtent < 8 ||
+            endpointSpan <
+            axisExtent * 0.70)
+        {
+            return null;
+        }
+
+        double[] fractions =
+        [
+            0.00,
+            0.11,
+            0.41,
+            0.78,
+            1.00,
+        ];
+
+        var indices =
+            new int[fractions.Length];
+
+        indices[0] = 0;
+        indices[^1] =
+            points.Count - 1;
+
+        for (var controlIndex = 1;
+             controlIndex < indices.Length - 1;
+             controlIndex++)
+        {
+            var targetAxis =
+                startAxis +
+                (endAxis - startAxis) *
+                fractions[controlIndex];
+            var minimumIndex =
+                indices[controlIndex - 1] +
+                1;
+            var maximumIndex =
+                points.Count -
+                (indices.Length - controlIndex);
+
+            var bestIndex =
+                minimumIndex;
+            var bestDistance =
+                double.PositiveInfinity;
+
+            for (var index = minimumIndex;
+                 index <= maximumIndex;
+                 index++)
+            {
+                var axis =
+                    useX
+                        ? points[index].X
+                        : points[index].Y;
+                var distance =
+                    Math.Abs(
+                        axis -
+                        targetAxis);
+
+                if (distance >=
+                    bestDistance)
+                {
+                    continue;
+                }
+
+                bestDistance = distance;
+                bestIndex = index;
+            }
+
+            indices[controlIndex] =
+                bestIndex;
+        }
+
+        return indices;
     }
 
     private static (double Score, double Roundness) FindBestThroughRoundness(
