@@ -454,53 +454,16 @@ internal static class LeafPetalBoundaryCurveBuilder
                         continue;
                     }
 
-                    // Keep the outline attached to THIS filled region. A radius-2 search can see
-                    // an unrelated nearby white ornament; require at least one 8-neighbour touch
-                    // back to the region.
-                    var touchesRegion =
-                        false;
-
-                    for (var oy = -1;
-                         oy <= 1 &&
-                         !touchesRegion;
-                         oy++)
-                    {
-                        for (var ox = -1;
-                             ox <= 1;
-                             ox++)
-                        {
-                            var rx =
-                                nx +
-                                ox;
-                            var ry =
-                                ny +
-                                oy;
-
-                            if (rx < 0 ||
-                                rx >= source.Width ||
-                                ry < 0 ||
-                                ry >= source.Height)
-                            {
-                                continue;
-                            }
-
-                            if (region.Contains(
-                                    ry *
-                                    source.Width +
-                                    rx))
-                            {
-                                touchesRegion =
-                                    true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (touchesRegion)
-                    {
-                        result.Add(
-                            (nx, ny));
-                    }
+                    // Do NOT require every outline cell to touch the fill directly. Pixel-Cord
+                    // diagonal bridges and a sharp shared apex can sit one extra cell away from
+                    // the categorical fill boundary. Dropping those cells fragments the real
+                    // source curve and makes the side tracer fail even though the designer's
+                    // outline is continuous. We intentionally keep every exact outline-colour
+                    // cell in this tight radius-2 boundary band; side projection + directed path
+                    // constraints below are responsible for rejecting internal slits/nearby
+                    // ornaments.
+                    result.Add(
+                        (nx, ny));
                 }
             }
         }
