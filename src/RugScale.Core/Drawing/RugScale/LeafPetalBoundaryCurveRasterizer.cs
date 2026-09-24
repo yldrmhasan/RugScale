@@ -33,7 +33,7 @@ internal static class LeafPetalBoundaryCurveRasterizer
         int sourceWeftDensity,
         int targetWarpDensity,
         int targetWeftDensity,
-        ISet<int> committedOutlinePixels)
+        IDictionary<int, byte> committedOutlinePixels)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
@@ -296,8 +296,8 @@ internal static class LeafPetalBoundaryCurveRasterizer
 
                     // Once an accepted paired fit owns an outline pixel, a later overlapping
                     // leaf/petal candidate may not erase it while cleaning its own old outline.
-                    committedOutlinePixels.Add(
-                        targetKey);
+                    committedOutlinePixels[targetKey] =
+                        model.OutlineColor;
                     continue;
                 }
 
@@ -334,7 +334,7 @@ internal static class LeafPetalBoundaryCurveRasterizer
 
                 if (current ==
                         model.OutlineColor &&
-                    committedOutlinePixels.Contains(
+                    committedOutlinePixels.ContainsKey(
                         targetKey))
                 {
                     continue;
