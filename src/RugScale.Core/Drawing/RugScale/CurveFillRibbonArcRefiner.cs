@@ -23,7 +23,6 @@ internal static class CurveFillRibbonArcRefiner
     private const double MinimumBroadArchElongation = 1.25;
     private const double MaximumBroadArchBoundingFill = 0.28;
     private const double MaximumBroadArchBoundaryRatio = 0.58;
-    private const double MaximumBroadArchFitDeviation = 4.00;
     private const double MaximumBoundaryRatio = 0.66;
     private const double MaximumWidthCoefficientVariation = 0.55;
     private const double MinimumTerminalWidthRatio = 0.45;
@@ -68,6 +67,11 @@ internal static class CurveFillRibbonArcRefiner
         var ribbonGeometryAccepted = 0;
         var fitSafe = 0;
         var curveToolFits = 0;
+        var broadOvalFits = 0;
+        var broadOvalAttempts = 0;
+        var maxBroadOvalDeviation = 0d;
+        var maxBroadOvalP95Deviation = 0d;
+        var lastBroadOvalReason = "not-attempted";
         var cubicBezierFits = 0;
         var cubicAttempts = 0;
         var maxCubicDeviation = 0d;
@@ -176,6 +180,69 @@ internal static class CurveFillRibbonArcRefiner
                     toolFit;
                 curveToolFits++;
             }
+            else if (broadSparseArch)
+            {
+                broadOvalAttempts++;
+
+                if (CurveFillBroadOvalArcFitter.TryFit(
+                        model,
+                        out var ovalFit,
+                        out var ovalDiagnostics))
+                {
+                    fit =
+                        ovalFit;
+                    broadOvalFits++;
+                }
+                else
+                {
+                    cubicAttempts++;
+
+                    if (CurveFillRibbonBezierFitter.TryFit(
+                            model,
+                            out var bezierFit,
+                            out var cubicDiagnostics))
+                    {
+                        fit =
+                            bezierFit;
+                        cubicBezierFits++;
+                    }
+                    else
+                    {
+                        fit =
+                            ElegantArcFitter.Fit(
+                                model,
+                                taperApex: false,
+                                maximumAnchors: 8,
+                                smoothingPasses: 2);
+                    }
+
+                    lastCubicReason =
+                        cubicDiagnostics.Reason;
+                    maxCubicDeviation =
+                        Math.Max(
+                            maxCubicDeviation,
+                            cubicDiagnostics.MaximumDeviation);
+                    maxCubicP95Deviation =
+                        Math.Max(
+                            maxCubicP95Deviation,
+                            cubicDiagnostics.Percentile95Deviation);
+                    maxCubicHandleRatio =
+                        Math.Max(
+                            maxCubicHandleRatio,
+                            cubicDiagnostics.MaximumHandleToChordRatio);
+                }
+
+                lastBroadOvalReason =
+                    ovalDiagnostics.Reason;
+                maxBroadOvalDeviation =
+                    Math.Max(
+                        maxBroadOvalDeviation,
+                        ovalDiagnostics.MaximumDeviation);
+                maxBroadOvalP95Deviation =
+                    Math.Max(
+                        maxBroadOvalP95Deviation,
+                        ovalDiagnostics.Percentile95Deviation);
+            }
             else
             {
                 cubicAttempts++;
@@ -227,32 +294,10 @@ internal static class CurveFillRibbonArcRefiner
                     maxFitCurvatureFlips,
                     fit.CurvatureSignFlips);
 
-            var broadArchFitSafe =
-                broadSparseArch &&
-                fit.CurvatureSignFlips == 0 &&
-                fit.MaximumCenterlineDeviation <=
-                    MaximumBroadArchFitDeviation;
-
-            if ((!fit.IsSafe &&
-                 !broadArchFitSafe) ||
+            if (!fit.IsSafe ||
                 fit.CurvatureSignFlips > 1)
             {
                 continue;
-            }
-
-            if (broadArchFitSafe &&
-                !fit.IsSafe)
-            {
-                // The generic rasterizers also honor ElegantArcFit.IsSafe. Promote the fit only
-                // after the broad-arch-specific sparse-region + stable-width + no-inflection
-                // gates above have independently established that this stronger smoothing is
-                // intentional.
-                fit =
-                    fit with
-                    {
-                        IsSafe = true,
-                        IsMonotonic = true,
-                    };
             }
 
             fitSafe++;
@@ -305,6 +350,11 @@ internal static class CurveFillRibbonArcRefiner
             RibbonGeometryAccepted: ribbonGeometryAccepted,
             FitSafe: fitSafe,
             CurveToolFits: curveToolFits,
+            BroadOvalFits: broadOvalFits,
+            BroadOvalAttempts: broadOvalAttempts,
+            MaxBroadOvalDeviation: maxBroadOvalDeviation,
+            MaxBroadOvalP95Deviation: maxBroadOvalP95Deviation,
+            LastBroadOvalReason: lastBroadOvalReason,
             CubicBezierFits: cubicBezierFits,
             CubicAttempts: cubicAttempts,
             MaxCubicDeviation: maxCubicDeviation,
@@ -457,6 +507,11 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     int RibbonGeometryAccepted,
     int FitSafe,
     int CurveToolFits,
+    int BroadOvalFits,
+    int BroadOvalAttempts,
+    double MaxBroadOvalDeviation,
+    double MaxBroadOvalP95Deviation,
+    string LastBroadOvalReason,
     int CubicBezierFits,
     int CubicAttempts,
     double MaxCubicDeviation,
