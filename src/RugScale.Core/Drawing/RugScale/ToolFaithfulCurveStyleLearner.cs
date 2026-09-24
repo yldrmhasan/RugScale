@@ -205,7 +205,7 @@ internal static class ToolFaithfulCurveStyleLearner
         // are part of the designer-visible indexed raster; removing them produced smoother-looking
         // hypotheses but measurably reduced target exact-F1 on oval curves. The multi-seed search
         // below addresses local optima without changing the source grid evidence.
-        var modelChain =
+        IReadOnlyList<(int X, int Y)> modelChain =
             sourceChain.ToArray();
 
         if (modelChain.Count < MinimumChainPixels)
