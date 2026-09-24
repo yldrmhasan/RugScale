@@ -1080,22 +1080,25 @@ internal static class Program
         var directSeconds =
             watch.Elapsed.TotalSeconds;
 
-        var ribbonStages =
-            CurveFillRibbonArcRefiner.AnalyzeCandidateStages(
-                source);
-
-        WriteRibbonCandidateAudit(
-            Path.Combine(
-                outputDir,
-                fixture.Name +
-                "_ribbon_candidates.csv"),
-            ribbonStages);
-
         if (string.Equals(
                 fixture.Name,
                 "C069A_CREAM_N69",
                 StringComparison.Ordinal))
         {
+            // Deep per-region inverse fitting is diagnostic-only and intentionally scoped to the
+            // real design currently under curve training. Running it for all four fixtures nearly
+            // doubles audit time without adding information to the aggregate quality gates.
+            var ribbonStages =
+                CurveFillRibbonArcRefiner.AnalyzeCandidateStages(
+                    source);
+
+            WriteRibbonCandidateAudit(
+                Path.Combine(
+                    outputDir,
+                    fixture.Name +
+                    "_ribbon_candidates.csv"),
+                ribbonStages);
+
             foreach (var stage in ribbonStages
                          .Where(stage =>
                              stage.MinX <= 440 &&
