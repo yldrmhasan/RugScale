@@ -262,6 +262,16 @@ internal static class CurveFillScaleEngine
                 source,
                 destination);
 
+        // Long filled oval/ribbon arcs need a different authority than the Pixel-Cord learner:
+        // they are categorical regions, not 1x1 strokes. Refine only high-confidence, stable-width
+        // curved ribbons as a smooth centreline + paired boundaries. The specialist rasterizer
+        // protects separator palette roles and only moves the local two-colour boundary band, so
+        // do not run the global ownership guard again afterwards (that would undo the aesthetic
+        // correction by snapping it back onto the source staircase).
+        _ = CurveFillRibbonArcRefiner.Apply(
+            source,
+            destination);
+
         PreserveExactSourceSymmetry(
             source,
             destination);
