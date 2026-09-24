@@ -461,24 +461,72 @@ internal static class CurveFillRibbonCenterlineBuilder
         int offsetX,
         int offsetY)
     {
+        const double CrossSectionTangentialWindow = 2.25;
+        const int TangentSampleRadius = 3;
+
         var result =
             new List<LeafPetalAxisSample>(
                 path.Count);
+
+        (double X, double Y) GlobalPoint(
+            int pathIndex)
+        {
+            var local =
+                path[pathIndex];
+
+            return
+                (
+                    X:
+                        local %
+                            localWidth +
+                        offsetX,
+                    Y:
+                        local /
+                            localWidth +
+                        offsetY
+                );
+        }
 
         for (var index = 0;
              index < path.Count;
              index++)
         {
-            var local =
-                path[index];
+            var point =
+                GlobalPoint(
+                    index);
             var x =
-                local %
-                localWidth +
-                offsetX;
+                point.X;
             var y =
-                local /
-                localWidth +
-                offsetY;
+                point.Y;
+            var firstTangentIndex =
+                Math.Max(
+                    0,
+                    index -
+                    TangentSampleRadius);
+            var lastTangentIndex =
+                Math.Min(
+                    path.Count - 1,
+                    index +
+                    TangentSampleRadius);
+            var firstTangentPoint =
+                GlobalPoint(
+                    firstTangentIndex);
+            var lastTangentPoint =
+                GlobalPoint(
+                    lastTangentIndex);
+            var tangentX =
+                lastTangentPoint.X -
+                firstTangentPoint.X;
+            var tangentY =
+                lastTangentPoint.Y -
+                firstTangentPoint.Y;
+            var tangentLength =
+                Math.Sqrt(
+                    tangentX *
+                        tangentX +
+                    tangentY *
+                        tangentY);
+
             var nearestSquared =
                 double.PositiveInfinity;
 
@@ -496,22 +544,122 @@ internal static class CurveFillRibbonCenterlineBuilder
                     dy *
                     dy;
 
-                if (distance <
-                    nearestSquared)
-                {
-                    nearestSquared =
-                        distance;
-                }
+                nearestSquared =
+                    Math.Min(
+                        nearestSquared,
+                        distance);
             }
 
-            // Boundary pixels represent occupied cell centres. +0.5 approximates the outer cell
-            // edge so a 5px digital ribbon does not collapse to a 4px geometric band.
             var halfWidth =
                 Math.Max(
                     0.5,
                     Math.Sqrt(
                         nearestSquared) +
                     0.5);
+
+            // Re-centre the digital skeleton from actual opposite ribbon boundaries. Thinning is
+            // topologically excellent but can sit one or more cells off the visual centre on a
+            // square-dilated diagonal. Using a LOCAL tangent avoids the PCA-fold problem on broad
+            // oval shoulders.
+            if (tangentLength >
+                    1e-9 &&
+                index >= 2 &&
+                index <=
+                    path.Count - 3)
+            {
+                tangentX /=
+                    tangentLength;
+                tangentY /=
+                    tangentLength;
+
+                var normalX =
+                    -tangentY;
+                var normalY =
+                    tangentX;
+                var positive =
+                    double.PositiveInfinity;
+                var negative =
+                    double.NegativeInfinity;
+
+                foreach (var edge in boundary)
+                {
+                    var dx =
+                        edge.X -
+                        x;
+                    var dy =
+                        edge.Y -
+                        y;
+                    var along =
+                        dx *
+                            tangentX +
+                        dy *
+                            tangentY;
+
+                    if (Math.Abs(
+                            along) >
+                        CrossSectionTangentialWindow)
+                    {
+                        continue;
+                    }
+
+                    var across =
+                        dx *
+                            normalX +
+                        dy *
+                            normalY;
+
+                    if (across > 0d)
+                    {
+                        positive =
+                            Math.Min(
+                                positive,
+                                across);
+                    }
+                    else if (across < 0d)
+                    {
+                        negative =
+                            Math.Max(
+                                negative,
+                                across);
+                    }
+                }
+
+                if (double.IsFinite(
+                        positive) &&
+                    double.IsFinite(
+                        negative) &&
+                    positive -
+                        negative >=
+                    1.0)
+                {
+                    var offset =
+                        (positive +
+                         negative) *
+                        0.5;
+
+                    // Never let one noisy cross-section jump the centreline more than two source
+                    // cells. Larger corrections indicate cap/branch contamination and fall back to
+                    // the topologically safe skeleton point.
+                    if (Math.Abs(
+                            offset) <=
+                        2.0)
+                    {
+                        x +=
+                            normalX *
+                            offset;
+                        y +=
+                            normalY *
+                            offset;
+                        halfWidth =
+                            Math.Max(
+                                0.5,
+                                (positive -
+                                 negative) *
+                                    0.5 +
+                                0.5);
+                    }
+                }
+            }
 
             result.Add(
                 new LeafPetalAxisSample(
