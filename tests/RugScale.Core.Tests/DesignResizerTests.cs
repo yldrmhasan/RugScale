@@ -1215,6 +1215,167 @@ public class DesignResizerTests
     }
 
     [Fact]
+    public void CurveFillRibbonArcRefiner_RebuildsBroadSparseOvalArchDespiteLowPcaElongation()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(218, 210, 184),
+            new RugColor(216, 185, 124),
+        });
+        var source = new DesignDocument(96, 64, palette);
+        var controls = new (int X, int Y)[]
+        {
+            (9, 54),
+            (18, 19),
+            (48, 8),
+            (78, 19),
+            (87, 54),
+        };
+
+        var sourceCenterline =
+            CurveRasterizer.Draw(
+                    controls,
+                    CurveType.SplineThroughPoints,
+                    0.85)
+                .ToArray();
+
+        foreach (var point in Rasterizer.Dilate(
+                     sourceCenterline,
+                     5,
+                     5))
+        {
+            if (point.X >= 0 &&
+                point.X < source.Width &&
+                point.Y >= 0 &&
+                point.Y < source.Height)
+            {
+                source.SetPixel(
+                    point.X,
+                    point.Y,
+                    1);
+            }
+        }
+
+        var regions =
+            LeafPetalRegionExtractor.Extract(
+                source);
+        var ribbonRegion =
+            Assert.Single(
+                regions.Where(region =>
+                    region.Color == 1));
+
+        Assert.True(
+            LeafPetalArcClassifier.TryClassify(
+                ribbonRegion,
+                source.Width,
+                out var candidate),
+            "The broad synthetic arch should reach ribbon candidate analysis.");
+        Assert.InRange(
+            candidate.Elongation,
+            1.25,
+            1.99);
+
+        const int targetWidth = 154;
+        const int targetHeight = 103;
+        var nearest =
+            DesignResizer.Scale(
+                source,
+                targetWidth,
+                targetHeight,
+                ScaleMode.NearestNeighbor,
+                40,
+                60,
+                40,
+                60);
+
+        var idealSourceArc =
+            Enumerable.Range(
+                    0,
+                    193)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        192d;
+                    var point =
+                        CurveRasterizer.Evaluate(
+                            controls,
+                            CurveType.SplineThroughPoints,
+                            0.85,
+                            t);
+
+                    return new ElegantArcPoint(
+                        point.X,
+                        point.Y,
+                        2.5);
+                })
+                .ToArray();
+        var idealPolygon =
+            LeafPetalArcRasterizer.BuildTargetPolygon(
+                idealSourceArc,
+                targetWidth /
+                    (double)source.Width,
+                targetHeight /
+                    (double)source.Height);
+        var expected =
+            LeafPetalArcRasterizer.RasterizePolygon(
+                    idealPolygon,
+                    targetWidth,
+                    targetHeight)
+                .Select(key =>
+                    (
+                        X: key %
+                           targetWidth,
+                        Y: key /
+                           targetWidth))
+                .ToHashSet();
+
+        var beforeScore =
+            PixelF1(
+                GetColorPixels(
+                    nearest,
+                    1),
+                expected);
+        var diagnostics =
+            CurveFillRibbonArcRefiner.ApplyWithDiagnostics(
+                source,
+                nearest);
+        var after =
+            GetColorPixels(
+                nearest,
+                1);
+        var afterScore =
+            PixelF1(
+                after,
+                expected);
+
+        Assert.True(
+            diagnostics.RibbonGeometryAccepted >= 1,
+            $"Broad sparse oval arch was rejected before geometric fitting: " +
+            $"classified={diagnostics.Classified}, axis={diagnostics.AxisBuilt}, " +
+            $"coverage={diagnostics.MaxPrincipalPathCoverage:0.000}, reason={diagnostics.LastCenterlineReason}.");
+        Assert.True(
+            diagnostics.Refined >= 1 &&
+            diagnostics.BoundaryPixelsChanged > 0,
+            $"Broad sparse oval arch was not redrawn: refined={diagnostics.Refined}, " +
+            $"changed={diagnostics.BoundaryPixelsChanged}, tool={diagnostics.CurveToolFits}, " +
+            $"cubic={diagnostics.CubicBezierFits}, dev={diagnostics.MaxFitDeviation:0.000}, " +
+            $"flips={diagnostics.MaxFitCurvatureFlips}.");
+        Assert.True(
+            afterScore >=
+                beforeScore +
+                0.003,
+            $"Broad arch did not move toward continuous target geometry: " +
+            $"before={beforeScore:P2}, after={afterScore:P2}, " +
+            $"tool={diagnostics.CurveToolFits}, cubic={diagnostics.CubicBezierFits}.");
+        Assert.Equal(
+            1,
+            CountComponents(
+                nearest,
+                1));
+    }
+
+    [Fact]
     public void Scale_CurveFill_DoesNotEraseNestedFillWhenOutlineAndInteriorShareCurvature()
     {
         var palette = new Palette(new[]
