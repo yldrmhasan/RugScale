@@ -589,6 +589,542 @@ public class DesignResizerTests
                 40,
                 50);
 
+        var mappedControls =
+            controls
+                .Select(point =>
+                    (
+                        X: (int)Math.Round(
+                            (point.X + 0.5) *
+                            result.Width /
+                            source.Width -
+                            0.5),
+                        Y: (int)Math.Round(
+                            (point.Y + 0.5) *
+                            result.Height /
+                            source.Height -
+                            0.5)))
+                .ToArray();
+
+        var expected =
+            Rasterizer.ConnectDiagonalSteps(
+                    CurveRasterizer.Draw(
+                        mappedControls,
+                        CurveType.SplineThroughPoints,
+                        0.85))
+                .ToHashSet();
+        var actual =
+            GetColorPixels(
+                result,
+                1);
+
+        Assert.True(
+            PixelNearF1(
+                actual,
+                expected,
+                radius: 1) >= 0.98,
+            "Wide oval redraw lost the source Curve-tool shoulders.");
+        var exactScore =
+            PixelF1(
+                actual,
+                expected);
+
+        Assert.True(
+            exactScore >= 0.80,
+            $"Wide oval redraw drifted too far from the target Curve-tool raster: exact={exactScore:P2}, " +
+            $"learned={diagnostics.LearnedCurves}, fallback={diagnostics.GraphFallbacks}, " +
+            $"safetyFallback={diagnostics.CurveSafetyFallbacks}, clipped={diagnostics.CorridorClippedPixels}, " +
+            $"accepted={diagnostics.AcceptedComponents}, pixelCord={diagnostics.PixelCordComponents}, " +
+            $"completePath={diagnostics.CompletePathRecoveries}.");
+        Assert.True(
+            diagnostics.CompletePathRecoveries >= 1,
+            "The Pixel-Cord oval should be recovered as one complete source drawing path.");
+        Assert.True(
+            diagnostics.LearnedCurves >= 1,
+            "The recovered oval path should reach the Curve inverse learner.");
+
+        Assert.Equal(
+            1,
+            CountFourConnectedComponents(
+                result,
+                1));
+    }
+
+    [Fact]
+    public void Scale_CurveFill_TallSideOval_PreservesOvalGeometryAtTargetScale()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(214, 205, 182),
+            new RugColor(255, 255, 255),
+        });
+        var source = new DesignDocument(52, 66, palette);
+        var controls = new (int X, int Y)[]
+        {
+            (42, 5),
+            (22, 8),
+            (8, 24),
+            (15, 46),
+            (38, 59),
+        };
+
+        foreach (var point in Rasterizer.ConnectDiagonalSteps(
+                     CurveRasterizer.Draw(
+                         controls,
+                         CurveType.SplineThroughPoints,
+                         0.85)))
+        {
+            source.SetPixel(point.X, point.Y, 1);
+        }
+
+        var result =
+            new DesignDocument(
+                83,
+                106,
+                palette);
+        var diagnostics =
+            CurveFillScaleEngine.ResizeWithDiagnostics(
+                source,
+                result,
+                40,
+                50,
+                40,
+                50);
+
+        var mappedControls =
+            controls
+                .Select(point =>
+                    (
+                        X: (int)Math.Round(
+                            (point.X + 0.5) *
+                            result.Width /
+                            source.Width -
+                            0.5),
+                        Y: (int)Math.Round(
+                            (point.Y + 0.5) *
+                            result.Height /
+                            source.Height -
+                            0.5)))
+                .ToArray();
+
+        var expected =
+            Rasterizer.ConnectDiagonalSteps(
+                    CurveRasterizer.Draw(
+                        mappedControls,
+                        CurveType.SplineThroughPoints,
+                        0.85))
+                .ToHashSet();
+        var actual =
+            GetColorPixels(
+                result,
+                1);
+
+        Assert.True(
+            PixelNearF1(
+                actual,
+                expected,
+                radius: 1) >= 0.98,
+            "Tall side oval lost its smooth target geometry.");
+        Assert.True(
+            PixelF1(
+                actual,
+                expected) >= 0.80,
+            "Tall side oval drifted too far from the target Curve-tool raster.");
+        Assert.True(
+            diagnostics.CompletePathRecoveries >= 1,
+            "Tall Pixel-Cord oval should be recovered as one complete source drawing path.");
+        Assert.True(
+            diagnostics.LearnedCurves >= 1,
+            "Tall recovered oval should reach the Curve inverse learner.");
+        Assert.Equal(
+            1,
+            CountFourConnectedComponents(
+                result,
+                1));
+    }
+
+    [Fact]
+    public void Scale_CurveFill_SoftOval_PreservesOvalGeometryAtTargetScale()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(214, 205, 182),
+            new RugColor(255, 255, 255),
+        });
+        var source = new DesignDocument(68, 50, palette);
+        var controls = new (int X, int Y)[]
+        {
+            (6, 39),
+            (13, 17),
+            (28, 8),
+            (46, 12),
+            (59, 32),
+        };
+
+        foreach (var point in Rasterizer.ConnectDiagonalSteps(
+                     CurveRasterizer.Draw(
+                         controls,
+                         CurveType.SplineThroughPoints,
+                         0.85)))
+        {
+            source.SetPixel(point.X, point.Y, 1);
+        }
+
+        var result =
+            new DesignDocument(
+                109,
+                80,
+                palette);
+        var diagnostics =
+            CurveFillScaleEngine.ResizeWithDiagnostics(
+                source,
+                result,
+                40,
+                50,
+                40,
+                50);
+
+        var mappedControls =
+            controls
+                .Select(point =>
+                    (
+                        X: (int)Math.Round(
+                            (point.X + 0.5) *
+                            result.Width /
+                            source.Width -
+                            0.5),
+                        Y: (int)Math.Round(
+                            (point.Y + 0.5) *
+                            result.Height /
+                            source.Height -
+                            0.5)))
+                .ToArray();
+
+        var expected =
+            Rasterizer.ConnectDiagonalSteps(
+                    CurveRasterizer.Draw(
+                        mappedControls,
+                        CurveType.SplineThroughPoints,
+                        0.85))
+                .ToHashSet();
+        var actual =
+            GetColorPixels(
+                result,
+                1);
+
+        Assert.True(
+            PixelNearF1(
+                actual,
+                expected,
+                radius: 1) >= 0.98,
+            "Soft oval lost its smooth target geometry.");
+        var exactScore =
+            PixelF1(
+                actual,
+                expected);
+
+        Assert.True(
+            exactScore >= 0.80,
+            $"Soft oval drifted too far from the target Curve-tool raster: exact={exactScore:P2}, " +
+            $"learned={diagnostics.LearnedCurves}, through={diagnostics.LearnedThroughPoints}, " +
+            $"fallback={diagnostics.GraphFallbacks}, safetyFallback={diagnostics.CurveSafetyFallbacks}, " +
+            $"completePath={diagnostics.CompletePathRecoveries}, clipped={diagnostics.CorridorClippedPixels}, " +
+            $"roundness={diagnostics.MeanLearnedRoundness:0.000}.");
+        Assert.True(
+            diagnostics.CompletePathRecoveries >= 1,
+            "Soft Pixel-Cord oval should be recovered as one complete source drawing path.");
+        Assert.True(
+            diagnostics.LearnedCurves >= 1,
+            "Soft recovered oval should reach the Curve inverse learner.");
+        Assert.Equal(
+            1,
+            CountFourConnectedComponents(
+                result,
+                1));
+    }
+
+    [Fact]
+    public void Scale_CurveFill_LearnsBezierCharacterInsteadOfForcingThroughPoints()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(214, 205, 182),
+            new RugColor(255, 255, 255),
+        });
+        var source = new DesignDocument(64, 56, palette);
+        var controls = new (int X, int Y)[]
+        {
+            (6, 44),
+            (8, 8),
+            (49, 4),
+            (57, 43),
+        };
+
+        foreach (var point in Rasterizer.ConnectDiagonalSteps(
+                     CurveRasterizer.Draw(
+                         controls,
+                         CurveType.Bezier,
+                         0.90)))
+        {
+            source.SetPixel(point.X, point.Y, 1);
+        }
+
+        var result = DesignResizer.Scale(
+            source,
+            101,
+            89,
+            ScaleMode.CurveFill,
+            40,
+            50,
+            40,
+            50);
+
+        var mapped =
+            controls
+                .Select(point =>
+                    (
+                        X: (int)Math.Round(
+                            (point.X + 0.5) *
+                            result.Width /
+                            source.Width -
+                            0.5),
+                        Y: (int)Math.Round(
+                            (point.Y + 0.5) *
+                            result.Height /
+                            source.Height -
+                            0.5)))
+                .ToArray();
+
+        var expectedBezier =
+            Rasterizer.ConnectDiagonalSteps(
+                    CurveRasterizer.Draw(
+                        mapped,
+                        CurveType.Bezier,
+                        0.90))
+                .ToHashSet();
+        var forcedThroughPoints =
+            Rasterizer.ConnectDiagonalSteps(
+                    CurveRasterizer.Draw(
+                        mapped,
+                        CurveType.SplineThroughPoints,
+                        0.25))
+                .ToHashSet();
+        var actual =
+            GetColorPixels(
+                result,
+                1);
+
+        var bezierScore =
+            PixelNearF1(
+                actual,
+                expectedBezier,
+                radius: 1);
+        var forcedScore =
+            PixelNearF1(
+                actual,
+                forcedThroughPoints,
+                radius: 1);
+
+        Assert.True(
+            bezierScore >= 0.96,
+            $"Bezier-trained replay lost the expected tool geometry: {bezierScore:P2}.");
+        Assert.True(
+            bezierScore >= forcedScore + 0.08,
+            $"Bezier source was flattened into generic Through Points: bezier={bezierScore:P2}, through={forcedScore:P2}.");
+    }
+
+    [Fact]
+    public void Scale_CurveFill_NativePixelCordEllipse_IsRecoveredAsEllipseTool()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(214, 205, 182),
+            new RugColor(255, 255, 255),
+        });
+        var source = new DesignDocument(48, 40, palette);
+
+        const int left = 7;
+        const int top = 5;
+        const int right = 38;
+        const int bottom = 31;
+
+        foreach (var point in Rasterizer.EllipseOutlineConnected(
+                     left,
+                     top,
+                     right,
+                     bottom))
+        {
+            source.SetPixel(
+                point.X,
+                point.Y,
+                1);
+        }
+
+        var result =
+            new DesignDocument(
+                84,
+                72,
+                palette);
+
+        var diagnostics =
+            CurveFillScaleEngine.ResizeWithDiagnostics(
+                source,
+                result,
+                40,
+                50,
+                40,
+                50);
+
+        Assert.True(
+            diagnostics.LearnedEllipses >= 1,
+            "A native Pixel-Cord ellipse should be recognized as the Ellipse tool family.");
+
+        int MapX(int x) =>
+            (int)Math.Round(
+                (x + 0.5) *
+                result.Width /
+                source.Width -
+                0.5);
+        int MapY(int y) =>
+            (int)Math.Round(
+                (y + 0.5) *
+                result.Height /
+                source.Height -
+                0.5);
+
+        var expected =
+            Rasterizer.EllipseOutlineConnected(
+                    MapX(left),
+                    MapY(top),
+                    MapX(right),
+                    MapY(bottom))
+                .ToHashSet();
+        var actual =
+            GetColorPixels(
+                result,
+                1);
+
+        Assert.True(
+            PixelNearF1(
+                actual,
+                expected,
+                radius: 1) >= 0.98,
+            "Recovered native ellipse lost its target oval geometry.");
+        Assert.True(
+            PixelF1(
+                actual,
+                expected) >= 0.82,
+            "Recovered native ellipse differs too much from RugCAD's own Ellipse rasterizer.");
+    }
+
+    [Fact]
+    public void Scale_CurveFill_EnlargeFilledRibbon_PreservesFilledAreaInsteadOfSkeletonizingIt()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(245, 240, 225),
+            new RugColor(35, 35, 35),
+        });
+        var source = new DesignDocument(48, 48, palette);
+
+        for (var x = 6; x <= 40; x++)
+        {
+            var centerY =
+                23 +
+                (int)Math.Round(
+                    9 *
+                    Math.Sin(
+                        (x - 6) /
+                        34d *
+                        Math.PI));
+
+            for (var dy = -1; dy <= 1; dy++)
+                source.SetPixel(x, centerY + dy, 1);
+        }
+
+        var result = DesignResizer.Scale(
+            source,
+            96,
+            96,
+            ScaleMode.CurveFill,
+            40,
+            50,
+            40,
+            50);
+
+        var sourceArea = CountColor(source, 1);
+        var targetArea = CountColor(result, 1);
+
+        Assert.Equal(1, CountComponents(result, 1));
+
+        // A 2x-by-2x geometric enlargement of a FILLED ribbon should remain a filled ribbon.
+        // The previous skeleton-based path hollowed/rewrote such regions; contour+fill should stay
+        // close to the expected 4x area while still smoothing the categorical boundary.
+        Assert.InRange(
+            targetArea / (double)sourceArea,
+            3.4,
+            4.6);
+    }
+
+    [Fact]
+    public void CurveFillRibbonArcRefiner_RebuildsStableWidthOvalRibbonFromGeometry()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(218, 210, 184),
+            new RugColor(134, 162, 125),
+        });
+        // Match the real C069 top-centre green ornament: one long half-oval ribbon rather than a
+        // complete U-shaped arch. This is the filled geometry that motivated the regression.
+        var source = new DesignDocument(56, 92, palette);
+        var controls = new (int X, int Y)[]
+        {
+            (45, 6),
+            (33, 12),
+            (19, 30),
+            (12, 54),
+            (11, 82),
+        };
+
+        var sourceCenterline =
+            CurveRasterizer.Draw(
+                    controls,
+                    CurveType.SplineThroughPoints,
+                    0.85)
+                .ToArray();
+
+        foreach (var point in Rasterizer.Dilate(
+                     sourceCenterline,
+                     5,
+                     5))
+        {
+            if (point.X >= 0 &&
+                point.X < source.Width &&
+                point.Y >= 0 &&
+                point.Y < source.Height)
+            {
+                source.SetPixel(
+                    point.X,
+                    point.Y,
+                    1);
+            }
+        }
+
+        var targetWidth = 90;
+        var targetHeight = 147;
+        var nearest =
+            DesignResizer.Scale(
+                source,
+                targetWidth,
+                targetHeight,
+                ScaleMode.NearestNeighbor,
+                40,
+                60,
+                40,
+                60);
+
+        // Judge the redraw against the CONTINUOUS source Curve geometry, not against a
+        // block-expanded source raster. This is the visual target for carpet design: the source
+        // staircase is evidence for an underlying curve, not geometry that should be magnified.
         var idealSourceArc =
             Enumerable.Range(
                     0,
@@ -605,9 +1141,6 @@ public class DesignResizerTests
                             0.85,
                             t);
 
-                    // A five-cell RectBrush occupies approximately +/-2.5 cell widths around its
-                    // centreline. The target we want to learn, however, is the continuous parallel
-                    // ribbon boundary rather than a scaled copy of the source brush staircase.
                     return new ElegantArcPoint(
                         point.X,
                         point.Y,
