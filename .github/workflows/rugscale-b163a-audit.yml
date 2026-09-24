@@ -1,0 +1,63 @@
+name: RugScale B163A motif audit
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - "src/RugScale.Core/**"
+      - "tools/RugScale.RugScaleAudit/**"
+      - "tests/RugScale.Core.Tests/**"
+      - "tests/fixtures/rugscale/**"
+      - ".github/workflows/rugscale-b163a-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  b163a-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: |
+          dotnet restore ./tools/RugScale.RugScaleAudit/RugScale.RugScaleAudit.csproj
+          dotnet restore ./tests/RugScale.Core.Tests/RugScale.Core.Tests.csproj
+
+      - name: Decode exact B163A fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rugscale"
+          cat             ./tests/fixtures/rugscale/b163a.parts/part00.txt             ./tests/fixtures/rugscale/b163a.parts/part01.txt             ./tests/fixtures/rugscale/b163a.parts/part03.txt             ./tests/fixtures/rugscale/b163a.parts/part04.txt             ./tests/fixtures/rugscale/b163a.parts/part05.txt             ./tests/fixtures/rugscale/b163a.parts/part06.txt             ./tests/fixtures/rugscale/b163a.parts/part07.txt             ./tests/fixtures/rugscale/b163a.parts/part08.txt             ./tests/fixtures/rugscale/b163a.parts/part09.txt             | base64 -d             | xz -dc > "$RUNNER_TEMP/rugscale/B163A.bmp"
+          echo "9437ea0e9d9615ffd46037516610d53d7fdf37a96835d90aee9fbf90522918da  $RUNNER_TEMP/rugscale/B163A.bmp"             | sha256sum -c -
+
+      - name: Core regression tests
+        run: dotnet test ./tests/RugScale.Core.Tests/RugScale.Core.Tests.csproj -c Release --no-restore
+
+      - name: Run motif-by-motif 160x230 audit
+        run: |
+          mkdir -p ./artifacts/rugscale-b163a
+          dotnet run             --project ./tools/RugScale.RugScaleAudit/RugScale.RugScaleAudit.csproj             -c Release --no-restore --             --input "$RUNNER_TEMP/rugscale/B163A.bmp"             --output "$GITHUB_WORKSPACE/artifacts/rugscale-b163a"
+
+      - name: Publish audit summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f ./artifacts/rugscale-b163a/report.md ]; then
+            cat ./artifacts/rugscale-b163a/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload audit outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rugscale-b163a-160x230-audit
+          path: ./artifacts/rugscale-b163a
+          if-no-files-found: warn
+          retention-days: 7
