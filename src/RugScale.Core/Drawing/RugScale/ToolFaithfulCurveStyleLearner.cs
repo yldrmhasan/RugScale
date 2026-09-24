@@ -45,9 +45,16 @@ internal static class ToolFaithfulCurveStyleLearner
         0.18,
         0.25,
         0.35,
+        // Oval / ellipse-like carpet curves are especially sensitive in the middle/high
+        // roundness range. Keep a denser search there so a half-oval is not forced into
+        // the nearest coarse slider bucket and then flattened during target-scale redraw.
+        0.42,
         0.50,
+        0.60,
         0.70,
+        0.78,
         0.85,
+        0.92,
         1.00,
     ];
 
