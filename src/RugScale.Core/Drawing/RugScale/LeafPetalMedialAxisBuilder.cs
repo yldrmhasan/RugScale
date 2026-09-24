@@ -2,9 +2,11 @@ namespace RugScale.Core.Drawing;
 
 internal static class LeafPetalMedialAxisBuilder
 {
-    private const double TargetBinWidth = 1.25;
-    private const double MinimumCoverage = 0.68;
-    private const int MaximumEmptyBinRun = 3;
+    // A sharp 1x1 apex produces sparse projected bins; slightly wider bins preserve the real
+    // base-to-apex flow while still rejecting genuinely disconnected/branched masses below.
+    private const double TargetBinWidth = 1.50;
+    private const double MinimumCoverage = 0.58;
+    private const int MaximumEmptyBinRun = 4;
 
     private sealed class Bin
     {
@@ -116,7 +118,21 @@ internal static class LeafPetalMedialAxisBuilder
         {
             var dx = samples[i].X - samples[i - 1].X;
             var dy = samples[i].Y - samples[i - 1].Y;
-            if (Math.Sqrt(dx * dx + dy * dy) > 4.25)
+            var jump =
+                Math.Sqrt(dx * dx + dy * dy);
+            var nearTerminal =
+                i <= 2 ||
+                i >= samples.Count - 2;
+            var maximumJump =
+                nearTerminal
+                    ? 7.0
+                    : 5.50;
+
+            // A broad blunt base or sharp apex can move the centroid of the first/last projected
+            // bins by more than an interior bin even though the filled region is completely
+            // continuous. Keep the strict interior discontinuity gate, but allow this bounded
+            // terminal fan-out so a single full leaf is not forced through the lobe splitter.
+            if (jump > maximumJump)
                 return false;
         }
 

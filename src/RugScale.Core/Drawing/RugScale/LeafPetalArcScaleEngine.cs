@@ -71,6 +71,12 @@ internal static class LeafPetalArcScaleEngine
         var centerlineRefined = 0;
         var boundaryCurveChanged = 0;
         var centerlineChanged = 0;
+        var boundaryCurveBuilt = 0;
+        var boundaryCurveRasterRejected = 0;
+        // A whole paired boundary fit that passed the source/path safety gates becomes authoritative
+        // target geometry. Later overlapping leaf/petal candidates may add to it, but must not erase
+        // it as if it were stale Curve & Fill residue.
+        var committedBoundaryOutlinePixels = new Dictionary<int, byte>();
 
         foreach (var candidate in candidates)
         {
@@ -110,6 +116,8 @@ internal static class LeafPetalArcScaleEngine
                     protectedStrokeColors,
                     out var boundaryModel))
             {
+                boundaryCurveBuilt++;
+
                 regionChanges =
                     LeafPetalBoundaryCurveRasterizer.Apply(
                         source,
@@ -119,10 +127,14 @@ internal static class LeafPetalArcScaleEngine
                         sourceWarpDensity,
                         sourceWeftDensity,
                         targetWarpDensity,
-                        targetWeftDensity);
+                        targetWeftDensity,
+                        committedBoundaryOutlinePixels);
 
                 usedBoundaryCurve =
                     regionChanges > 0;
+
+                if (!usedBoundaryCurve)
+                    boundaryCurveRasterRejected++;
             }
 
             if (regionChanges <= 0)
@@ -172,7 +184,21 @@ internal static class LeafPetalArcScaleEngine
             }
         }
 
-        // The Curve & Fill baseline already contains strict ownership + RugCAD tool replay.
+        // A later centreline fallback can overlap an already accepted paired-boundary candidate.
+        // The paired fit has stronger direct designer-outline evidence, so restore those committed
+        // pixels after all candidates have run instead of allowing a weaker fallback to punch holes
+        // through the accepted Curve/Pixel-Cord path.
+        foreach (var pair in committedBoundaryOutlinePixels)
+        {
+            var x = pair.Key % destination.Width;
+            var y = pair.Key / destination.Width;
+            destination.SetPixel(
+                x,
+                y,
+                pair.Value);
+        }
+
+        // The Curve & Fill baseline already contains strict ownership + RugScale tool replay.
         // Specialist refinement is deliberately LAST. LeafPetalArcRasterizer protects those
         // separator palette roles itself and allows only a local two-colour boundary displacement;
         // re-running the global ownership guard here would erase the aesthetic correction.
@@ -187,7 +213,9 @@ internal static class LeafPetalArcScaleEngine
             boundaryCurveRefined,
             centerlineRefined,
             boundaryCurveChanged,
-            centerlineChanged);
+            centerlineChanged,
+            boundaryCurveBuilt,
+            boundaryCurveRasterRejected);
     }
 
     internal static IReadOnlyList<LeafPetalCandidateStage> AnalyzeCandidateStages(
@@ -344,14 +372,29 @@ internal static class LeafPetalArcScaleEngine
 
         foreach (var region in regions)
         {
-            if (!protectedStrokeColors.Contains(
+            if (protectedStrokeColors.Contains(
                     region.Color))
             {
-                analysisRegions.AddRange(
-                    LeafPetalLobeExtractor.Extract(
-                        source,
-                        region));
+                continue;
             }
+
+            // If the complete connected region already has the geometry of one safe leaf/petal,
+            // keep it intact. Running the lobe splitter on a single broad leaf can interpret a
+            // harmless skeleton fork near the wide base as a branch junction and return only the
+            // apex half as a sub-lobe. Lobe extraction is intended for compound connected floral
+            // masses that FAIL whole-region leaf/petal classification.
+            if (LeafPetalArcClassifier.TryClassify(
+                    region,
+                    source.Width,
+                    out _))
+            {
+                continue;
+            }
+
+            analysisRegions.AddRange(
+                LeafPetalLobeExtractor.Extract(
+                    source,
+                    region));
         }
 
         analysisRegions.AddRange(

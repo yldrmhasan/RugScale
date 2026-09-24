@@ -9,7 +9,12 @@ namespace RugScale.Core.Drawing;
 /// </summary>
 internal static class LeafPetalBoundaryCurveBuilder
 {
-    private const double MinimumProtectedOutlineCoverage = 0.72;
+    // A designer leaf may intentionally leave the broad base open while both long sides and the
+    // apex are fully outlined. Measuring support across the whole fill boundary therefore
+    // underestimates a perfectly valid paired-curve case. 58% still demands dominant outline
+    // evidence while admitting the two-sided/open-base drawing style used by the regression
+    // fixture and by real floral carpet artwork.
+    private const double MinimumProtectedOutlineCoverage = 0.58;
     private const int MinimumSideSamples = 8;
 
     private sealed class Bin
@@ -454,53 +459,16 @@ internal static class LeafPetalBoundaryCurveBuilder
                         continue;
                     }
 
-                    // Keep the outline attached to THIS filled region. A radius-2 search can see
-                    // an unrelated nearby white ornament; require at least one 8-neighbour touch
-                    // back to the region.
-                    var touchesRegion =
-                        false;
-
-                    for (var oy = -1;
-                         oy <= 1 &&
-                         !touchesRegion;
-                         oy++)
-                    {
-                        for (var ox = -1;
-                             ox <= 1;
-                             ox++)
-                        {
-                            var rx =
-                                nx +
-                                ox;
-                            var ry =
-                                ny +
-                                oy;
-
-                            if (rx < 0 ||
-                                rx >= source.Width ||
-                                ry < 0 ||
-                                ry >= source.Height)
-                            {
-                                continue;
-                            }
-
-                            if (region.Contains(
-                                    ry *
-                                    source.Width +
-                                    rx))
-                            {
-                                touchesRegion =
-                                    true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (touchesRegion)
-                    {
-                        result.Add(
-                            (nx, ny));
-                    }
+                    // Do NOT require every outline cell to touch the fill directly. Pixel-Cord
+                    // diagonal bridges and a sharp shared apex can sit one extra cell away from
+                    // the categorical fill boundary. Dropping those cells fragments the real
+                    // source curve and makes the side tracer fail even though the designer's
+                    // outline is continuous. We intentionally keep every exact outline-colour
+                    // cell in this tight radius-2 boundary band; side projection + directed path
+                    // constraints below are responsible for rejecting internal slits/nearby
+                    // ornaments.
+                    result.Add(
+                        (nx, ny));
                 }
             }
         }
@@ -1133,13 +1101,15 @@ internal static class LeafPetalBoundaryCurveBuilder
     {
         apex = default;
 
-        // Only a genuinely tapered leaf/petal receives a common sharp apex. Rounded lobes and
-        // broad petal crowns keep their two independent source sides.
+        // Only a genuinely tapered leaf/petal receives a common sharp apex. The medial-axis
+        // width estimate is intentionally a little tolerant because a 1px Pixel-Cord outline and
+        // scan-bin quantisation can make the last source cross-section look 1-2 cells wider than
+        // the visual tip.
         if (model.ApexWidth >
                 Math.Max(
-                    3.25,
+                    4.5,
                     model.BaseWidth *
-                    0.58))
+                    0.70))
         {
             return false;
         }
@@ -1154,16 +1124,26 @@ internal static class LeafPetalBoundaryCurveBuilder
                     leftEnd.Y -
                     rightEnd.Y,
                     2));
+        var maximumEndDistance =
+            Math.Max(
+                10.0,
+                Math.Min(
+                    14.0,
+                    span *
+                    0.16));
 
-        if (endDistance > 7.0)
+        if (endDistance >
+            maximumEndDistance)
+        {
             return false;
+        }
 
         var threshold =
             maximumMajor -
             Math.Max(
-                2.5,
+                3.5,
                 span *
-                0.08);
+                0.12);
 
         var candidates =
             projected
@@ -1201,8 +1181,17 @@ internal static class LeafPetalBoundaryCurveBuilder
 
             // The shared anchor must itself be a real source-outline pixel very close to both
             // extracted sides. This prevents an artificial centre point from moving the tip.
-            if (leftDistance <= 3 &&
-                rightDistance <= 3)
+            var maximumAnchorDistance =
+                Math.Max(
+                    4,
+                    (int)Math.Ceiling(
+                        span *
+                        0.07));
+
+            if (leftDistance <=
+                    maximumAnchorDistance &&
+                rightDistance <=
+                    maximumAnchorDistance)
             {
                 apex =
                     point;

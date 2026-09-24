@@ -14,10 +14,12 @@
 - `Rasterizer` and `CurveRasterizer`
 - `DesignResizer` and all RugScale scale modes
 - Motif memory/catalog/shrink/repair/topology engine
+- Portable motif-memory store and packaged seed previously owned by RugCAD.App
 - Curve & Fill ownership, curve-style learning and Pixel-Cord replay
 - Leaf / Petal classifier, medial axis, elegant arc, paired-boundary fitter/optimizer/rasterizer/lobe extraction
 - Scale-related core tests
 - Real-raster fixtures and audit tools/workflows
+- Standalone indexed-BMP codec and CLI runner
 - RugScale documentation
 
 ## Namespace transition
@@ -40,3 +42,14 @@ Do **not** delete RugScale code from RugCAD until all of these are true:
 6. RugCAD integration is replaced by a package/reference boundary.
 
 Only after that gate should the old RugCAD RugScale implementation be removed.
+
+
+## Host UI boundary
+
+RugCAD's WPF resize window and DesignCanvas input/drawing code are intentionally not copied into the
+engine repository. They are host integration code and contain unrelated RugCAD behaviour. Copying
+them would recreate the coupling this migration is meant to remove.
+
+RugScale-specific state previously hidden in RugCAD.App (motif-memory store + seed) **has** been
+moved. The later RugCAD integration step should make the WPF host consume RugScale.Core through a
+project/package reference.

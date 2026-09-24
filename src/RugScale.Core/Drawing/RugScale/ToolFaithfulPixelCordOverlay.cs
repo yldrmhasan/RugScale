@@ -3,7 +3,7 @@ using RugScale.Core.Models;
 namespace RugScale.Core.Drawing;
 
 /// <summary>
-/// Replays source 1x1 curve/cord artwork through RugCAD's OWN curve rasterizer after Curve & Fill
+/// Replays source 1x1 curve/cord artwork through RugScale's OWN curve rasterizer after Curve & Fill
 /// has reconstructed the filled colour regions.
 ///
 /// This pass is intentionally conservative. It only accepts source components that look like a
@@ -168,10 +168,10 @@ internal static class ToolFaithfulPixelCordOverlay
                     scaleY);
             }
 
-            // Closed oval/ellipse outlines are a separate native RugCAD tool family. They must
+            // Closed oval/ellipse outlines are a separate native RugScale tool family. They must
             // NOT be forced through the open Curve inverse model: doing that invents a start/end
             // tangent and can flatten the seam. If the complete source component is explained by
-            // RugCAD's own Ellipse outline raster with strong evidence, redraw it using that exact
+            // RugScale's own Ellipse outline raster with strong evidence, redraw it using that exact
             // tool at the target bounding box.
             if (component.TrustedStrokeRole &&
                 TryFitNativeEllipse(
@@ -312,7 +312,7 @@ internal static class ToolFaithfulPixelCordOverlay
 
                         if (mappedControls.Count >= 2)
                         {
-                            // Infer which REAL RugCAD Curve family and roundness most plausibly
+                            // Infer which REAL RugScale Curve family and roundness most plausibly
                             // generated the source chain. The fitted curve is still not trusted
                             // blindly: at target size it must stay inside a one-pixel neighbourhood
                             // of the literal source-graph replay. This blocks attractive-looking
@@ -2328,7 +2328,7 @@ internal static class ToolFaithfulPixelCordOverlay
                 LooksCurved(
                     sourceSegment))
             {
-                // Standard RugCAD Curve / through-points rasterization.
+                // Standard RugScale Curve / through-points rasterization.
                 segment =
                     CurveRasterizer.Draw(
                         mappedSegment,

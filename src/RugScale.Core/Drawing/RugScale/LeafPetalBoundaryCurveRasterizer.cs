@@ -10,10 +10,19 @@ namespace RugScale.Core.Drawing;
 internal static class LeafPetalBoundaryCurveRasterizer
 {
     private const double SourceOuterCorridor = 2.35;
-    private const double SourceOutlineEraseCorridor = 1.20;
+    // Curve & Fill's pre-existing outline can land anywhere inside the same outer-path
+    // ownership corridor after anisotropic resize. Once the paired replacement is validated,
+    // every stale OUTER outline pixel in that corridor must be eligible for cleanup; otherwise
+    // detached white fragments can survive beside the rebuilt curve. Internal slits remain safe
+    // because this test is measured against SourceOuterPath, not against every outline-colour pixel.
+    private const double SourceOutlineEraseCorridor = SourceOuterCorridor;
     private const double MaximumFillShift = 1.75;
-    private const double MaximumCurveSourceDeviation = 1.65;
-    private const double MinimumCurveSourceSupport = 0.985;
+    // Source support is measured after integer target rasterization. An anisotropically scaled
+    // 1x1 Curve/Pixel-Cord path can shift about two source cells at isolated high-curvature
+    // shoulders without changing the intended designer arc. The paired-width and indexed-fill
+    // gates below still reject real geometric drift.
+    private const double MaximumCurveSourceDeviation = 2.00;
+    private const double MinimumCurveSourceSupport = 0.960;
 
     public static int Apply(
         DesignDocument source,
@@ -23,12 +32,14 @@ internal static class LeafPetalBoundaryCurveRasterizer
         int sourceWarpDensity,
         int sourceWeftDensity,
         int targetWarpDensity,
-        int targetWeftDensity)
+        int targetWeftDensity,
+        IDictionary<int, byte> committedOutlinePixels)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(protectedStrokeColors);
+        ArgumentNullException.ThrowIfNull(committedOutlinePixels);
 
         var scaleX =
             destination.Width /
@@ -81,29 +92,35 @@ internal static class LeafPetalBoundaryCurveRasterizer
             return 0;
         }
 
-        if (!HasSourcePathSupport(
+        var leftSourceSupported =
+            HasSourcePathSupport(
                 left,
                 model.LeftSourcePath,
                 scaleX,
                 scaleY,
                 MaximumCurveSourceDeviation,
-                MinimumCurveSourceSupport) ||
-            !HasSourcePathSupport(
+                MinimumCurveSourceSupport);
+        var rightSourceSupported =
+            HasSourcePathSupport(
                 right,
                 model.RightSourcePath,
                 scaleX,
                 scaleY,
                 MaximumCurveSourceDeviation,
-                MinimumCurveSourceSupport) ||
-            !HasPairedWidthProfileSupport(
+                MinimumCurveSourceSupport);
+        var widthProfileSupported =
+            HasPairedWidthProfileSupport(
                 left,
                 right,
                 model.LeftSourcePath,
                 model.RightSourcePath,
                 scaleX,
-                scaleY))
-        {
-            // Reject the WHOLE paired fit. Applying only the locally-supported pieces would mix
+                scaleY);
+
+        if (!leftSourceSupported ||
+            !rightSourceSupported ||
+            !widthProfileSupported)
+        {            // Reject the WHOLE paired fit. Applying only the locally-supported pieces would mix
             // old and new outlines and create the exact small shoulders/kinks the specialist mode
             // is intended to remove.
             return 0;
@@ -163,8 +180,20 @@ internal static class LeafPetalBoundaryCurveRasterizer
                 destination.Height);
         }
 
-        if (model.DrawApexCap)
+        var sourceApexDistance =
+            Distance(
+                model.LeftSourcePath[^1],
+                model.RightSourcePath[^1]);
+        var closeSourceApex =
+            sourceApexDistance <= 4.0;
+
+        if (model.DrawApexCap ||
+            closeSourceApex)
         {
+            // If the recovered source sides already converge to the same 1x1/Pixel-Cord tip,
+            // always reconnect their target raster endpoints. Independent curve rasterization can
+            // otherwise leave a one-cell phase gap even though the source designer drew a single
+            // shared apex.
             AddDilatedLine(
                 newOutline,
                 left[^1],
@@ -235,18 +264,6 @@ internal static class LeafPetalBoundaryCurveRasterizer
                     (x + 0.5) /
                     scaleX -
                     0.5;
-
-                if (!IsNearSourceOuterPath(
-                        model.SourceOuterPath,
-                        source.Width,
-                        source.Height,
-                        sourceX,
-                        sourceY,
-                        SourceOuterCorridor))
-                {
-                    continue;
-                }
-
                 var targetKey =
                     y *
                     destination.Width +
@@ -259,12 +276,27 @@ internal static class LeafPetalBoundaryCurveRasterizer
                 if (newOutline.Contains(
                         targetKey))
                 {
+                    // The paired left/right model already passed whole-curve source support AND
+                    // width-profile safety above. Do not clip individual validated target pixels
+                    // against the source corridor a second time: integer target raster phase can
+                    // move isolated bridge cells slightly outside that corridor and would split an
+                    // otherwise correct Pixel-Cord curve into visible fragments.
                     if (current !=
                             model.OutlineColor &&
-                        (!protectedStrokeColors.Contains(
-                             current) ||
-                         current ==
-                         model.OutlineColor))
+                        current !=
+                            model.ArcModel.Candidate.Region.Color &&
+                        protectedStrokeColors.Contains(
+                            current))
+                    {
+                        // A genuinely different proven separator/tool colour still owns this
+                        // pixel. The candidate's OWN fill colour is always replaceable by its
+                        // validated outer outline, even if the global palette-role heuristic also
+                        // classified that fill colour as stroke-like in a small synthetic design.
+                        continue;
+                    }
+
+                    if (current !=
+                        model.OutlineColor)
                     {
                         destination.SetPixel(
                             x,
@@ -273,6 +305,21 @@ internal static class LeafPetalBoundaryCurveRasterizer
                         changed++;
                     }
 
+                    // Once an accepted paired fit owns an outline pixel, a later overlapping
+                    // leaf/petal candidate may not erase it while cleaning its own old outline.
+                    committedOutlinePixels[targetKey] =
+                        model.OutlineColor;
+                    continue;
+                }
+
+                if (!IsNearSourceOuterPath(
+                        model.SourceOuterPath,
+                        source.Width,
+                        source.Height,
+                        sourceX,
+                        sourceY,
+                        SourceOuterCorridor))
+                {
                     continue;
                 }
 
@@ -295,6 +342,14 @@ internal static class LeafPetalBoundaryCurveRasterizer
                     source.GetPixel(
                         sx,
                         sy);
+
+                if (current ==
+                        model.OutlineColor &&
+                    committedOutlinePixels.ContainsKey(
+                        targetKey))
+                {
+                    continue;
+                }
 
                 if (inside)
                 {
@@ -466,9 +521,9 @@ internal static class LeafPetalBoundaryCurveRasterizer
                     expectedR);
             var tolerance =
                 Math.Max(
-                    2.25,
+                    2.75,
                     expectedWidth *
-                    0.24);
+                    0.28);
 
             if (Math.Abs(
                     actualWidth -
@@ -502,13 +557,19 @@ internal static class LeafPetalBoundaryCurveRasterizer
                 actualWidth;
         }
 
-        // A leaf may naturally taper quickly close to its apex, therefore one abrupt sample is
-        // tolerated. Repeated width shocks mean the two independently-fitted curves no longer
-        // describe the same source body.
-        return supported >=
-                   SampleCount -
-                   2 &&
-               abruptJumps <= 1;
+        // Raster phase, a broad base and a real sharp apex can consume a few samples even when
+        // BOTH individual curves have already passed the strict source-path support gate above.
+        // 27/32 (84.375%) keeps the paired-width check conservative while avoiding a false reject
+        // caused by one terminal raster-phase sample. Repeated shocks still reject mismatched or
+        // bulged sides.
+        var accepted =
+            supported >=
+                SampleCount -
+                5 &&
+            abruptJumps <= 2;
+
+
+        return accepted;
     }
 
     private static (double X, double Y) SamplePath(
@@ -1203,12 +1264,17 @@ internal static class LeafPetalBoundaryCurveRasterizer
         int width,
         int height)
     {
+        // Caps are part of the same 1x1 / Pixel-Cord drawing language as the side
+        // curves. A plain Bresenham diagonal can be only 8-connected and split the final outline
+        // under RugCAD's 4-connected pixel semantics; bridge its diagonal steps before applying
+        // the quality-owned pen size.
         foreach (var point in Rasterizer.Dilate(
-                     Rasterizer.Line(
-                         start.X,
-                         start.Y,
-                         end.X,
-                         end.Y),
+                     Rasterizer.ConnectDiagonalSteps(
+                         Rasterizer.Line(
+                             start.X,
+                             start.Y,
+                             end.X,
+                             end.Y)),
                      penSizeX,
                      penSizeY))
         {

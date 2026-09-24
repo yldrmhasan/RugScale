@@ -190,7 +190,7 @@ internal static class LeafPetalArcRasterizer
                     continue;
 
                 // Never shave a specialist region into a protected separator role merely to make
-                // the outline look smoother; RugCAD's tool replay owns those pixels.
+                // the outline look smoother; RugScale's tool replay owns those pixels.
                 if (protectedStrokeColors.Contains(sourceOwner))
                     continue;
 

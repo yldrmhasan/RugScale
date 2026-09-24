@@ -4,7 +4,7 @@
 **Son güncelleme:** 23 Eylül 2026  
 **Core:** `RugScaleEngine.cs` + `MotifShrinkEngine.cs` + `MotifMemory.cs` + `MotifRepairEngine.cs` + `MotifSourceCatalog.cs`  
 **Dispatcher:** `src/RugScale.Core/Drawing/DesignResizer.cs`  
-**UI:** `src/RugScale host.App/Windows/ResizeDesignWindow.xaml(.cs)`  
+**Host:** UI bağımsız; manuel çalışma için `tools/RugScale.Cli`, entegrasyon için `RugScale.Core` API  
 **Testler:** `tests/RugScale.Core.Tests/DesignResizerTests.cs` + `MotifMemoryTests.cs`
 
 ## Amaç
@@ -264,7 +264,7 @@ olarak paylaşılabilir.
 Runtime hafıza:
 
 ```text
-%AppData%\RugScale host\rugscale-motif-memory.json
+%AppData%\RugScale host application\rugscale-motif-memory.json
 ```
 
 Dosya Import/Export edilebilir. Böylece kullanıcı güncel motif hafızasını dışarı verebilir; aynı
@@ -615,7 +615,7 @@ fakat target-detail üretme kuralları shrink'ten ayrı olacaktır.
 
 ## Palette güvenliği
 
-RugScale host document categorical/indexed rasterdır.
+RugScale host application document categorical/indexed rasterdır.
 
 RugScale:
 
@@ -881,10 +881,10 @@ src/RugScale.Core/Drawing/RugScale/MotifMemory.cs
 src/RugScale.Core/Drawing/RugScale/MotifRepairEngine.cs
 src/RugScale.Core/Drawing/RugScale/MotifSourceCatalog.cs
 
-src/RugScale host.App/Services/MotifMemoryStore.cs
-src/RugScale host.App/Windows/ResizeDesignWindow.xaml
-src/RugScale host.App/Windows/ResizeDesignWindow.xaml.cs
-src/RugScale host.App/ViewModels/DesignSurfaceViewModel.cs
+src/RugScale host application.App/Services/MotifMemoryStore.cs
+src/RugScale host application.App/Windows/ResizeDesignWindow.xaml
+src/RugScale host application.App/Windows/ResizeDesignWindow.xaml.cs
+src/RugScale host application.App/ViewModels/DesignSurfaceViewModel.cs
 
 tests/RugScale.Core.Tests/DesignResizerTests.cs
 tests/RugScale.Core.Tests/MotifMemoryTests.cs
@@ -1155,7 +1155,7 @@ ancak normal motif RugScale execution path'inden çıkarılmıştır. Ürün kon
 
 `RugScale Curve & Fill` içindeki trusted 1x1 / Pixel-Cord çizgiler artık yalnız edge-for-edge
 ölçeklenmiyor. `ToolFaithfulCurveStyleLearner`, immutable source rasterı teacher kabul edip
-RugScale host'in **kendi** `CurveRasterizer` family'lerine tersine fit yapar:
+RugScale host application'in **kendi** `CurveRasterizer` family'lerine tersine fit yapar:
 
 - `SplineThroughPoints`,
 - `Bezier`,
@@ -1165,7 +1165,7 @@ RugScale host'in **kendi** `CurveRasterizer` family'lerine tersine fit yapar:
 Through-Points için source kontrol noktaları curve üstünde olduğu için ordered raster chain üzerinde
 kontrol-index optimizasyonu yapılır ve roundness grid'i birlikte aranır. Bezier'de handle noktaları
 raster üstünde olmadığı için önce chord-length parameterization + least-squares effective cubic
-handle fit'i çıkarılır, ardından handle noktaları RugScale host rasterizer skoruna göre lokal optimize
+handle fit'i çıkarılır, ardından handle noktaları RugScale host application rasterizer skoruna göre lokal optimize
 edilir. Bezier/Spline'da historical slider roundness ile handle displacement rasterdan tekil olarak
 ayırt edilemeyebildiği için motor "eski slider değerini tahmin etmek" yerine **aynı target
 geometrisini üreten effective model** öğrenir.
@@ -1246,7 +1246,7 @@ Yeni modun kontratı:
 5. İç beyaz slit/dekoratif çizgi dış kenarı ele geçiremez. Source outline graph traversal artık
    directional weighted path search kullanır: base→apex ilerleme, doğru normal tarafı ve lokal
    çizgi devamlılığı puanlanır; source outline dışında shortcut üretilemez.
-6. Her dış kenar `LeafPetalBoundaryCurveFitter` ile RugScale host
+6. Her dış kenar `LeafPetalBoundaryCurveFitter` ile RugScale host application
    `SplineThroughPoints` family'sine tersine fit edilir. Source endpoint tangent'i yanında 11
    noktadan **macro tangent profile** da eşleşmek zorundadır. 6–7 kontrol noktası staircase'i
    takip etmesin diye artan complexity penalty alır.
@@ -1254,7 +1254,7 @@ Yeni modun kontratı:
    `LeafPetalBoundaryPairOptimizer` source control noktalarını değiştirmeden iki tarafın
    roundness değerlerini birlikte arar. Hedef fonksiyon:
    source corridor + macro tangent flow + turn/curvature profile + paired width profile +
-   width smoothness. Tüm standart RugScale host roundness grid'i aranır; ilk fit'in çevresine kilitlenmez.
+   width smoothness. Tüm standart RugScale host application roundness grid'i aranır; ilk fit'in çevresine kilitlenmez.
 8. Rasterizer yalnız source outer-boundary koridorunda değişiklik yapar. İç slit ile aynı palette
    index'i taşıyan beyaz bir pikselin silinmesi için ayrıca gerçek recovered outer path'e yaklaşık
    1.2 source-pixel mesafede olması gerekir. Böylece dış yayı temizlerken iç çizgi ölmez.

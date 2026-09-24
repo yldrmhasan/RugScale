@@ -12,7 +12,7 @@ public sealed class Palette
     public Palette(IEnumerable<RugColor>? initialColors = null)
     {
         _colors = initialColors?.Take(MaximumColorCount).ToList() ?? new List<RugColor> { RugColor.White, RugColor.Black };
-        // An indexed RugCAD document always has addressable slots 0..255.  File formats such as
+        // An indexed RugScale document always has addressable slots 0..255.  File formats such as
         // BMP may carry a shorter colour table, but padding it here keeps palette UI, shortcuts
         // and colour-transfer operations from treating missing indexes as non-existent colours.
         while (_colors.Count < MaximumColorCount)
