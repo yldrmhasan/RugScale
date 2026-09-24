@@ -633,6 +633,7 @@ public class DesignResizerTests
             $"Wide oval redraw drifted too far from the target Curve-tool raster: exact={exactScore:P2}, " +
             $"learned={diagnostics.LearnedCurves}, fallback={diagnostics.GraphFallbacks}, " +
             $"safetyFallback={diagnostics.CurveSafetyFallbacks}, clipped={diagnostics.CorridorClippedPixels}, " +
+            $"accepted={diagnostics.AcceptedComponents}, pixelCord={diagnostics.PixelCordComponents}, " +
             $"ovalCenterline={diagnostics.OvalCenterlineRecoveries}, dominantPath={diagnostics.DominantPathRecoveries}.");
         Assert.Equal(
             1,
