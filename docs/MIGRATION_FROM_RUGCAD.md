@@ -30,19 +30,25 @@ The standalone repository uses `RugScale.Core.*`. This is intentionally a mechan
 
 Keep C# / .NET 8 for the engine for now. The current code, pixel rasterizers, tests and training audits are already native to this stack, and switching languages during extraction would combine migration risk with algorithm risk. If profiling later shows a real hotspot, use targeted optimisation (SIMD, spans, parallel analysis, native interop) behind the stable .NET API rather than rewriting the whole engine.
 
-## RugCAD removal gate
+## RugCAD removal status
 
-Do **not** delete RugScale code from RugCAD until all of these are true:
+The extraction/removal is complete.
 
-1. Standalone core builds on clean CI.
-2. Unit/regression tests pass.
-3. B163A motif/topology validation passes.
-4. Four-design curve suite passes.
-5. B996 Leaf / Petal output is manually accepted.
-6. RugCAD integration is replaced by a package/reference boundary.
+- Standalone core build and regression tests are green.
+- B163A motif audit is green.
+- B163A real-design validation is green.
+- B163A drawing self-training is green.
+- The four-design curve suite is green.
+- The standalone Windows Workbench builds successfully.
+- RugCAD cleanup was merged to `chatgpt/rugcad-work-2026-09-22` as
+  `a1e3ab88691852969ece5dbbc77b6d829f05e33d`.
+- RugCAD `main` never contained the RugScale development branch.
 
-Only after that gate should the old RugCAD RugScale implementation be removed.
-
+The original migration plan proposed switching RugCAD to a package/reference boundary before
+deleting duplicate code. The final separation is stricter: RugCAD's RugScale integration was
+removed entirely, and manual RugScale development/training moved to `RugScale.Workbench`.
+If RugCAD consumes RugScale again later, it must do so through a versioned boundary rather than
+source-copying the engine.
 
 ## Host UI boundary
 
@@ -51,5 +57,5 @@ engine repository. They are host integration code and contain unrelated RugCAD b
 them would recreate the coupling this migration is meant to remove.
 
 RugScale-specific state previously hidden in RugCAD.App (motif-memory store + seed) **has** been
-moved. The later RugCAD integration step should make the WPF host consume RugScale.Core through a
-project/package reference.
+moved. RugCAD's old RugScale WPF integration has now been removed. The standalone
+`RugScale.Workbench` owns the manual feedback/training flow.
