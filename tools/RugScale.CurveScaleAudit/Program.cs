@@ -1516,6 +1516,10 @@ internal static class Program
             $"ownership={directStyleDiagnostics.RegionOwnershipCorrections:N0}, barriers={directStyleDiagnostics.BarrierCrossingCorrections:N0}, " +
             $"ribbons={directStyleDiagnostics.RibbonArcRefined:N0}/{directStyleDiagnostics.RibbonArcCandidates:N0} " +
             $"({directStyleDiagnostics.RibbonArcPixelsChanged:N0}px; tool={directStyleDiagnostics.RibbonArcCurveToolFits:N0}, " +
+            $"throughGeo={directStyleDiagnostics.RibbonArcGeometricThroughFits:N0}/{directStyleDiagnostics.RibbonArcGeometricThroughAttempts:N0} " +
+            $"r={directStyleDiagnostics.RibbonArcGeometricThroughMeanRoundness:0.000} " +
+            $"p95={directStyleDiagnostics.RibbonArcGeometricThroughMaxP95Deviation:0.000}, " +
+            $"oval={directStyleDiagnostics.RibbonArcBroadOvalFits:N0}/{directStyleDiagnostics.RibbonArcBroadOvalAttempts:N0}, " +
             $"cubic={directStyleDiagnostics.RibbonArcCubicBezierFits:N0}, outlined={directStyleDiagnostics.RibbonArcOutlinedRefined:N0}), " +
             $"cache={directStyleDiagnostics.StyleFitCacheHits:N0}, round={directStyleDiagnostics.MeanLearnedRoundness:0.000}");
 
