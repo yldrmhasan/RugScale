@@ -45,7 +45,11 @@ internal static class LeafPetalMedialAxisBuilder
 
         var span = maxMajor - minMajor;
         if (span < 6d)
+        {
+            Console.Error.WriteLine(
+                $"[leaf-axis-reject] reason=span bbox=({region.MinX},{region.MinY})-({region.MaxX},{region.MaxY}) area={region.Area} sub={region.IsSubLobe} span={span:F2}");
             return false;
+        }
 
         var binCount = Math.Clamp(
             (int)Math.Round(span / TargetBinWidth) + 1,
@@ -76,7 +80,11 @@ internal static class LeafPetalMedialAxisBuilder
         var occupied = bins.Count(bin => bin.Count > 0);
         var coverage = occupied / (double)binCount;
         if (coverage < MinimumCoverage)
+        {
+            Console.Error.WriteLine(
+                $"[leaf-axis-reject] reason=coverage bbox=({region.MinX},{region.MinY})-({region.MaxX},{region.MaxY}) area={region.Area} sub={region.IsSubLobe} coverage={coverage:F3} bins={binCount}");
             return false;
+        }
 
         var maxGap = 0;
         var gap = 0;
@@ -94,7 +102,11 @@ internal static class LeafPetalMedialAxisBuilder
         }
 
         if (maxGap > MaximumEmptyBinRun)
+        {
+            Console.Error.WriteLine(
+                $"[leaf-axis-reject] reason=gap bbox=({region.MinX},{region.MinY})-({region.MaxX},{region.MaxY}) area={region.Area} sub={region.IsSubLobe} gap={maxGap} coverage={coverage:F3}");
             return false;
+        }
 
         var samples = new List<LeafPetalAxisSample>(occupied);
         for (var index = 0; index < bins.Length; index++)
@@ -112,14 +124,24 @@ internal static class LeafPetalMedialAxisBuilder
         }
 
         if (samples.Count < 7)
+        {
+            Console.Error.WriteLine(
+                $"[leaf-axis-reject] reason=samples bbox=({region.MinX},{region.MinY})-({region.MaxX},{region.MaxY}) area={region.Area} sub={region.IsSubLobe} samples={samples.Count}");
             return false;
+        }
 
         for (var i = 1; i < samples.Count; i++)
         {
             var dx = samples[i].X - samples[i - 1].X;
             var dy = samples[i].Y - samples[i - 1].Y;
-            if (Math.Sqrt(dx * dx + dy * dy) > 5.50)
+            var jump =
+                Math.Sqrt(dx * dx + dy * dy);
+            if (jump > 5.50)
+            {
+                Console.Error.WriteLine(
+                    $"[leaf-axis-reject] reason=jump bbox=({region.MinX},{region.MinY})-({region.MaxX},{region.MaxY}) area={region.Area} sub={region.IsSubLobe} jump={jump:F2} at={i}/{samples.Count}");
                 return false;
+            }
         }
 
         var edgeWindow = Math.Clamp(samples.Count / 8, 2, 5);
