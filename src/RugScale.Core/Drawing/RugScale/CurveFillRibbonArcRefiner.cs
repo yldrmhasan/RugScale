@@ -20,6 +20,9 @@ internal static class CurveFillRibbonArcRefiner
 {
     private const int MaximumRefinedRegions = 160;
     private const double MinimumRibbonElongation = 2.00;
+    private const double MinimumBroadArchElongation = 1.25;
+    private const double MaximumBroadArchBoundingFill = 0.28;
+    private const double MaximumBroadArchBoundaryRatio = 0.58;
     private const double MaximumBoundaryRatio = 0.66;
     private const double MaximumWidthCoefficientVariation = 0.55;
     private const double MinimumTerminalWidthRatio = 0.45;
@@ -88,8 +91,27 @@ internal static class CurveFillRibbonArcRefiner
 
             classified++;
 
-            if (candidate.Elongation <
-                    MinimumRibbonElongation ||
+            var boundingFillRatio =
+                region.Area /
+                (double)Math.Max(
+                    1,
+                    region.Width *
+                    region.Height);
+            var broadSparseArch =
+                candidate.Elongation >=
+                    MinimumBroadArchElongation &&
+                boundingFillRatio <=
+                    MaximumBroadArchBoundingFill &&
+                candidate.BoundaryRatio <=
+                    MaximumBroadArchBoundaryRatio;
+
+            // A wide U/half-oval has poor PCA elongation because its two shoulders spread across
+            // both axes, even though visually it is one long ribbon. Admit only sparse broad
+            // arches here; the medial-skeleton, stable-width, bend and no-inflection gates below
+            // remain the actual redraw authority.
+            if ((candidate.Elongation <
+                     MinimumRibbonElongation &&
+                 !broadSparseArch) ||
                 candidate.BoundaryRatio >
                     MaximumBoundaryRatio)
             {
