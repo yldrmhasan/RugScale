@@ -267,6 +267,8 @@ internal static class ToolFaithfulPixelCordOverlay
             // keep the conservative multi-chain path below.
             var fitPixelCord =
                 pixelCord;
+            var recoveredSmoothOval =
+                false;
 
             if (component.TrustedStrokeRole &&
                 pixelCord &&
@@ -286,6 +288,8 @@ internal static class ToolFaithfulPixelCordOverlay
                     dominantPath,
                 };
                 dominantPathRecoveries++;
+                recoveredSmoothOval =
+                    true;
             }
             else if (component.TrustedStrokeRole &&
                      pixelCord &&
@@ -315,6 +319,7 @@ internal static class ToolFaithfulPixelCordOverlay
                         continue;
 
                     var hasSourceCusp =
+                        !recoveredSmoothOval &&
                         HasSourceCusp(
                             chain);
 
