@@ -112,9 +112,11 @@ public sealed class LeafPetalBoundaryCurveRasterizerTests
 
         // The specialist pass is allowed to clean digital staircases, but the indexed white
         // separator must remain one connected visual outline around this simple leaf.
+        var componentCount = CountComponents(target, 1);
         Assert.True(
-            CountComponents(target, 1) <= 2,
-            "The rebuilt outer curve fragmented into unrelated white pieces.");
+            componentCount <= 2,
+            $"The rebuilt outer curve fragmented into unrelated white pieces. " +
+            $"components={componentCount}; {DescribeComponents(target, 1)}");
     }
 
     [Fact]
@@ -343,6 +345,82 @@ public sealed class LeafPetalBoundaryCurveRasterizerTests
         }
 
         return count;
+    }
+
+    private static string DescribeComponents(
+        DesignDocument document,
+        byte color)
+    {
+        var seen = new bool[document.Width * document.Height];
+        var queue = new Queue<(int X, int Y)>();
+        var descriptions = new List<string>();
+        (int X, int Y)[] directions =
+        [
+            (-1, 0), (1, 0), (0, -1), (0, 1),
+            (-1, -1), (1, -1), (-1, 1), (1, 1),
+        ];
+
+        for (var y = 0; y < document.Height; y++)
+        {
+            for (var x = 0; x < document.Width; x++)
+            {
+                var start = y * document.Width + x;
+
+                if (seen[start] ||
+                    document.GetPixel(x, y) != color)
+                {
+                    continue;
+                }
+
+                var size = 0;
+                var minX = x;
+                var maxX = x;
+                var minY = y;
+                var maxY = y;
+                seen[start] = true;
+                queue.Enqueue((x, y));
+
+                while (queue.Count > 0)
+                {
+                    var current = queue.Dequeue();
+                    size++;
+                    minX = Math.Min(minX, current.X);
+                    maxX = Math.Max(maxX, current.X);
+                    minY = Math.Min(minY, current.Y);
+                    maxY = Math.Max(maxY, current.Y);
+
+                    foreach (var (dx, dy) in directions)
+                    {
+                        var nx = current.X + dx;
+                        var ny = current.Y + dy;
+
+                        if (nx < 0 || nx >= document.Width ||
+                            ny < 0 || ny >= document.Height)
+                        {
+                            continue;
+                        }
+
+                        var next = ny * document.Width + nx;
+
+                        if (seen[next] ||
+                            document.GetPixel(nx, ny) != color)
+                        {
+                            continue;
+                        }
+
+                        seen[next] = true;
+                        queue.Enqueue((nx, ny));
+                    }
+                }
+
+                descriptions.Add(
+                    $"size={size}@({minX},{minY})-({maxX},{maxY})");
+            }
+        }
+
+        return string.Join(
+            ", ",
+            descriptions);
     }
 
     private static IEnumerable<(int X, int Y)> RasterizePolygon(
