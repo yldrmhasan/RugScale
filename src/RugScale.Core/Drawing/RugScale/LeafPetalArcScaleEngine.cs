@@ -71,6 +71,8 @@ internal static class LeafPetalArcScaleEngine
         var centerlineRefined = 0;
         var boundaryCurveChanged = 0;
         var centerlineChanged = 0;
+        var boundaryCurveBuilt = 0;
+        var boundaryCurveRasterRejected = 0;
 
         foreach (var candidate in candidates)
         {
@@ -110,6 +112,8 @@ internal static class LeafPetalArcScaleEngine
                     protectedStrokeColors,
                     out var boundaryModel))
             {
+                boundaryCurveBuilt++;
+
                 regionChanges =
                     LeafPetalBoundaryCurveRasterizer.Apply(
                         source,
@@ -123,6 +127,9 @@ internal static class LeafPetalArcScaleEngine
 
                 usedBoundaryCurve =
                     regionChanges > 0;
+
+                if (!usedBoundaryCurve)
+                    boundaryCurveRasterRejected++;
             }
 
             if (regionChanges <= 0)
@@ -187,7 +194,9 @@ internal static class LeafPetalArcScaleEngine
             boundaryCurveRefined,
             centerlineRefined,
             boundaryCurveChanged,
-            centerlineChanged);
+            centerlineChanged,
+            boundaryCurveBuilt,
+            boundaryCurveRasterRejected);
     }
 
     internal static IReadOnlyList<LeafPetalCandidateStage> AnalyzeCandidateStages(
