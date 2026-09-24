@@ -568,21 +568,7 @@ internal static class CurveFillRibbonArcRefiner
                     {
                         ElegantArcFit fit;
 
-                        if (CurveFillRibbonToolFitter.TryFit(
-                                model,
-                                out var toolFit,
-                                out var toolStyle))
-                        {
-                            fit =
-                                toolFit;
-                            fitKind =
-                                "curve-tool";
-                            curveFamily =
-                                toolStyle.Type.ToString();
-                            roundness =
-                                toolStyle.Roundness;
-                        }
-                        else if (broadSparseArch)
+                        if (broadSparseArch)
                         {
                             if (CurveFillRibbonThroughPointsFitter.TryFit(
                                     model,
@@ -597,6 +583,20 @@ internal static class CurveFillRibbonArcRefiner
                                     CurveType.SplineThroughPoints.ToString();
                                 roundness =
                                     throughDiagnostics.Roundness;
+                            }
+                            else if (CurveFillRibbonToolFitter.TryFit(
+                                         model,
+                                         out var toolFit,
+                                         out var toolStyle))
+                            {
+                                fit =
+                                    toolFit;
+                                fitKind =
+                                    "curve-tool";
+                                curveFamily =
+                                    toolStyle.Type.ToString();
+                                roundness =
+                                    toolStyle.Roundness;
                             }
                             else if (CurveFillBroadOvalArcFitter.TryFit(
                                          model,
@@ -635,6 +635,20 @@ internal static class CurveFillRibbonArcRefiner
                                 curveFamily =
                                     CurveType.Spline.ToString();
                             }
+                        }
+                        else if (CurveFillRibbonToolFitter.TryFit(
+                                     model,
+                                     out var toolFit,
+                                     out var toolStyle))
+                        {
+                            fit =
+                                toolFit;
+                            fitKind =
+                                "curve-tool";
+                            curveFamily =
+                                toolStyle.Type.ToString();
+                            roundness =
+                                toolStyle.Roundness;
                         }
                         else if (CurveFillRibbonBezierFitter.TryFit(
                                      model,
