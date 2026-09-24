@@ -356,6 +356,21 @@ internal static class ToolFaithfulCurveStyleLearner
                 }
             }
 
+            if (controlCount == 5 &&
+                rawScore >= 0.80 &&
+                rawScore < 0.995 &&
+                HasDominantAxisSpan(
+                    sourceChain))
+            {
+                JointRefineFiveControlOval(
+                    sourceChain,
+                    indices,
+                    sourceSet,
+                    pixelCord,
+                    ref rawScore,
+                    ref roundness);
+            }
+
             var controls =
                 indices
                     .Select(index =>
@@ -369,6 +384,187 @@ internal static class ToolFaithfulCurveStyleLearner
                 rawScore,
                 simplifyTolerance: 0d,
                 ref best);
+        }
+    }
+
+    private static bool HasDominantAxisSpan(
+        IReadOnlyList<(int X, int Y)> points)
+    {
+        if (points.Count < 20)
+            return false;
+
+        var first =
+            points[0];
+        var last =
+            points[^1];
+        var minX =
+            points.Min(point =>
+                point.X);
+        var maxX =
+            points.Max(point =>
+                point.X);
+        var minY =
+            points.Min(point =>
+                point.Y);
+        var maxY =
+            points.Max(point =>
+                point.Y);
+        var width =
+            maxX -
+            minX;
+        var height =
+            maxY -
+            minY;
+
+        if (width < 8 &&
+            height < 8)
+        {
+            return false;
+        }
+
+        var useX =
+            Math.Abs(
+                last.X -
+                first.X) >=
+            Math.Abs(
+                last.Y -
+                first.Y);
+        var extent =
+            useX
+                ? width
+                : height;
+        var endpointSpan =
+            useX
+                ? Math.Abs(
+                    last.X -
+                    first.X)
+                : Math.Abs(
+                    last.Y -
+                    first.Y);
+
+        return extent >= 8 &&
+               endpointSpan >=
+               extent * 0.70;
+    }
+
+    private static void JointRefineFiveControlOval(
+        IReadOnlyList<(int X, int Y)> sourceChain,
+        int[] indices,
+        IReadOnlySet<(int X, int Y)> sourceSet,
+        bool pixelCord,
+        ref double rawScore,
+        ref double roundness)
+    {
+        if (indices.Length != 5)
+            return;
+
+        // Coordinate-by-coordinate descent can get stuck when both oval shoulders need to move
+        // together. Search the three interior controls jointly in a tiny deterministic
+        // neighbourhood. This stays source-trained; no target ground truth is used at runtime.
+        foreach (var step in new[]
+                 {
+                     2,
+                     1,
+                 })
+        {
+            var bestIndices =
+                indices.ToArray();
+            var bestScore =
+                rawScore;
+
+            foreach (var delta1 in new[]
+                     {
+                         -step,
+                         0,
+                         step,
+                     })
+            {
+                foreach (var delta2 in new[]
+                         {
+                             -step,
+                             0,
+                             step,
+                         })
+                {
+                    foreach (var delta3 in new[]
+                             {
+                                 -step,
+                                 0,
+                                 step,
+                             })
+                    {
+                        if (delta1 == 0 &&
+                            delta2 == 0 &&
+                            delta3 == 0)
+                        {
+                            continue;
+                        }
+
+                        var i1 =
+                            indices[1] +
+                            delta1;
+                        var i2 =
+                            indices[2] +
+                            delta2;
+                        var i3 =
+                            indices[3] +
+                            delta3;
+
+                        if (i1 <= indices[0] ||
+                            i2 <= i1 ||
+                            i3 <= i2 ||
+                            i3 >= indices[4])
+                        {
+                            continue;
+                        }
+
+                        var candidate =
+                            new[]
+                            {
+                                indices[0],
+                                i1,
+                                i2,
+                                i3,
+                                indices[4],
+                            };
+                        var candidateScore =
+                            ScoreThroughPoints(
+                                sourceChain,
+                                candidate,
+                                roundness,
+                                sourceSet,
+                                pixelCord);
+
+                        if (candidateScore <=
+                            bestScore)
+                        {
+                            continue;
+                        }
+
+                        bestScore =
+                            candidateScore;
+                        bestIndices =
+                            candidate;
+                    }
+                }
+            }
+
+            Array.Copy(
+                bestIndices,
+                indices,
+                indices.Length);
+
+            var optimized =
+                FindBestThroughRoundness(
+                    sourceChain,
+                    indices,
+                    sourceSet,
+                    pixelCord);
+
+            rawScore =
+                optimized.Score;
+            roundness =
+                optimized.Roundness;
         }
     }
 
