@@ -1514,6 +1514,8 @@ internal static class Program
             $"E {directStyleDiagnostics.LearnedEllipses:N0}), fallback={directStyleDiagnostics.GraphFallbacks:N0}, " +
             $"safety={directStyleDiagnostics.CurveSafetyFallbacks:N0}, clipped={directStyleDiagnostics.CorridorClippedPixels:N0}, " +
             $"ownership={directStyleDiagnostics.RegionOwnershipCorrections:N0}, barriers={directStyleDiagnostics.BarrierCrossingCorrections:N0}, " +
+            $"ribbons={directStyleDiagnostics.RibbonArcRefined:N0}/{directStyleDiagnostics.RibbonArcCandidates:N0} " +
+            $"({directStyleDiagnostics.RibbonArcPixelsChanged:N0}px), " +
             $"cache={directStyleDiagnostics.StyleFitCacheHits:N0}, round={directStyleDiagnostics.MeanLearnedRoundness:0.000}");
 
         return row;
