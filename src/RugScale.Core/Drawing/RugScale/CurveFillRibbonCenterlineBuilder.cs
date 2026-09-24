@@ -30,11 +30,13 @@ internal static class CurveFillRibbonCenterlineBuilder
     public static bool TryBuild(
         LeafPetalArcCandidate candidate,
         int sourceWidth,
-        out LeafPetalArcModel model)
+        out LeafPetalArcModel model,
+        out RibbonCenterlineBuildDiagnostics diagnostics)
     {
         ArgumentNullException.ThrowIfNull(candidate);
 
         model = null!;
+        diagnostics = default;
         var region =
             candidate.Region;
         var width =
@@ -95,6 +97,12 @@ internal static class CurveFillRibbonCenterlineBuilder
         if (skeletonPixels.Length <
             MinimumSkeletonPixels)
         {
+            diagnostics = new RibbonCenterlineBuildDiagnostics(
+                skeletonPixels.Length,
+                0,
+                0,
+                0d,
+                "skeleton-too-short");
             return false;
         }
 
@@ -110,7 +118,15 @@ internal static class CurveFillRibbonCenterlineBuilder
                 .ToArray();
 
         if (endpoints.Length < 2)
+        {
+            diagnostics = new RibbonCenterlineBuildDiagnostics(
+                skeletonPixels.Length,
+                endpoints.Length,
+                0,
+                0d,
+                "not-enough-endpoints");
             return false;
+        }
 
         if (!TryFindPrincipalPath(
                 endpoints,
@@ -119,6 +135,15 @@ internal static class CurveFillRibbonCenterlineBuilder
             path.Count <
                 MinimumPathPixels)
         {
+            diagnostics = new RibbonCenterlineBuildDiagnostics(
+                skeletonPixels.Length,
+                endpoints.Length,
+                path.Count,
+                path.Count /
+                    (double)Math.Max(
+                        1,
+                        skeletonPixels.Length),
+                "principal-path-too-short");
             return false;
         }
 
@@ -131,6 +156,12 @@ internal static class CurveFillRibbonCenterlineBuilder
         if (pathCoverage <
             MinimumPrincipalPathCoverage)
         {
+            diagnostics = new RibbonCenterlineBuildDiagnostics(
+                skeletonPixels.Length,
+                endpoints.Length,
+                path.Count,
+                pathCoverage,
+                "principal-path-coverage");
             return false;
         }
 
@@ -145,7 +176,15 @@ internal static class CurveFillRibbonCenterlineBuilder
                 .ToArray();
 
         if (boundary.Length == 0)
+        {
+            diagnostics = new RibbonCenterlineBuildDiagnostics(
+                skeletonPixels.Length,
+                endpoints.Length,
+                path.Count,
+                pathCoverage,
+                "no-boundary");
             return false;
+        }
 
         var samples =
             BuildSamples(
@@ -158,6 +197,12 @@ internal static class CurveFillRibbonCenterlineBuilder
         if (samples.Count <
             MinimumPathPixels)
         {
+            diagnostics = new RibbonCenterlineBuildDiagnostics(
+                skeletonPixels.Length,
+                endpoints.Length,
+                path.Count,
+                pathCoverage,
+                "not-enough-samples");
             return false;
         }
 
@@ -185,6 +230,13 @@ internal static class CurveFillRibbonCenterlineBuilder
                     terminalWindow)
                 .Average(sample =>
                     sample.HalfWidth);
+
+        diagnostics = new RibbonCenterlineBuildDiagnostics(
+            skeletonPixels.Length,
+            endpoints.Length,
+            path.Count,
+            pathCoverage,
+            "ok");
 
         model =
             new LeafPetalArcModel(
@@ -517,3 +569,11 @@ internal static class CurveFillRibbonCenterlineBuilder
         return result;
     }
 }
+
+
+internal readonly record struct RibbonCenterlineBuildDiagnostics(
+    int SkeletonPixels,
+    int Endpoints,
+    int PrincipalPathPixels,
+    double PrincipalPathCoverage,
+    string Reason);
