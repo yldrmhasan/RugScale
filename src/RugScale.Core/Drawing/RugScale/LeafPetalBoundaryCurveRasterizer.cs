@@ -10,10 +10,12 @@ namespace RugScale.Core.Drawing;
 internal static class LeafPetalBoundaryCurveRasterizer
 {
     private const double SourceOuterCorridor = 2.35;
-    // Curve & Fill's pre-existing outline can land roughly 1.5 source cells away after
-    // anisotropic resize. Use a wider erase corridor around the RECOVERED OUTER designer path;
-    // internal slits stay safe because they are not members of SourceOuterPath.
-    private const double SourceOutlineEraseCorridor = 1.90;
+    // Curve & Fill's pre-existing outline can land anywhere inside the same outer-path
+    // ownership corridor after anisotropic resize. Once the paired replacement is validated,
+    // every stale OUTER outline pixel in that corridor must be eligible for cleanup; otherwise
+    // detached white fragments can survive beside the rebuilt curve. Internal slits remain safe
+    // because this test is measured against SourceOuterPath, not against every outline-colour pixel.
+    private const double SourceOutlineEraseCorridor = SourceOuterCorridor;
     private const double MaximumFillShift = 1.75;
     // Source support is measured after integer target rasterization. An anisotropically scaled
     // 1x1 Curve/Pixel-Cord path can shift about two source cells at isolated high-curvature
