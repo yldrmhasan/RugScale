@@ -194,11 +194,30 @@ public static class MotifMemoryStore
 
         try
         {
-            using var seedStream =
+            var assembly =
                 typeof(MotifMemoryStore)
-                    .Assembly
-                    .GetManifestResourceStream(
-                        SeedResourceName);
+                    .Assembly;
+            var resourceName =
+                assembly
+                    .GetManifestResourceNames()
+                    .FirstOrDefault(name =>
+                        string.Equals(
+                            name,
+                            SeedResourceName,
+                            StringComparison.Ordinal))
+                ??
+                assembly
+                    .GetManifestResourceNames()
+                    .FirstOrDefault(name =>
+                        name.EndsWith(
+                            "rugscale-motif-memory.seed.gz.b64",
+                            StringComparison.OrdinalIgnoreCase));
+
+            using var seedStream =
+                resourceName is null
+                    ? null
+                    : assembly.GetManifestResourceStream(
+                        resourceName);
 
             if (seedStream is not null)
             {
