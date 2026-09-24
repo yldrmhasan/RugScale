@@ -257,6 +257,28 @@ internal static class ToolFaithfulPixelCordOverlay
                     source.Width,
                     pixelCord);
 
+            // Pixel Cord inserts orthogonal bridge cells between diagonal Curve pixels. On a
+            // smooth oval those bridge cells can touch a nearby part of the same stroke and make
+            // the raw graph look artificially branched, causing TraceChains to split one designer
+            // curve into many fragments. Recover the endpoint-to-endpoint 4-connected main path
+            // only when it covers almost the whole component; true branched networks therefore
+            // keep the conservative multi-chain path below.
+            if (component.TrustedStrokeRole &&
+                pixelCord &&
+                TryTraceDominantPixelCordPath(
+                    component,
+                    source.Width,
+                    out var dominantPath) &&
+                !HasSourceCusp(
+                    dominantPath))
+            {
+                chains =
+                new[]
+                {
+                    dominantPath,
+                };
+            }
+
             if (component.TrustedStrokeRole)
             {
                 foreach (var chain in chains)
@@ -1891,6 +1913,144 @@ internal static class ToolFaithfulPixelCordOverlay
 
             previous = current;
         }
+    }
+
+    private static bool TryTraceDominantPixelCordPath(
+        StrokeComponent component,
+        int sourceWidth,
+        out List<(int X, int Y)> path)
+    {
+        path =
+            new List<(int X, int Y)>();
+
+        if (component.Pixels.Count <
+            MinimumPathPixels)
+        {
+            return false;
+        }
+
+        var set =
+            component.Pixels
+                .ToHashSet();
+        var endpoints =
+            new List<int>(2);
+
+        foreach (var pixel in component.Pixels)
+        {
+            var x =
+                pixel %
+                sourceWidth;
+            var y =
+                pixel /
+                sourceWidth;
+            var degree = 0;
+
+            foreach (var (dx, dy) in FourDirections)
+            {
+                if (set.Contains(
+                        (y + dy) *
+                        sourceWidth +
+                        (x + dx)))
+                {
+                    degree++;
+                }
+            }
+
+            if (degree == 1)
+                endpoints.Add(pixel);
+        }
+
+        if (endpoints.Count != 2)
+            return false;
+
+        var start =
+            endpoints[0];
+        var goal =
+            endpoints[1];
+        var queue =
+            new Queue<int>();
+        var previous =
+            new Dictionary<int, int>(
+                set.Count);
+
+        queue.Enqueue(start);
+        previous[start] =
+            start;
+
+        while (queue.Count > 0 &&
+               !previous.ContainsKey(goal))
+        {
+            var current =
+                queue.Dequeue();
+            var x =
+                current %
+                sourceWidth;
+            var y =
+                current /
+                sourceWidth;
+
+            foreach (var (dx, dy) in FourDirections)
+            {
+                var next =
+                    (y + dy) *
+                    sourceWidth +
+                    (x + dx);
+
+                if (!set.Contains(next) ||
+                    previous.ContainsKey(next))
+                {
+                    continue;
+                }
+
+                previous[next] =
+                    current;
+                queue.Enqueue(next);
+            }
+        }
+
+        if (!previous.ContainsKey(goal))
+            return false;
+
+        var pixels =
+            new List<int>();
+        var cursor =
+            goal;
+
+        while (true)
+        {
+            pixels.Add(cursor);
+
+            if (cursor == start)
+                break;
+
+            cursor =
+                previous[cursor];
+        }
+
+        pixels.Reverse();
+
+        // A simple Pixel-Cord curve may contain a few incidental graph contacts, but the dominant
+        // endpoint path should still explain nearly all of its pixels. A real branch/network does
+        // not satisfy this and must remain split by TraceChains.
+        if (pixels.Count <
+            component.Pixels.Count *
+            0.85)
+        {
+            return false;
+        }
+
+        path =
+            pixels
+                .Select(pixel =>
+                    (
+                        X: pixel %
+                           sourceWidth,
+                        Y: pixel /
+                           sourceWidth))
+                .ToList();
+
+        return path.Count >=
+               MinimumPathPixels;
     }
 
     private static IReadOnlyList<List<(int X, int Y)>> TraceChains(
