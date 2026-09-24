@@ -608,10 +608,19 @@ internal static class LeafPetalBoundaryCurveRasterizer
         // Raster phase and a real sharp apex can consume a few samples even when the paired
         // designer curves are visually faithful. Require 87.5% width support and allow two local
         // jumps; repeated shocks still reject mismatched/bulged sides.
-        return supported >=
-                   SampleCount -
-                   4 &&
-               abruptJumps <= 2;
+        var accepted =
+            supported >=
+                SampleCount -
+                4 &&
+            abruptJumps <= 2;
+
+        if (!accepted)
+        {
+            Console.Error.WriteLine(
+                $"[leaf-width-reject] supported={supported}/{SampleCount}, abruptJumps={abruptJumps}");
+        }
+
+        return accepted;
     }
 
     private static (double X, double Y) SamplePath(
