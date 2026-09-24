@@ -189,6 +189,18 @@ internal static class LeafPetalArcRasterizer
                 if (current != region.Color)
                     continue;
 
+                // Geometric smoothing may shave a staircase protrusion, but it must never turn
+                // one continuous designer ribbon/leaf into disconnected islands. Treat pixels
+                // whose removal would split the local 8-neighbour ring as topology anchors.
+                if (WouldDisconnectRegion(
+                        destination,
+                        x,
+                        y,
+                        region.Color))
+                {
+                    continue;
+                }
+
                 // Never shave a specialist region into a protected separator role merely to make
                 // the outline look smoother; RugScale's tool replay owns those pixels.
                 if (protectedStrokeColors.Contains(sourceOwner))
@@ -498,6 +510,62 @@ internal static class LeafPetalArcRasterizer
         }
 
         return false;
+    }
+
+    private static bool WouldDisconnectRegion(
+        DesignDocument document,
+        int x,
+        int y,
+        byte color)
+    {
+        Span<bool> ring =
+        [
+            y > 0 &&
+            document.GetPixel(x, y - 1) == color,
+            x + 1 < document.Width &&
+            y > 0 &&
+            document.GetPixel(x + 1, y - 1) == color,
+            x + 1 < document.Width &&
+            document.GetPixel(x + 1, y) == color,
+            x + 1 < document.Width &&
+            y + 1 < document.Height &&
+            document.GetPixel(x + 1, y + 1) == color,
+            y + 1 < document.Height &&
+            document.GetPixel(x, y + 1) == color,
+            x > 0 &&
+            y + 1 < document.Height &&
+            document.GetPixel(x - 1, y + 1) == color,
+            x > 0 &&
+            document.GetPixel(x - 1, y) == color,
+            x > 0 &&
+            y > 0 &&
+            document.GetPixel(x - 1, y - 1) == color,
+        ];
+
+        var neighbours = 0;
+        var groups = 0;
+
+        for (var index = 0;
+             index < ring.Length;
+             index++)
+        {
+            if (!ring[index])
+                continue;
+
+            neighbours++;
+
+            if (!ring[
+                    (index +
+                     ring.Length -
+                     1) %
+                    ring.Length])
+            {
+                groups++;
+            }
+        }
+
+        return neighbours >= 2 &&
+               groups >= 2;
     }
 
     private static bool CanShiftIntoRegion(
