@@ -76,7 +76,7 @@ internal static class LeafPetalArcScaleEngine
         // A whole paired boundary fit that passed the source/path safety gates becomes authoritative
         // target geometry. Later overlapping leaf/petal candidates may add to it, but must not erase
         // it as if it were stale Curve & Fill residue.
-        var committedBoundaryOutlinePixels = new HashSet<int>();
+        var committedBoundaryOutlinePixels = new Dictionary<int, byte>();
 
         foreach (var candidate in candidates)
         {
@@ -182,6 +182,20 @@ internal static class LeafPetalArcScaleEngine
                 centerlineChanged +=
                     regionChanges;
             }
+        }
+
+        // A later centreline fallback can overlap an already accepted paired-boundary candidate.
+        // The paired fit has stronger direct designer-outline evidence, so restore those committed
+        // pixels after all candidates have run instead of allowing a weaker fallback to punch holes
+        // through the accepted Curve/Pixel-Cord path.
+        foreach (var pair in committedBoundaryOutlinePixels)
+        {
+            var x = pair.Key % destination.Width;
+            var y = pair.Key / destination.Width;
+            destination.SetPixel(
+                x,
+                y,
+                pair.Value);
         }
 
         // The Curve & Fill baseline already contains strict ownership + RugScale tool replay.
