@@ -19,6 +19,7 @@ internal static class CurveFillRibbonCenterlineBuilder
     private const int MinimumSkeletonPixels = 8;
     private const int MinimumPathPixels = 7;
     private const double MinimumPrincipalPathCoverage = 0.58;
+    private const int SkeletonPadding = 2;
 
     private static readonly (int X, int Y)[] EightDirections =
     [
@@ -50,42 +51,58 @@ internal static class CurveFillRibbonCenterlineBuilder
             return false;
         }
 
+        // Zhang-Suen deliberately skips the outer raster ring. A connected colour region is
+        // cropped exactly to its bounding box, so an open ribbon endpoint normally touches that
+        // ring. Thinning the unpadded crop therefore leaves a 2-3px cap at the endpoint, which
+        // looks like a junction and can make the principal skeleton path start halfway through the
+        // real designer arc. Pad with empty pixels so BOTH endpoints are processed as ordinary
+        // interior foreground.
+        var skeletonWidth =
+            checked(
+                width +
+                SkeletonPadding * 2);
+        var skeletonHeight =
+            checked(
+                height +
+                SkeletonPadding * 2);
         var mask =
             new bool[
                 checked(
-                    width *
-                    height)];
+                    skeletonWidth *
+                    skeletonHeight)];
 
         foreach (var pixel in region.Pixels)
         {
             var x =
                 pixel %
                 sourceWidth -
-                region.MinX;
+                region.MinX +
+                SkeletonPadding;
             var y =
                 pixel /
                 sourceWidth -
-                region.MinY;
+                region.MinY +
+                SkeletonPadding;
 
             if ((uint)x >=
-                    (uint)width ||
+                    (uint)skeletonWidth ||
                 (uint)y >=
-                    (uint)height)
+                    (uint)skeletonHeight)
             {
                 continue;
             }
 
             mask[
                 y *
-                width +
+                skeletonWidth +
                 x] = true;
         }
 
         var skeleton =
             CurveScaleEngine.ThinZhangSuen(
                 mask,
-                width,
-                height);
+                skeletonWidth,
+                skeletonHeight);
         var skeletonPixels =
             Enumerable.Range(
                     0,
@@ -109,8 +126,8 @@ internal static class CurveFillRibbonCenterlineBuilder
         var adjacency =
             BuildAdjacency(
                 skeleton,
-                width,
-                height);
+                skeletonWidth,
+                skeletonHeight);
         var endpoints =
             skeletonPixels
                 .Where(pixel =>
@@ -190,9 +207,11 @@ internal static class CurveFillRibbonCenterlineBuilder
             BuildSamples(
                 path,
                 boundary,
-                width,
-                region.MinX,
-                region.MinY);
+                skeletonWidth,
+                region.MinX -
+                    SkeletonPadding,
+                region.MinY -
+                    SkeletonPadding);
 
         if (samples.Count <
             MinimumPathPixels)
