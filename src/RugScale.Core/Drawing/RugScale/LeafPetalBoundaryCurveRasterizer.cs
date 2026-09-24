@@ -198,11 +198,6 @@ internal static class LeafPetalBoundaryCurveRasterizer
                 destination.Height);
         }
 
-        Console.Error.WriteLine(
-            $"[leaf-boundary] outline={model.OutlineColor}, left={left.Count}/breaks={CountPathBreaks(left)}, " +
-            $"right={right.Count}/breaks={CountPathBreaks(right)}, newOutline={newOutline.Count}/components={CountPixelComponents(newOutline, destination.Width)}, " +
-            $"baseCap={model.DrawBaseCap}, apexCap={model.DrawApexCap}, closeApex={closeSourceApex}");
-
         var minX =
             Math.Max(
                 0,
@@ -282,10 +277,15 @@ internal static class LeafPetalBoundaryCurveRasterizer
                     // otherwise correct Pixel-Cord curve into visible fragments.
                     if (current !=
                             model.OutlineColor &&
+                        current !=
+                            model.ArcModel.Candidate.Region.Color &&
                         protectedStrokeColors.Contains(
                             current))
                     {
-                        // A different proven separator/tool colour still owns this pixel.
+                        // A genuinely different proven separator/tool colour still owns this
+                        // pixel. The candidate's OWN fill colour is always replaceable by its
+                        // validated outer outline, even if the global palette-role heuristic also
+                        // classified that fill colour as stroke-like in a small synthetic design.
                         continue;
                     }
 
@@ -456,68 +456,6 @@ internal static class LeafPetalBoundaryCurveRasterizer
         }
 
         return changed;
-    }
-
-    private static int CountPathBreaks(
-        IReadOnlyList<(int X, int Y)> path)
-    {
-        var breaks = 0;
-
-        for (var i = 1; i < path.Count; i++)
-        {
-            if (Math.Abs(path[i].X - path[i - 1].X) > 1 ||
-                Math.Abs(path[i].Y - path[i - 1].Y) > 1)
-            {
-                breaks++;
-            }
-        }
-
-        return breaks;
-    }
-
-    private static int CountPixelComponents(
-        IReadOnlySet<int> pixels,
-        int width)
-    {
-        var remaining = new HashSet<int>(pixels);
-        var queue = new Queue<int>();
-        var count = 0;
-        (int X, int Y)[] directions =
-        [
-            (-1, 0), (1, 0), (0, -1), (0, 1),
-            (-1, -1), (1, -1), (-1, 1), (1, 1),
-        ];
-
-        while (remaining.Count > 0)
-        {
-            var start = remaining.First();
-            remaining.Remove(start);
-            queue.Enqueue(start);
-            count++;
-
-            while (queue.Count > 0)
-            {
-                var current = queue.Dequeue();
-                var x = current % width;
-                var y = current / width;
-
-                foreach (var (dx, dy) in directions)
-                {
-                    var nx = x + dx;
-                    var ny = y + dy;
-
-                    if (nx < 0 || nx >= width || ny < 0)
-                        continue;
-
-                    var next = ny * width + nx;
-
-                    if (remaining.Remove(next))
-                        queue.Enqueue(next);
-                }
-            }
-        }
-
-        return count;
     }
 
     private static bool HasPairedWidthProfileSupport(
