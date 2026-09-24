@@ -10,6 +10,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RugScale.CurveScaleAudit", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RugScale.RugScaleAudit", "tools\RugScale.RugScaleAudit\RugScale.RugScaleAudit.csproj", "{74945D32-8C1F-476A-9A01-32D8F3F516A5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RugScale.Cli", "tools\RugScale.Cli\RugScale.Cli.csproj", "{B3E7E188-98B4-4C27-A2F7-C1A6D2AF4C55}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -32,5 +34,9 @@ Global
 		{74945D32-8C1F-476A-9A01-32D8F3F516A5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{74945D32-8C1F-476A-9A01-32D8F3F516A5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{74945D32-8C1F-476A-9A01-32D8F3F516A5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B3E7E188-98B4-4C27-A2F7-C1A6D2AF4C55}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B3E7E188-98B4-4C27-A2F7-C1A6D2AF4C55}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B3E7E188-98B4-4C27-A2F7-C1A6D2AF4C55}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B3E7E188-98B4-4C27-A2F7-C1A6D2AF4C55}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
