@@ -67,6 +67,7 @@ internal static class CurveFillRibbonArcRefiner
         var ribbonGeometryAccepted = 0;
         var fitSafe = 0;
         var symmetryRecoveries = 0;
+        var mainArcExtractions = 0;
         var maxSymmetrySampleShift = 0d;
         var curveToolFits = 0;
         var curveToolThroughPointsFits = 0;
@@ -192,6 +193,16 @@ internal static class CurveFillRibbonArcRefiner
                     Math.Max(
                         maxSymmetrySampleShift,
                         symmetryDiagnostics.MaximumSampleShift);
+
+                if (CurveFillRibbonMainArcExtractor.TryExtract(
+                        model,
+                        out var mainArcModel,
+                        out _))
+                {
+                    model =
+                        mainArcModel;
+                    mainArcExtractions++;
+                }
             }
 
             ribbonGeometryAccepted++;
@@ -421,6 +432,7 @@ internal static class CurveFillRibbonArcRefiner
             RibbonGeometryAccepted: ribbonGeometryAccepted,
             FitSafe: fitSafe,
             SymmetryRecoveries: symmetryRecoveries,
+            MainArcExtractions: mainArcExtractions,
             MaxSymmetrySampleShift: maxSymmetrySampleShift,
             CurveToolFits: curveToolFits,
             CurveToolThroughPointsFits: curveToolThroughPointsFits,
@@ -512,6 +524,10 @@ internal static class CurveFillRibbonArcRefiner
             var mirrorAgreement = 0d;
             var symmetryMeanShift = 0d;
             var symmetryMaxShift = 0d;
+            var mainArcExtracted = false;
+            var mainArcStart = 0;
+            var mainArcEnd = 0;
+            var mainArcKeptFraction = 0d;
             var fitSafe = false;
             var accepted = false;
             var fitKind = "none";
@@ -583,6 +599,22 @@ internal static class CurveFillRibbonArcRefiner
                                 symmetryDiagnostics.MeanSampleShift;
                             symmetryMaxShift =
                                 symmetryDiagnostics.MaximumSampleShift;
+
+                            if (CurveFillRibbonMainArcExtractor.TryExtract(
+                                    model,
+                                    out var mainArcModel,
+                                    out var mainArcDiagnostics))
+                            {
+                                model =
+                                    mainArcModel;
+                                mainArcExtracted = true;
+                                mainArcStart =
+                                    mainArcDiagnostics.StartIndex;
+                                mainArcEnd =
+                                    mainArcDiagnostics.EndIndex;
+                                mainArcKeptFraction =
+                                    mainArcDiagnostics.KeptFraction;
+                            }
                         }
 
                         ElegantArcFit fit;
@@ -723,6 +755,10 @@ internal static class CurveFillRibbonArcRefiner
                     mirrorAgreement,
                     symmetryMeanShift,
                     symmetryMaxShift,
+                    mainArcExtracted,
+                    mainArcStart,
+                    mainArcEnd,
+                    mainArcKeptFraction,
                     fitKind,
                     curveFamily,
                     roundness,
@@ -891,6 +927,10 @@ internal readonly record struct RibbonArcCandidateStage(
     double MirrorAgreement,
     double SymmetryMeanShift,
     double SymmetryMaxShift,
+    bool MainArcExtracted,
+    int MainArcStart,
+    int MainArcEnd,
+    double MainArcKeptFraction,
     string FitKind,
     string CurveFamily,
     double Roundness,
@@ -912,6 +952,7 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     int RibbonGeometryAccepted,
     int FitSafe,
     int SymmetryRecoveries,
+    int MainArcExtractions,
     double MaxSymmetrySampleShift,
     int CurveToolFits,
     int CurveToolThroughPointsFits,
