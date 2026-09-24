@@ -3161,4 +3161,7 @@ internal readonly record struct ToolFaithfulOverlayReport(
     int CompletePathRecoveries = 0,
     int RibbonArcCandidates = 0,
     int RibbonArcRefined = 0,
-    int RibbonArcPixelsChanged = 0);
+    int RibbonArcPixelsChanged = 0,
+    int RibbonArcCurveToolFits = 0,
+    int RibbonArcCubicBezierFits = 0,
+    int RibbonArcOutlinedRefined = 0);
