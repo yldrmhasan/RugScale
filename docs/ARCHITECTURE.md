@@ -4,10 +4,11 @@ RugScale is now developed as an independent .NET 8 engine. The migration deliber
 
 ## Projects
 
-- `src/RugScale.Core` — indexed design model, rasterizers, resize dispatcher, motif/topology RugScale, Curve & Fill, Leaf / Petal Arc engines.
+- `src/RugScale.Core` — indexed design model, rasterizers, resize dispatcher, motif/topology RugScale, Curve & Fill, Leaf / Petal Arc engines, portable motif-memory store and indexed BMP IO.
 - `tests/RugScale.Core.Tests` — deterministic unit/regression tests for scale modes, motif memory, curve-family inference, leaf/petal paired-boundary fitting and separator safety.
 - `tools/RugScale.RugScaleAudit` — real-raster motif/topology audit.
 - `tools/RugScale.CurveScaleAudit` — real-raster Curve & Fill / Leaf-Petal audit.
+- `tools/RugScale.Cli` — arbitrary 8-bit indexed BMP runner for manual development/verification.
 - `tests/fixtures` — compressed real indexed-BMP fixtures used only for validation/training.
 - `.github/workflows` — build/test and real-raster audits.
 
@@ -19,7 +20,8 @@ RugScale is now developed as an independent .NET 8 engine. The migration deliber
 4. Leaf / Petal Arc is a specialist Curve & Fill refinement, not a replacement for motif RugScale.
 5. Every learned redraw has a conservative fallback to source-graph replay.
 6. Separator / Pixel-Cord colours are hard barriers; aesthetic fitting may not cross them.
-7. RugScale.Core has no dependency on RugScale/RugCAD UI code.
+7. RugScale.Core has no dependency on RugCAD or WPF UI code.
+8. Portable motif memory and its seed belong to RugScale.Core, not to a particular host application.
 
 ## Migration boundary
 
