@@ -201,174 +201,266 @@ internal static class ToolFaithfulCurveStyleLearner
         bool pixelCord,
         ref ToolFaithfulCurveStyleFit? best)
     {
+        // Pixel Cord inserts orthogonal bridge pixels around diagonal curve steps. They belong to
+        // the PEN rasterization, not to the designer's centreline. Fit controls against the
+        // de-bridged chain while still scoring the final candidate against the complete source
+        // raster. This is especially important for oval arcs: otherwise diagonal quadrants receive
+        // artificial extra weight and the recovered oval becomes asymmetric/flat.
+        var modelChain =
+            pixelCord
+                ? RemovePixelCordBridges(
+                    sourceChain)
+                : sourceChain.ToArray();
+
+        if (modelChain.Count < MinimumChainPixels)
+            return;
+
         var maximumControlCount =
             Math.Min(
                 7,
                 Math.Max(
                     3,
-                    sourceChain.Count /
+                    modelChain.Count /
                     10));
 
         for (var controlCount = 3;
              controlCount <= maximumControlCount;
              controlCount++)
         {
-            var indices =
-                new int[controlCount];
-
-            for (var i = 0;
-                 i < controlCount;
-                 i++)
-            {
-                indices[i] =
-                    (int)Math.Round(
-                        i *
-                        (sourceChain.Count - 1d) /
-                        (controlCount - 1d));
-            }
-
-            indices[0] = 0;
-            indices[^1] =
-                sourceChain.Count - 1;
-
-            var (rawScore, roundness) =
-                FindBestThroughRoundness(
-                    sourceChain,
-                    indices,
-                    sourceSet,
-                    pixelCord);
-
-            var stepCandidates =
-                new[]
-                {
-                    Math.Max(
-                        1,
-                        sourceChain.Count /
-                        12),
-                    Math.Max(
-                        1,
-                        sourceChain.Count /
-                        28),
-                    2,
-                    1,
-                }
-                .Distinct()
-                .OrderByDescending(
-                    value => value)
-                .ToArray();
-
-            foreach (var step in stepCandidates)
-            {
-                for (var pass = 0;
-                     pass < 2;
-                     pass++)
-                {
-                    var changed = false;
-
-                    for (var controlIndex = 1;
-                         controlIndex <
-                         indices.Length - 1;
-                         controlIndex++)
-                    {
-                        var current =
-                            indices[controlIndex];
-                        var minimum =
-                            indices[controlIndex - 1] +
-                            1;
-                        var maximum =
-                            indices[controlIndex + 1] -
-                            1;
-
-                        if (minimum > maximum)
-                            continue;
-
-                        var candidates =
-                            new[]
-                            {
-                                Math.Clamp(
-                                    current - step,
-                                    minimum,
-                                    maximum),
-                                Math.Clamp(
-                                    current + step,
-                                    minimum,
-                                    maximum),
-                            }
-                            .Distinct();
-
-                        var localBestScore =
-                            rawScore;
-                        var localBestIndex =
-                            current;
-
-                        foreach (var candidate in candidates)
-                        {
-                            if (candidate == current)
-                                continue;
-
-                            indices[controlIndex] =
-                                candidate;
-
-                            var candidateScore =
-                                ScoreThroughPoints(
-                                    sourceChain,
-                                    indices,
-                                    roundness,
-                                    sourceSet,
-                                    pixelCord);
-
-                            if (candidateScore >
-                                localBestScore)
-                            {
-                                localBestScore =
-                                    candidateScore;
-                                localBestIndex =
-                                    candidate;
-                            }
-                        }
-
-                        indices[controlIndex] =
-                            localBestIndex;
-
-                        if (localBestIndex !=
-                            current)
-                        {
-                            rawScore =
-                                localBestScore;
-                            changed = true;
-                        }
-                    }
-
-                    var optimizedRoundness =
-                        FindBestThroughRoundness(
-                            sourceChain,
-                            indices,
-                            sourceSet,
-                            pixelCord);
-
-                    rawScore =
-                        optimizedRoundness.Score;
-                    roundness =
-                        optimizedRoundness.Roundness;
-
-                    if (!changed)
-                        break;
-                }
-            }
-
-            var controls =
-                indices
+            var uniformFractions =
+                Enumerable.Range(
+                        0,
+                        controlCount)
                     .Select(index =>
-                        sourceChain[index])
+                        index /
+                        (double)(controlCount - 1))
                     .ToArray();
 
-            ConsiderFit(
-                CurveType.SplineThroughPoints,
-                roundness,
-                controls,
-                rawScore,
-                simplifyTolerance: 0d,
-                ref best);
+            var seedFractions =
+                new List<double[]>
+                {
+                    uniformFractions,
+                };
+
+            // Five through-points are the dominant compact representation for the broad oval
+            // motifs used by carpet designers. One uniform initialization can settle in a local
+            // raster optimum when the two shoulders have unequal arc length. Add two deterministic
+            // asymmetric seeds; the normal source-fit + complexity gates still decide whether any
+            // of them is trusted.
+            if (controlCount == 5 &&
+                modelChain.Count >= 20)
+            {
+                seedFractions.Add(
+                [
+                    0.00,
+                    0.18,
+                    0.43,
+                    0.72,
+                    1.00,
+                ]);
+                seedFractions.Add(
+                [
+                    0.00,
+                    0.28,
+                    0.57,
+                    0.82,
+                    1.00,
+                ]);
+            }
+
+            var seenSeeds =
+                new HashSet<string>(
+                    StringComparer.Ordinal);
+
+            foreach (var fractions in seedFractions)
+            {
+                var indices =
+                    new int[controlCount];
+
+                for (var i = 0;
+                     i < controlCount;
+                     i++)
+                {
+                    indices[i] =
+                        (int)Math.Round(
+                            fractions[i] *
+                            (modelChain.Count - 1d));
+                }
+
+                indices[0] = 0;
+                indices[^1] =
+                    modelChain.Count - 1;
+
+                // Rounding a short chain can collapse adjacent fractional seeds. Keep the controls
+                // strictly ordered without moving either endpoint.
+                for (var i = 1;
+                     i < indices.Length - 1;
+                     i++)
+                {
+                    var minimum =
+                        indices[i - 1] +
+                        1;
+                    var maximum =
+                        modelChain.Count -
+                        (indices.Length - i);
+
+                    indices[i] =
+                        Math.Clamp(
+                            indices[i],
+                            minimum,
+                            maximum);
+                }
+
+                var seedKey =
+                    string.Join(
+                        ',',
+                        indices);
+
+                if (!seenSeeds.Add(
+                        seedKey))
+                {
+                    continue;
+                }
+
+                var (rawScore, roundness) =
+                    FindBestThroughRoundness(
+                        modelChain,
+                        indices,
+                        sourceSet,
+                        pixelCord);
+
+                var stepCandidates =
+                    new[]
+                    {
+                        Math.Max(
+                            1,
+                            modelChain.Count /
+                            12),
+                        Math.Max(
+                            1,
+                            modelChain.Count /
+                            28),
+                        2,
+                        1,
+                    }
+                    .Distinct()
+                    .OrderByDescending(
+                        value => value)
+                    .ToArray();
+
+                foreach (var step in stepCandidates)
+                {
+                    for (var pass = 0;
+                         pass < 2;
+                         pass++)
+                    {
+                        var changed = false;
+
+                        for (var controlIndex = 1;
+                             controlIndex <
+                             indices.Length - 1;
+                             controlIndex++)
+                        {
+                            var current =
+                                indices[controlIndex];
+                            var minimum =
+                                indices[controlIndex - 1] +
+                                1;
+                            var maximum =
+                                indices[controlIndex + 1] -
+                                1;
+
+                            if (minimum > maximum)
+                                continue;
+
+                            var candidates =
+                                new[]
+                                {
+                                    Math.Clamp(
+                                        current - step,
+                                        minimum,
+                                        maximum),
+                                    Math.Clamp(
+                                        current + step,
+                                        minimum,
+                                        maximum),
+                                }
+                                .Distinct();
+
+                            var localBestScore =
+                                rawScore;
+                            var localBestIndex =
+                                current;
+
+                            foreach (var candidate in candidates)
+                            {
+                                if (candidate == current)
+                                    continue;
+
+                                indices[controlIndex] =
+                                    candidate;
+
+                                var candidateScore =
+                                    ScoreThroughPoints(
+                                        modelChain,
+                                        indices,
+                                        roundness,
+                                        sourceSet,
+                                        pixelCord);
+
+                                if (candidateScore >
+                                    localBestScore)
+                                {
+                                    localBestScore =
+                                        candidateScore;
+                                    localBestIndex =
+                                        candidate;
+                                }
+                            }
+
+                            indices[controlIndex] =
+                                localBestIndex;
+
+                            if (localBestIndex !=
+                                current)
+                            {
+                                rawScore =
+                                    localBestScore;
+                                changed = true;
+                            }
+                        }
+
+                        var optimizedRoundness =
+                            FindBestThroughRoundness(
+                                modelChain,
+                                indices,
+                                sourceSet,
+                                pixelCord);
+
+                        rawScore =
+                            optimizedRoundness.Score;
+                        roundness =
+                            optimizedRoundness.Roundness;
+
+                        if (!changed)
+                            break;
+                    }
+                }
+
+                var controls =
+                    indices
+                        .Select(index =>
+                            modelChain[index])
+                        .ToArray();
+
+                ConsiderFit(
+                    CurveType.SplineThroughPoints,
+                    roundness,
+                    controls,
+                    rawScore,
+                    simplifyTolerance: 0d,
+                    ref best);
+            }
         }
     }
 
@@ -378,6 +470,31 @@ internal static class ToolFaithfulCurveStyleLearner
         IReadOnlySet<(int X, int Y)> sourceSet,
         bool pixelCord)
     {
+        const double SourceScoreTieTolerance = 0.004;
+
+        var scored =
+            ThroughPointRoundness
+                .Select(roundness =>
+                    (
+                        Roundness: roundness,
+                        Score: ScoreThroughPoints(
+                            sourceChain,
+                            indices,
+                            roundness,
+                            sourceSet,
+                            pixelCord)))
+                .ToArray();
+
+        var bestSourceScore =
+            scored.Max(candidate =>
+                candidate.Score);
+
+        var controls =
+            indices
+                .Select(index =>
+                    sourceChain[index])
+                .ToArray();
+
         var bestScore =
             double.NegativeInfinity;
         var bestScaleConsistency =
@@ -385,62 +502,47 @@ internal static class ToolFaithfulCurveStyleLearner
         var bestRoundness =
             ThroughPointRoundness[0];
 
-        foreach (var roundness in ThroughPointRoundness)
+        // The 1.60x consistency probe is deliberately evaluated ONLY for source-equivalent
+        // candidates. This keeps the oval tie-break useful without multiplying every coordinate
+        // descent iteration by another complete target-scale render.
+        foreach (var candidate in scored)
         {
-            var score =
-                ScoreThroughPoints(
-                    sourceChain,
-                    indices,
-                    roundness,
-                    sourceSet,
-                    pixelCord);
-
-            var controls =
-                indices
-                    .Select(index =>
-                        sourceChain[index])
-                    .ToArray();
-
-            // At source resolution several different Curve-tool roundness values can quantize to
-            // the same 1x1 raster. Picking the first/lowest slider value in that tie looks harmless
-            // at source size but can flatten an oval badly after enlargement. Use a deterministic
-            // self-consistency probe: render the hypothesis at a larger virtual grid, collapse it
-            // back to source coordinates, and prefer the tied model that most faithfully regenerates
-            // the immutable source chain.
-            var scaleConsistency =
-                ScaleConsistencyScore(
-                    controls,
-                    roundness,
-                    sourceSet,
-                    pixelCord);
-
-            const double SourceScoreTieTolerance = 0.004;
-
-            var clearlyBetterSourceFit =
-                score >
-                bestScore +
-                SourceScoreTieTolerance;
-            var sourceFitTied =
-                Math.Abs(
-                    score -
-                    bestScore) <=
-                SourceScoreTieTolerance;
-            var moreScaleStable =
-                scaleConsistency >
-                bestScaleConsistency +
-                0.002;
-
-            if (!clearlyBetterSourceFit &&
-                (!sourceFitTied ||
-                 !moreScaleStable))
+            if (candidate.Score <
+                bestSourceScore -
+                SourceScoreTieTolerance)
             {
                 continue;
             }
 
-            bestScore = score;
+            var scaleConsistency =
+                ScaleConsistencyScore(
+                    controls,
+                    candidate.Roundness,
+                    sourceSet,
+                    pixelCord);
+
+            if (scaleConsistency <
+                bestScaleConsistency - 0.002)
+            {
+                continue;
+            }
+
+            if (Math.Abs(
+                    scaleConsistency -
+                    bestScaleConsistency) <=
+                0.002 &&
+                candidate.Score <=
+                bestScore)
+            {
+                continue;
+            }
+
+            bestScore =
+                candidate.Score;
             bestScaleConsistency =
                 scaleConsistency;
-            bestRoundness = roundness;
+            bestRoundness =
+                candidate.Roundness;
         }
 
         return (
