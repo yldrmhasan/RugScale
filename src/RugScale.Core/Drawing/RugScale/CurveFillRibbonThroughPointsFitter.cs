@@ -14,8 +14,8 @@ internal static class CurveFillRibbonThroughPointsFitter
 {
     private const int ControlCount = 5;
     private const int ContinuousSamples = 144;
-    private const double MaximumP95Deviation = 1.75;
-    private const double MaximumDeviation = 3.40;
+    private const double MaximumP95Deviation = 2.80;
+    private const double MaximumDeviation = 3.80;
 
     private static readonly double[] RoundnessCandidates =
     [
