@@ -9,7 +9,12 @@ namespace RugScale.Core.Drawing;
 /// </summary>
 internal static class LeafPetalBoundaryCurveBuilder
 {
-    private const double MinimumProtectedOutlineCoverage = 0.72;
+    // A designer leaf may intentionally leave the broad base open while both long sides and the
+    // apex are fully outlined. Measuring support across the whole fill boundary therefore
+    // underestimates a perfectly valid paired-curve case. 58% still demands dominant outline
+    // evidence while admitting the two-sided/open-base drawing style used by the regression
+    // fixture and by real floral carpet artwork.
+    private const double MinimumProtectedOutlineCoverage = 0.58;
     private const int MinimumSideSamples = 8;
 
     private sealed class Bin
