@@ -205,7 +205,7 @@ internal static class Program
         if (ovalRows.Length == 0 ||
             ovalAccepted.Length <
             Math.Ceiling(
-                ovalRows.Length * 0.75))
+                ovalRows.Length * 0.90))
         {
             failure =
                 $"Oval training coverage is too low: {ovalAccepted.Length}/{ovalRows.Length}.";
@@ -219,7 +219,7 @@ internal static class Program
                 1,
                 ovalAccepted.Length);
 
-        if (ovalFamilyPrecision < 0.90)
+        if (ovalFamilyPrecision < 0.98)
         {
             failure =
                 $"Oval family precision fell to {ovalFamilyPrecision:P2}.";
@@ -233,11 +233,38 @@ internal static class Program
             ovalRows.Average(row =>
                 row.FallbackTargetExactF1);
 
+        if (ovalLearnedExact < 0.90)
+        {
+            failure =
+                $"Oval target exact F1 fell to {ovalLearnedExact:P2}.";
+            return false;
+        }
+
         if (ovalLearnedExact <
-            ovalGraphExact + 0.02)
+            ovalGraphExact + 0.24)
         {
             failure =
                 $"Oval target exact F1 gain is too small: learned={ovalLearnedExact:P2}, graph={ovalGraphExact:P2}.";
+            return false;
+        }
+
+        var ovalRoundnessErrors =
+            ovalAccepted
+                .Where(row =>
+                    row.FamilyCorrect &&
+                    row.RoundnessError.HasValue)
+                .Select(row =>
+                    row.RoundnessError!.Value)
+                .ToArray();
+        var ovalRoundnessMae =
+            ovalRoundnessErrors.Length == 0
+                ? double.PositiveInfinity
+                : ovalRoundnessErrors.Average();
+
+        if (ovalRoundnessMae > 0.05)
+        {
+            failure =
+                $"Oval roundness MAE rose to {ovalRoundnessMae:0.000}.";
             return false;
         }
 
