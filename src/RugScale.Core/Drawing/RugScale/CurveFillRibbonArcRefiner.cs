@@ -67,6 +67,12 @@ internal static class CurveFillRibbonArcRefiner
         var ribbonGeometryAccepted = 0;
         var fitSafe = 0;
         var curveToolFits = 0;
+        var geometricThroughFits = 0;
+        var geometricThroughAttempts = 0;
+        var maxGeometricThroughDeviation = 0d;
+        var maxGeometricThroughP95Deviation = 0d;
+        var lastGeometricThroughReason = "not-attempted";
+        var geometricThroughRoundnessSum = 0d;
         var broadOvalFits = 0;
         var broadOvalAttempts = 0;
         var maxBroadOvalDeviation = 0d;
@@ -182,66 +188,93 @@ internal static class CurveFillRibbonArcRefiner
             }
             else if (broadSparseArch)
             {
-                broadOvalAttempts++;
+                geometricThroughAttempts++;
 
-                if (CurveFillBroadOvalArcFitter.TryFit(
+                if (CurveFillRibbonThroughPointsFitter.TryFit(
                         model,
-                        out var ovalFit,
-                        out var ovalDiagnostics))
+                        out var throughFit,
+                        out var throughDiagnostics))
                 {
                     fit =
-                        ovalFit;
-                    broadOvalFits++;
+                        throughFit;
+                    geometricThroughFits++;
+                    geometricThroughRoundnessSum +=
+                        throughDiagnostics.Roundness;
                 }
                 else
                 {
-                    cubicAttempts++;
+                    broadOvalAttempts++;
 
-                    if (CurveFillRibbonBezierFitter.TryFit(
+                    if (CurveFillBroadOvalArcFitter.TryFit(
                             model,
-                            out var bezierFit,
-                            out var cubicDiagnostics))
+                            out var ovalFit,
+                            out var ovalDiagnostics))
                     {
                         fit =
-                            bezierFit;
-                        cubicBezierFits++;
+                            ovalFit;
+                        broadOvalFits++;
                     }
                     else
                     {
-                        fit =
-                            ElegantArcFitter.Fit(
+                        cubicAttempts++;
+
+                        if (CurveFillRibbonBezierFitter.TryFit(
                                 model,
-                                taperApex: false,
-                                maximumAnchors: 8,
-                                smoothingPasses: 2);
+                                out var bezierFit,
+                                out var cubicDiagnostics))
+                        {
+                            fit =
+                                bezierFit;
+                            cubicBezierFits++;
+                        }
+                        else
+                        {
+                            fit =
+                                ElegantArcFitter.Fit(
+                                    model,
+                                    taperApex: false,
+                                    maximumAnchors: 8,
+                                    smoothingPasses: 2);
+                        }
+
+                        lastCubicReason =
+                            cubicDiagnostics.Reason;
+                        maxCubicDeviation =
+                            Math.Max(
+                                maxCubicDeviation,
+                                cubicDiagnostics.MaximumDeviation);
+                        maxCubicP95Deviation =
+                            Math.Max(
+                                maxCubicP95Deviation,
+                                cubicDiagnostics.Percentile95Deviation);
+                        maxCubicHandleRatio =
+                            Math.Max(
+                                maxCubicHandleRatio,
+                                cubicDiagnostics.MaximumHandleToChordRatio);
                     }
 
-                    lastCubicReason =
-                        cubicDiagnostics.Reason;
-                    maxCubicDeviation =
+                    lastBroadOvalReason =
+                        ovalDiagnostics.Reason;
+                    maxBroadOvalDeviation =
                         Math.Max(
-                            maxCubicDeviation,
-                            cubicDiagnostics.MaximumDeviation);
-                    maxCubicP95Deviation =
+                            maxBroadOvalDeviation,
+                            ovalDiagnostics.MaximumDeviation);
+                    maxBroadOvalP95Deviation =
                         Math.Max(
-                            maxCubicP95Deviation,
-                            cubicDiagnostics.Percentile95Deviation);
-                    maxCubicHandleRatio =
-                        Math.Max(
-                            maxCubicHandleRatio,
-                            cubicDiagnostics.MaximumHandleToChordRatio);
+                            maxBroadOvalP95Deviation,
+                            ovalDiagnostics.Percentile95Deviation);
                 }
 
-                lastBroadOvalReason =
-                    ovalDiagnostics.Reason;
-                maxBroadOvalDeviation =
+                lastGeometricThroughReason =
+                    throughDiagnostics.Reason;
+                maxGeometricThroughDeviation =
                     Math.Max(
-                        maxBroadOvalDeviation,
-                        ovalDiagnostics.MaximumDeviation);
-                maxBroadOvalP95Deviation =
+                        maxGeometricThroughDeviation,
+                        throughDiagnostics.MaximumDeviation);
+                maxGeometricThroughP95Deviation =
                     Math.Max(
-                        maxBroadOvalP95Deviation,
-                        ovalDiagnostics.Percentile95Deviation);
+                        maxGeometricThroughP95Deviation,
+                        throughDiagnostics.Percentile95Deviation);
             }
             else
             {
@@ -350,6 +383,16 @@ internal static class CurveFillRibbonArcRefiner
             RibbonGeometryAccepted: ribbonGeometryAccepted,
             FitSafe: fitSafe,
             CurveToolFits: curveToolFits,
+            GeometricThroughFits: geometricThroughFits,
+            GeometricThroughAttempts: geometricThroughAttempts,
+            MaxGeometricThroughDeviation: maxGeometricThroughDeviation,
+            MaxGeometricThroughP95Deviation: maxGeometricThroughP95Deviation,
+            LastGeometricThroughReason: lastGeometricThroughReason,
+            MeanGeometricThroughRoundness:
+                geometricThroughFits == 0
+                    ? 0d
+                    : geometricThroughRoundnessSum /
+                      geometricThroughFits,
             BroadOvalFits: broadOvalFits,
             BroadOvalAttempts: broadOvalAttempts,
             MaxBroadOvalDeviation: maxBroadOvalDeviation,
@@ -507,6 +550,12 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     int RibbonGeometryAccepted,
     int FitSafe,
     int CurveToolFits,
+    int GeometricThroughFits,
+    int GeometricThroughAttempts,
+    double MaxGeometricThroughDeviation,
+    double MaxGeometricThroughP95Deviation,
+    string LastGeometricThroughReason,
+    double MeanGeometricThroughRoundness,
     int BroadOvalFits,
     int BroadOvalAttempts,
     double MaxBroadOvalDeviation,
