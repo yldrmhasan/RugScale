@@ -23,6 +23,7 @@ internal static class CurveFillRibbonArcRefiner
     private const double MinimumBroadArchElongation = 1.25;
     private const double MaximumBroadArchBoundingFill = 0.28;
     private const double MaximumBroadArchBoundaryRatio = 0.58;
+    private const double MaximumBroadArchFitDeviation = 4.00;
     private const double MaximumBoundaryRatio = 0.66;
     private const double MaximumWidthCoefficientVariation = 0.55;
     private const double MinimumTerminalWidthRatio = 0.45;
@@ -226,7 +227,14 @@ internal static class CurveFillRibbonArcRefiner
                     maxFitCurvatureFlips,
                     fit.CurvatureSignFlips);
 
-            if (!fit.IsSafe ||
+            var broadArchFitSafe =
+                broadSparseArch &&
+                fit.CurvatureSignFlips == 0 &&
+                fit.MaximumCenterlineDeviation <=
+                    MaximumBroadArchFitDeviation;
+
+            if ((!fit.IsSafe &&
+                 !broadArchFitSafe) ||
                 fit.CurvatureSignFlips > 1)
             {
                 continue;
