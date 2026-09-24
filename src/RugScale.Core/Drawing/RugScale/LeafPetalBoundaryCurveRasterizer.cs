@@ -455,6 +455,40 @@ internal static class LeafPetalBoundaryCurveRasterizer
             }
         }
 
+        var missingOutline =
+            newOutline
+                .Where(key =>
+                {
+                    var x = key % destination.Width;
+                    var y = key / destination.Width;
+                    return destination.GetPixel(x, y) != model.OutlineColor;
+                })
+                .ToArray();
+
+        if (missingOutline.Length > 0)
+        {
+            var colorGroups =
+                missingOutline
+                    .GroupBy(key =>
+                    {
+                        var x = key % destination.Width;
+                        var y = key / destination.Width;
+                        return destination.GetPixel(x, y);
+                    })
+                    .Select(group =>
+                        $"{group.Key}:{group.Count()}")
+                    .ToArray();
+
+            var minMissingX = missingOutline.Min(key => key % destination.Width);
+            var maxMissingX = missingOutline.Max(key => key % destination.Width);
+            var minMissingY = missingOutline.Min(key => key / destination.Width);
+            var maxMissingY = missingOutline.Max(key => key / destination.Width);
+
+            Console.Error.WriteLine(
+                $"[leaf-boundary-missing] outline={model.OutlineColor}, missing={missingOutline.Length}/{newOutline.Count}, " +
+                $"colors={string.Join(",", colorGroups)}, bbox=({minMissingX},{minMissingY})-({maxMissingX},{maxMissingY})");
+        }
+
         return changed;
     }
 
