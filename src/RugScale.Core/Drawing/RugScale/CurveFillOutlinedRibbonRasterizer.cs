@@ -205,6 +205,18 @@ internal static class CurveFillOutlinedRibbonRasterizer
                 if (current != regionColor)
                     continue;
 
+                // Do not trade a smoother outline for a broken ribbon. Source staircases may
+                // contain one-pixel neck cells; those are topology anchors even when the fitted
+                // target mask would otherwise shave them away.
+                if (WouldDisconnectRegion(
+                        destination,
+                        x,
+                        y,
+                        regionColor))
+                {
+                    continue;
+                }
+
                 destination.SetPixel(
                     x,
                     y,
@@ -214,6 +226,62 @@ internal static class CurveFillOutlinedRibbonRasterizer
         }
 
         return true;
+    }
+
+    private static bool WouldDisconnectRegion(
+        DesignDocument document,
+        int x,
+        int y,
+        byte color)
+    {
+        Span<bool> ring =
+        [
+            y > 0 &&
+            document.GetPixel(x, y - 1) == color,
+            x + 1 < document.Width &&
+            y > 0 &&
+            document.GetPixel(x + 1, y - 1) == color,
+            x + 1 < document.Width &&
+            document.GetPixel(x + 1, y) == color,
+            x + 1 < document.Width &&
+            y + 1 < document.Height &&
+            document.GetPixel(x + 1, y + 1) == color,
+            y + 1 < document.Height &&
+            document.GetPixel(x, y + 1) == color,
+            x > 0 &&
+            y + 1 < document.Height &&
+            document.GetPixel(x - 1, y + 1) == color,
+            x > 0 &&
+            document.GetPixel(x - 1, y) == color,
+            x > 0 &&
+            y > 0 &&
+            document.GetPixel(x - 1, y - 1) == color,
+        ];
+
+        var neighbours = 0;
+        var groups = 0;
+
+        for (var index = 0;
+             index < ring.Length;
+             index++)
+        {
+            if (!ring[index])
+                continue;
+
+            neighbours++;
+
+            if (!ring[
+                    (index +
+                     ring.Length -
+                     1) %
+                    ring.Length])
+            {
+                groups++;
+            }
+        }
+
+        return neighbours >= 2 &&
+               groups >= 2;
     }
 
     private static bool TryFindDominantOutlineColor(
