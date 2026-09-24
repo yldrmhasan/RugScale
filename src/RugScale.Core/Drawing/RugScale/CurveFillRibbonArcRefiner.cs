@@ -67,6 +67,10 @@ internal static class CurveFillRibbonArcRefiner
         var ribbonGeometryAccepted = 0;
         var fitSafe = 0;
         var curveToolFits = 0;
+        var curveToolThroughPointsFits = 0;
+        var curveToolSplineFits = 0;
+        var curveToolBezierFits = 0;
+        var curveToolRoundnessSum = 0d;
         var geometricThroughFits = 0;
         var geometricThroughAttempts = 0;
         var maxGeometricThroughDeviation = 0d;
@@ -180,11 +184,26 @@ internal static class CurveFillRibbonArcRefiner
             if (CurveFillRibbonToolFitter.TryFit(
                     model,
                     out var toolFit,
-                    out _))
+                    out var toolStyle))
             {
                 fit =
                     toolFit;
                 curveToolFits++;
+                curveToolRoundnessSum +=
+                    toolStyle.Roundness;
+
+                switch (toolStyle.Type)
+                {
+                    case CurveType.SplineThroughPoints:
+                        curveToolThroughPointsFits++;
+                        break;
+                    case CurveType.Spline:
+                        curveToolSplineFits++;
+                        break;
+                    case CurveType.Bezier:
+                        curveToolBezierFits++;
+                        break;
+                }
             }
             else if (broadSparseArch)
             {
@@ -383,6 +402,14 @@ internal static class CurveFillRibbonArcRefiner
             RibbonGeometryAccepted: ribbonGeometryAccepted,
             FitSafe: fitSafe,
             CurveToolFits: curveToolFits,
+            CurveToolThroughPointsFits: curveToolThroughPointsFits,
+            CurveToolSplineFits: curveToolSplineFits,
+            CurveToolBezierFits: curveToolBezierFits,
+            MeanCurveToolRoundness:
+                curveToolFits == 0
+                    ? 0d
+                    : curveToolRoundnessSum /
+                      curveToolFits,
             GeometricThroughFits: geometricThroughFits,
             GeometricThroughAttempts: geometricThroughAttempts,
             MaxGeometricThroughDeviation: maxGeometricThroughDeviation,
@@ -550,6 +577,10 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     int RibbonGeometryAccepted,
     int FitSafe,
     int CurveToolFits,
+    int CurveToolThroughPointsFits,
+    int CurveToolSplineFits,
+    int CurveToolBezierFits,
+    double MeanCurveToolRoundness,
     int GeometricThroughFits,
     int GeometricThroughAttempts,
     double MaxGeometricThroughDeviation,
