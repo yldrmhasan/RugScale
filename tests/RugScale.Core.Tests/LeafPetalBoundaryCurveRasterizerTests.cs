@@ -116,7 +116,8 @@ public sealed class LeafPetalBoundaryCurveRasterizerTests
         Assert.True(
             componentCount <= 2,
             $"The rebuilt outer curve fragmented into unrelated white pieces. " +
-            $"components={componentCount}; {DescribeComponents(target, 1)}");
+            $"sourceComponents={CountComponents(source, 1)}; targetComponents={componentCount}; " +
+            $"{DescribeComponents(target, 1)}");
     }
 
     [Fact]
