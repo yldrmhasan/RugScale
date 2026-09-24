@@ -6,7 +6,7 @@ namespace RugScale.Core.Drawing;
 /// Individual source fits can each be excellent while their independent roundness choices create
 /// a subtle shoulder or width pulse when anisotropically resized. This stage keeps every learned
 /// source control point fixed and changes ONLY Curve-tool roundness. Therefore it cannot invent a
-/// new path; it selects the pair of RugCAD curves that best preserves source flow and paired width
+/// new path; it selects the pair of RugScale curves that best preserves source flow and paired width
 /// at the actual requested target size.
 /// </summary>
 internal static class LeafPetalBoundaryPairOptimizer
