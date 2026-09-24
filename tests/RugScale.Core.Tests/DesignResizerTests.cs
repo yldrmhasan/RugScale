@@ -546,6 +546,92 @@ public class DesignResizerTests
     }
 
     [Fact]
+    public void Scale_CurveFill_WideOvalArc_PreservesOvalGeometryAtTargetScale()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(214, 205, 182),
+            new RugColor(255, 255, 255),
+        });
+        var source = new DesignDocument(68, 48, palette);
+        var controls = new (int X, int Y)[]
+        {
+            (4, 34),
+            (10, 16),
+            (29, 7),
+            (50, 15),
+            (60, 34),
+        };
+
+        foreach (var point in Rasterizer.ConnectDiagonalSteps(
+                     CurveRasterizer.Draw(
+                         controls,
+                         CurveType.SplineThroughPoints,
+                         0.85)))
+        {
+            source.SetPixel(
+                point.X,
+                point.Y,
+                1);
+        }
+
+        var result = DesignResizer.Scale(
+            source,
+            109,
+            77,
+            ScaleMode.CurveFill,
+            40,
+            50,
+            40,
+            50);
+
+        var mappedControls =
+            controls
+                .Select(point =>
+                    (
+                        X: (int)Math.Round(
+                            (point.X + 0.5) *
+                            result.Width /
+                            source.Width -
+                            0.5),
+                        Y: (int)Math.Round(
+                            (point.Y + 0.5) *
+                            result.Height /
+                            source.Height -
+                            0.5)))
+                .ToArray();
+
+        var expected =
+            Rasterizer.ConnectDiagonalSteps(
+                    CurveRasterizer.Draw(
+                        mappedControls,
+                        CurveType.SplineThroughPoints,
+                        0.85))
+                .ToHashSet();
+        var actual =
+            GetColorPixels(
+                result,
+                1);
+
+        Assert.True(
+            PixelNearF1(
+                actual,
+                expected,
+                radius: 1) >= 0.98,
+            "Wide oval redraw lost the source Curve-tool shoulders.");
+        Assert.True(
+            PixelF1(
+                actual,
+                expected) >= 0.80,
+            "Wide oval redraw drifted too far from the target Curve-tool raster.");
+        Assert.Equal(
+            1,
+            CountFourConnectedComponents(
+                result,
+                1));
+    }
+
+    [Fact]
     public void Scale_CurveFill_LearnsBezierCharacterInsteadOfForcingThroughPoints()
     {
         var palette = new Palette(new[]
