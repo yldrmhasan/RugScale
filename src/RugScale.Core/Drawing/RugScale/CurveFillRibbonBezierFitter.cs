@@ -13,7 +13,8 @@ namespace RugScale.Core.Drawing;
 internal static class CurveFillRibbonBezierFitter
 {
     private const int ContinuousSamples = 96;
-    private const double MaximumCenterlineDeviation = 1.45;
+    private const double MaximumTypicalCenterlineDeviation = 1.50;
+    private const double MaximumOutlierCenterlineDeviation = 4.25;
     private const double MaximumHandleToChordRatio = 2.75;
 
     public static bool TryFit(
@@ -227,14 +228,16 @@ internal static class CurveFillRibbonBezierFitter
         var curvatureFlips =
             CountCurvatureSignFlips(
                 points);
-        var maximumDeviation =
-            SymmetricMaximumDeviation(
+        var deviation =
+            SymmetricDeviation(
                 points,
                 source);
         var safe =
             curvatureFlips == 0 &&
-            maximumDeviation <=
-                MaximumCenterlineDeviation;
+            deviation.Percentile95 <=
+                MaximumTypicalCenterlineDeviation &&
+            deviation.Maximum <=
+                MaximumOutlierCenterlineDeviation;
 
         fit =
             new ElegantArcFit(
@@ -242,7 +245,7 @@ internal static class CurveFillRibbonBezierFitter
                 safe,
                 curvatureFlips == 0,
                 curvatureFlips,
-                maximumDeviation);
+                deviation.Maximum);
 
         return safe;
     }
@@ -459,11 +462,14 @@ internal static class CurveFillRibbonBezierFitter
         return flips;
     }
 
-    private static double SymmetricMaximumDeviation(
+    private static (double Maximum, double Percentile95) SymmetricDeviation(
         IReadOnlyList<ElegantArcPoint> fit,
         IReadOnlyList<LeafPetalAxisSample> source)
     {
-        var maximum = 0d;
+        var distances =
+            new List<double>(
+                fit.Count +
+                source.Count);
 
         foreach (var sample in source)
         {
@@ -483,11 +489,9 @@ internal static class CurveFillRibbonBezierFitter
                                dy;
                 });
 
-            maximum =
-                Math.Max(
-                    maximum,
-                    Math.Sqrt(
-                        nearest));
+            distances.Add(
+                Math.Sqrt(
+                    nearest));
         }
 
         foreach (var point in fit)
@@ -508,14 +512,30 @@ internal static class CurveFillRibbonBezierFitter
                                dy;
                 });
 
-            maximum =
-                Math.Max(
-                    maximum,
-                    Math.Sqrt(
-                        nearest));
+            distances.Add(
+                Math.Sqrt(
+                    nearest));
         }
 
-        return maximum;
+        if (distances.Count == 0)
+            return (double.PositiveInfinity, double.PositiveInfinity);
+
+        distances.Sort();
+
+        var percentileIndex =
+            Math.Clamp(
+                (int)Math.Ceiling(
+                    distances.Count *
+                    0.95) -
+                1,
+                0,
+                distances.Count - 1);
+
+        return
+            (
+                distances[^1],
+                distances[percentileIndex]
+            );
     }
 
     private static double Distance(
