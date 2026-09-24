@@ -133,18 +133,23 @@ internal static class Program
         IReadOnlyList<CurveStyleTrainingRow> rows,
         out string failure)
     {
-        var throughAccepted =
+        var throughRows =
             rows
                 .Where(row =>
                     row.SourceType ==
-                    CurveType.SplineThroughPoints &&
+                    CurveType.SplineThroughPoints)
+                .ToArray();
+
+        var throughAccepted =
+            throughRows
+                .Where(row =>
                     row.Accepted)
                 .ToArray();
 
         if (throughAccepted.Length < 20)
         {
             failure =
-                $"Through-Points coverage fell to {throughAccepted.Length}/30.";
+                $"Through-Points coverage fell to {throughAccepted.Length}/{throughRows.Length}.";
             return false;
         }
 
@@ -178,6 +183,61 @@ internal static class Program
         {
             failure =
                 $"Through-Points roundness MAE rose to {roundnessMae:0.000}.";
+            return false;
+        }
+
+        var ovalRows =
+            rows
+                .Where(row =>
+                    row.SourceType ==
+                    CurveType.SplineThroughPoints &&
+                    row.Shape.Contains(
+                        "oval",
+                        StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+        var ovalAccepted =
+            ovalRows
+                .Where(row =>
+                    row.Accepted)
+                .ToArray();
+
+        if (ovalRows.Length == 0 ||
+            ovalAccepted.Length <
+            Math.Ceiling(
+                ovalRows.Length * 0.75))
+        {
+            failure =
+                $"Oval training coverage is too low: {ovalAccepted.Length}/{ovalRows.Length}.";
+            return false;
+        }
+
+        var ovalFamilyPrecision =
+            ovalAccepted.Count(row =>
+                row.FamilyCorrect) /
+            (double)Math.Max(
+                1,
+                ovalAccepted.Length);
+
+        if (ovalFamilyPrecision < 0.90)
+        {
+            failure =
+                $"Oval family precision fell to {ovalFamilyPrecision:P2}.";
+            return false;
+        }
+
+        var ovalLearnedExact =
+            ovalRows.Average(row =>
+                row.TargetExactF1);
+        var ovalGraphExact =
+            ovalRows.Average(row =>
+                row.FallbackTargetExactF1);
+
+        if (ovalLearnedExact <
+            ovalGraphExact + 0.02)
+        {
+            failure =
+                $"Oval target exact F1 gain is too small: learned={ovalLearnedExact:P2}, graph={ovalGraphExact:P2}.";
             return false;
         }
 
@@ -249,6 +309,33 @@ internal static class Program
                     (32, 9),
                     (49, 23),
                     (58, 41),
+                ],
+                // Oval-specific training cohort. RugScale curve redraw is expected to preserve
+                // the broad, continuous curvature of these motifs instead of collapsing them
+                // into polygonal/scalloped chains when the physical carpet size changes.
+                ["oval-wide"] =
+                [
+                    (4, 34),
+                    (10, 16),
+                    (29, 7),
+                    (50, 15),
+                    (60, 34),
+                ],
+                ["oval-tall-side"] =
+                [
+                    (42, 5),
+                    (22, 8),
+                    (8, 24),
+                    (15, 46),
+                    (38, 59),
+                ],
+                ["oval-soft"] =
+                [
+                    (6, 39),
+                    (13, 17),
+                    (28, 8),
+                    (46, 12),
+                    (59, 32),
                 ],
             };
 
