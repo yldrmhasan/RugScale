@@ -138,7 +138,9 @@ internal static class CurveFillRibbonArcRefiner
             var fit =
                 ElegantArcFitter.Fit(
                     model,
-                    taperApex: false);
+                    taperApex: false,
+                    maximumAnchors: 8,
+                    smoothingPasses: 2);
 
             maxFitDeviation =
                 Math.Max(
