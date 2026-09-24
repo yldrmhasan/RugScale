@@ -263,14 +263,37 @@ internal static class ToolFaithfulPixelCordOverlay
             // curve into many fragments. Recover the endpoint-to-endpoint 4-connected main path
             // only when it covers almost the whole component; true branched networks therefore
             // keep the conservative multi-chain path below.
+            var fitPixelCord =
+                pixelCord;
+
             if (component.TrustedStrokeRole &&
                 pixelCord &&
-                TryTraceDominantPixelCordPath(
+                TryBuildMonotonicOvalCenterline(
                     component,
                     source.Width,
-                    out var dominantPath) &&
+                    out var ovalCenterline) &&
                 !HasSourceCusp(
-                    dominantPath))
+                    ovalCenterline))
+            {
+                // Fit the recovered geometric centreline without Pixel-Cord bridge cells. Target
+                // rendering still uses the real source Pixel-Cord flag below, so the final carpet
+                // raster keeps edge-connected pixels while the inverse model sees the smooth oval.
+                chains =
+                new[]
+                {
+                    ovalCenterline,
+                };
+                fitPixelCord =
+                    false;
+            }
+            else if (component.TrustedStrokeRole &&
+                     pixelCord &&
+                     TryTraceDominantPixelCordPath(
+                         component,
+                         source.Width,
+                         out var dominantPath) &&
+                     !HasSourceCusp(
+                         dominantPath))
             {
                 chains =
                 new[]
@@ -296,7 +319,7 @@ internal static class ToolFaithfulPixelCordOverlay
                             ? null
                             : ResolveStyleFit(
                                 chain,
-                                pixelCord,
+                                fitPixelCord,
                                 styleFitCache,
                                 out cacheHit);
 
@@ -1913,6 +1936,147 @@ internal static class ToolFaithfulPixelCordOverlay
 
             previous = current;
         }
+    }
+
+    private static bool TryBuildMonotonicOvalCenterline(
+        StrokeComponent component,
+        int sourceWidth,
+        out List<(int X, int Y)> centerline)
+    {
+        centerline =
+            new List<(int X, int Y)>();
+
+        var width =
+            component.MaxX -
+            component.MinX +
+            1;
+        var height =
+            component.MaxY -
+            component.MinY +
+            1;
+
+        if (width < 8 ||
+            height < 5 ||
+            component.Pixels.Count < 20)
+        {
+            return false;
+        }
+
+        var useX =
+            width >=
+            height;
+        var axisLength =
+            useX
+                ? width
+                : height;
+        var slices =
+            new Dictionary<int, List<int>>();
+
+        foreach (var pixel in component.Pixels)
+        {
+            var x =
+                pixel %
+                sourceWidth;
+            var y =
+                pixel /
+                sourceWidth;
+            var axis =
+                useX
+                    ? x
+                    : y;
+            var perpendicular =
+                useX
+                    ? y
+                    : x;
+
+            if (!slices.TryGetValue(
+                    axis,
+                    out var values))
+            {
+                values =
+                    new List<int>();
+                slices[axis] =
+                    values;
+            }
+
+            values.Add(
+                perpendicular);
+        }
+
+        if (slices.Count <
+            axisLength * 0.75)
+        {
+            return false;
+        }
+
+        var broadSlices = 0;
+        var totalSlicePixels = 0;
+
+        foreach (var (axis, values) in slices
+                     .OrderBy(pair =>
+                         pair.Key))
+        {
+            values.Sort();
+            totalSlicePixels +=
+                values.Count;
+
+            if (values[^1] -
+                values[0] >
+                3)
+            {
+                broadSlices++;
+            }
+
+            var perpendicular =
+                values[
+                    values.Count /
+                    2];
+
+            centerline.Add(
+                useX
+                    ? (
+                        axis,
+                        perpendicular)
+                    : (
+                        perpendicular,
+                        axis));
+        }
+
+        if (broadSlices >
+            slices.Count * 0.15 ||
+            totalSlicePixels /
+            (double)slices.Count >
+            3.0)
+        {
+            centerline.Clear();
+            return false;
+        }
+
+        // A dominant-axis oval/arch should span most of its own bounding box. This excludes small
+        // local branches cut from a much larger stroke network.
+        var first =
+            centerline[0];
+        var last =
+            centerline[^1];
+        var endpointSpan =
+            useX
+                ? Math.Abs(
+                    last.X -
+                    first.X)
+                : Math.Abs(
+                    last.Y -
+                    first.Y);
+
+        if (endpointSpan <
+            (axisLength - 1) *
+            0.85)
+        {
+            centerline.Clear();
+            return false;
+        }
+
+        return centerline.Count >=
+               MinimumPathPixels;
     }
 
     private static bool TryTraceDominantPixelCordPath(
