@@ -242,7 +242,7 @@ internal static class CurveFillScaleEngine
                 source,
                 destination);
 
-        // Replay any source 1x1 Curve/Pixel-Cord strokes through RugCAD's own rasterizer.
+        // Replay any source 1x1 Curve/Pixel-Cord strokes through RugScale's own rasterizer.
         // Filled regions stay owned by the guarded reconstruction above; this pass only reasserts
         // genuine tool-style line work and never skeletonizes a filled ornament.
         var overlay =
