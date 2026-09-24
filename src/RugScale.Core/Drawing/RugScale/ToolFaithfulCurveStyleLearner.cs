@@ -493,9 +493,9 @@ internal static class ToolFaithfulCurveStyleLearner
                     SourceModelTieTolerance;
 
                 if (!shouldReplace &&
-                    bestThroughPoint is { } current &&
+                    bestThroughPoint is { } incumbent &&
                     candidateModelScore >=
-                    current.ModelScore -
+                    incumbent.ModelScore -
                     SourceModelTieTolerance)
                 {
                     // Within a source-equivalent band, prefer the candidate that survives a
@@ -503,13 +503,13 @@ internal static class ToolFaithfulCurveStyleLearner
                     // from becoming scalloped/polygonal at the target size.
                     shouldReplace =
                         scaleConsistency >
-                        current.ScaleConsistency +
+                        incumbent.ScaleConsistency +
                         ScaleConsistencyTieTolerance;
 
                     if (!shouldReplace &&
                         Math.Abs(
                             scaleConsistency -
-                            current.ScaleConsistency) <=
+                            incumbent.ScaleConsistency) <=
                         ScaleConsistencyTieTolerance)
                     {
                         // If both source fit and scale stability are effectively tied, use the
@@ -518,7 +518,7 @@ internal static class ToolFaithfulCurveStyleLearner
                         // control fits.
                         shouldReplace =
                             controls.Length <
-                            current.Controls.Length;
+                            incumbent.Controls.Length;
                     }
                 }
 
