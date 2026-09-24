@@ -63,6 +63,7 @@ internal static class CurveFillRibbonArcRefiner
         var lastCenterlineReason = "not-attempted";
         var ribbonGeometryAccepted = 0;
         var fitSafe = 0;
+        var curveToolFits = 0;
         var maxFitDeviation = 0d;
         var maxFitCurvatureFlips = 0;
         var accepted =
@@ -135,12 +136,26 @@ internal static class CurveFillRibbonArcRefiner
 
             // Ribbon geometry is deliberately NOT apex-tapered. The source width profile already
             // contains the designer's constant/slowly-varying band thickness.
-            var fit =
-                ElegantArcFitter.Fit(
+            ElegantArcFit fit;
+
+            if (CurveFillRibbonToolFitter.TryFit(
                     model,
-                    taperApex: false,
-                    maximumAnchors: 8,
-                    smoothingPasses: 2);
+                    out var toolFit,
+                    out _))
+            {
+                fit =
+                    toolFit;
+                curveToolFits++;
+            }
+            else
+            {
+                fit =
+                    ElegantArcFitter.Fit(
+                        model,
+                        taperApex: false,
+                        maximumAnchors: 8,
+                        smoothingPasses: 2);
+            }
 
             maxFitDeviation =
                 Math.Max(
@@ -191,6 +206,7 @@ internal static class CurveFillRibbonArcRefiner
             LastCenterlineReason: lastCenterlineReason,
             RibbonGeometryAccepted: ribbonGeometryAccepted,
             FitSafe: fitSafe,
+            CurveToolFits: curveToolFits,
             MaxFitDeviation: maxFitDeviation,
             MaxFitCurvatureFlips: maxFitCurvatureFlips,
             Refined: accepted.Count,
@@ -335,6 +351,7 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     string LastCenterlineReason,
     int RibbonGeometryAccepted,
     int FitSafe,
+    int CurveToolFits,
     double MaxFitDeviation,
     int MaxFitCurvatureFlips,
     int Refined,
