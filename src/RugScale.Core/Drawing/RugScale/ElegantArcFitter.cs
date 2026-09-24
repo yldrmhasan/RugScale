@@ -9,7 +9,8 @@ internal static class ElegantArcFitter
     private const double MaximumCenterlineDeviation = 1.55;
 
     public static ElegantArcFit Fit(
-        LeafPetalArcModel model)
+        LeafPetalArcModel model,
+        bool taperApex = true)
     {
         ArgumentNullException.ThrowIfNull(model);
 
@@ -38,7 +39,8 @@ internal static class ElegantArcFitter
                 double.PositiveInfinity);
         }
 
-        ApplyApexTaper(points);
+        if (taperApex)
+            ApplyApexTaper(points);
 
         var signFlips = CountCurvatureSignFlips(points);
         // Indexed 1x1 staircases can produce one or two microscopic sign alternations even on a
