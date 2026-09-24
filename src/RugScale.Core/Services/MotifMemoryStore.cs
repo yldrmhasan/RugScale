@@ -20,10 +20,8 @@ public static class MotifMemoryStore
         Folder,
         "rugscale-motif-memory.json");
 
-    private static readonly string SeedPath = Path.Combine(
-        AppContext.BaseDirectory,
-        "Assets",
-        "rugscale-motif-memory.seed.gz.b64");
+    private const string SeedResourceName =
+        "RugScale.Core.Assets.rugscale-motif-memory.seed.gz.b64";
 
     private static MotifMemoryFile _memory = LoadInternal();
 
@@ -196,11 +194,24 @@ public static class MotifMemoryStore
 
         try
         {
-            if (File.Exists(SeedPath))
+            using var seedStream =
+                typeof(MotifMemoryStore)
+                    .Assembly
+                    .GetManifestResourceStream(
+                        SeedResourceName);
+
+            if (seedStream is not null)
             {
+                using var seedReader =
+                    new StreamReader(
+                        seedStream,
+                        Encoding.UTF8,
+                        detectEncodingFromByteOrderMarks: true,
+                        leaveOpen: false);
+
                 var base64 =
-                    File.ReadAllText(
-                            SeedPath)
+                    seedReader
+                        .ReadToEnd()
                         .Trim();
                 var compressed =
                     Convert.FromBase64String(
