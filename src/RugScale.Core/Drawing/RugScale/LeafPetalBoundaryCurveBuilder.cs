@@ -1133,13 +1133,15 @@ internal static class LeafPetalBoundaryCurveBuilder
     {
         apex = default;
 
-        // Only a genuinely tapered leaf/petal receives a common sharp apex. Rounded lobes and
-        // broad petal crowns keep their two independent source sides.
+        // Only a genuinely tapered leaf/petal receives a common sharp apex. The medial-axis
+        // width estimate is intentionally a little tolerant because a 1px Pixel-Cord outline and
+        // scan-bin quantisation can make the last source cross-section look 1-2 cells wider than
+        // the visual tip.
         if (model.ApexWidth >
                 Math.Max(
-                    3.25,
+                    4.5,
                     model.BaseWidth *
-                    0.58))
+                    0.70))
         {
             return false;
         }
@@ -1154,16 +1156,26 @@ internal static class LeafPetalBoundaryCurveBuilder
                     leftEnd.Y -
                     rightEnd.Y,
                     2));
+        var maximumEndDistance =
+            Math.Max(
+                10.0,
+                Math.Min(
+                    14.0,
+                    span *
+                    0.16));
 
-        if (endDistance > 7.0)
+        if (endDistance >
+            maximumEndDistance)
+        {
             return false;
+        }
 
         var threshold =
             maximumMajor -
             Math.Max(
-                2.5,
+                3.5,
                 span *
-                0.08);
+                0.12);
 
         var candidates =
             projected
@@ -1201,8 +1213,17 @@ internal static class LeafPetalBoundaryCurveBuilder
 
             // The shared anchor must itself be a real source-outline pixel very close to both
             // extracted sides. This prevents an artificial centre point from moving the tip.
-            if (leftDistance <= 3 &&
-                rightDistance <= 3)
+            var maximumAnchorDistance =
+                Math.Max(
+                    4,
+                    (int)Math.Ceiling(
+                        span *
+                        0.07));
+
+            if (leftDistance <=
+                    maximumAnchorDistance &&
+                rightDistance <=
+                    maximumAnchorDistance)
             {
                 apex =
                     point;
