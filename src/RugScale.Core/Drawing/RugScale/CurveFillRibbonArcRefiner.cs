@@ -240,6 +240,21 @@ internal static class CurveFillRibbonArcRefiner
                 continue;
             }
 
+            if (broadArchFitSafe &&
+                !fit.IsSafe)
+            {
+                // The generic rasterizers also honor ElegantArcFit.IsSafe. Promote the fit only
+                // after the broad-arch-specific sparse-region + stable-width + no-inflection
+                // gates above have independently established that this stronger smoothing is
+                // intentional.
+                fit =
+                    fit with
+                    {
+                        IsSafe = true,
+                        IsMonotonic = true,
+                    };
+            }
+
             fitSafe++;
 
             accepted.Add(
