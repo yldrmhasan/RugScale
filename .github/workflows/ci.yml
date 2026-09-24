@@ -19,9 +19,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Restore
-        run: dotnet restore tests/RugScale.Core.Tests/RugScale.Core.Tests.csproj
-      - name: Build
-        run: dotnet build tests/RugScale.Core.Tests/RugScale.Core.Tests.csproj -c Release --no-restore
-      - name: Test
+      - name: Restore solution
+        run: dotnet restore RugScale.sln
+      - name: Build standalone solution
+        run: dotnet build RugScale.sln -c Release --no-restore
+      - name: Test core
         run: dotnet test tests/RugScale.Core.Tests/RugScale.Core.Tests.csproj -c Release --no-build --logger "console;verbosity=normal"
+      - name: Smoke-test CLI
+        run: dotnet run --project tools/RugScale.Cli/RugScale.Cli.csproj -c Release --no-build -- --help
