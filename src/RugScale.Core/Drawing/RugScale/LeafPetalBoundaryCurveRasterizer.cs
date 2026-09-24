@@ -167,8 +167,20 @@ internal static class LeafPetalBoundaryCurveRasterizer
                 destination.Height);
         }
 
-        if (model.DrawApexCap)
+        var sourceApexDistance =
+            Distance(
+                model.LeftSourcePath[^1],
+                model.RightSourcePath[^1]);
+        var closeSourceApex =
+            sourceApexDistance <= 4.0;
+
+        if (model.DrawApexCap ||
+            closeSourceApex)
         {
+            // If the recovered source sides already converge to the same 1x1/Pixel-Cord tip,
+            // always reconnect their target raster endpoints. Independent curve rasterization can
+            // otherwise leave a one-cell phase gap even though the source designer drew a single
+            // shared apex.
             AddDilatedLine(
                 newOutline,
                 left[^1],
