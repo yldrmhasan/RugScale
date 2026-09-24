@@ -181,12 +181,32 @@ internal static class CurveFillRibbonArcRefiner
             // contains the designer's constant/slowly-varying band thickness.
             ElegantArcFit fit;
 
-            if (broadSparseArch)
+            if (CurveFillRibbonToolFitter.TryFit(
+                    model,
+                    out var toolFit,
+                    out var toolStyle))
             {
-                // Broad filled arches are recovered from a sub-pixel medial path. Try the
-                // geometric Through-Points inverse model BEFORE the ordinary 1x1 Curve learner:
-                // the latter rounds the re-centred medial samples to integer cells and can
-                // accidentally reintroduce the source staircase phase we just removed.
+                fit =
+                    toolFit;
+                curveToolFits++;
+                curveToolRoundnessSum +=
+                    toolStyle.Roundness;
+
+                switch (toolStyle.Type)
+                {
+                    case CurveType.SplineThroughPoints:
+                        curveToolThroughPointsFits++;
+                        break;
+                    case CurveType.Spline:
+                        curveToolSplineFits++;
+                        break;
+                    case CurveType.Bezier:
+                        curveToolBezierFits++;
+                        break;
+                }
+            }
+            else if (broadSparseArch)
+            {
                 geometricThroughAttempts++;
 
                 if (CurveFillRibbonThroughPointsFitter.TryFit(
@@ -199,30 +219,6 @@ internal static class CurveFillRibbonArcRefiner
                     geometricThroughFits++;
                     geometricThroughRoundnessSum +=
                         throughDiagnostics.Roundness;
-                }
-                else if (CurveFillRibbonToolFitter.TryFit(
-                             model,
-                             out var toolFit,
-                             out var toolStyle))
-                {
-                    fit =
-                        toolFit;
-                    curveToolFits++;
-                    curveToolRoundnessSum +=
-                        toolStyle.Roundness;
-
-                    switch (toolStyle.Type)
-                    {
-                        case CurveType.SplineThroughPoints:
-                            curveToolThroughPointsFits++;
-                            break;
-                        case CurveType.Spline:
-                            curveToolSplineFits++;
-                            break;
-                        case CurveType.Bezier:
-                            curveToolBezierFits++;
-                            break;
-                    }
                 }
                 else
                 {
@@ -298,30 +294,6 @@ internal static class CurveFillRibbonArcRefiner
                     Math.Max(
                         maxGeometricThroughP95Deviation,
                         throughDiagnostics.Percentile95Deviation);
-            }
-            else if (CurveFillRibbonToolFitter.TryFit(
-                         model,
-                         out var toolFit,
-                         out var toolStyle))
-            {
-                fit =
-                    toolFit;
-                curveToolFits++;
-                curveToolRoundnessSum +=
-                    toolStyle.Roundness;
-
-                switch (toolStyle.Type)
-                {
-                    case CurveType.SplineThroughPoints:
-                        curveToolThroughPointsFits++;
-                        break;
-                    case CurveType.Spline:
-                        curveToolSplineFits++;
-                        break;
-                    case CurveType.Bezier:
-                        curveToolBezierFits++;
-                        break;
-                }
             }
             else
             {
@@ -568,7 +540,21 @@ internal static class CurveFillRibbonArcRefiner
                     {
                         ElegantArcFit fit;
 
-                        if (broadSparseArch)
+                        if (CurveFillRibbonToolFitter.TryFit(
+                                model,
+                                out var toolFit,
+                                out var toolStyle))
+                        {
+                            fit =
+                                toolFit;
+                            fitKind =
+                                "curve-tool";
+                            curveFamily =
+                                toolStyle.Type.ToString();
+                            roundness =
+                                toolStyle.Roundness;
+                        }
+                        else if (broadSparseArch)
                         {
                             if (CurveFillRibbonThroughPointsFitter.TryFit(
                                     model,
@@ -583,20 +569,6 @@ internal static class CurveFillRibbonArcRefiner
                                     CurveType.SplineThroughPoints.ToString();
                                 roundness =
                                     throughDiagnostics.Roundness;
-                            }
-                            else if (CurveFillRibbonToolFitter.TryFit(
-                                         model,
-                                         out var toolFit,
-                                         out var toolStyle))
-                            {
-                                fit =
-                                    toolFit;
-                                fitKind =
-                                    "curve-tool";
-                                curveFamily =
-                                    toolStyle.Type.ToString();
-                                roundness =
-                                    toolStyle.Roundness;
                             }
                             else if (CurveFillBroadOvalArcFitter.TryFit(
                                          model,
@@ -635,20 +607,6 @@ internal static class CurveFillRibbonArcRefiner
                                 curveFamily =
                                     CurveType.Spline.ToString();
                             }
-                        }
-                        else if (CurveFillRibbonToolFitter.TryFit(
-                                     model,
-                                     out var toolFit,
-                                     out var toolStyle))
-                        {
-                            fit =
-                                toolFit;
-                            fitKind =
-                                "curve-tool";
-                            curveFamily =
-                                toolStyle.Type.ToString();
-                            roundness =
-                                toolStyle.Roundness;
                         }
                         else if (CurveFillRibbonBezierFitter.TryFit(
                                      model,
