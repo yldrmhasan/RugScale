@@ -103,28 +103,37 @@ internal static class LeafPetalBoundaryCurveRasterizer
             $"srcR={model.RightSourcePath.Count}:{Box(model.RightSourcePath)}, " +
             $"fitR={model.RightFit.Controls.Count}:{Box(model.RightFit.Controls)}, dstR={right.Count}:{Box(right)}");
 
-        if (!HasSourcePathSupport(
+        var leftSourceSupported =
+            HasSourcePathSupport(
                 left,
                 model.LeftSourcePath,
                 scaleX,
                 scaleY,
                 MaximumCurveSourceDeviation,
-                MinimumCurveSourceSupport) ||
-            !HasSourcePathSupport(
+                MinimumCurveSourceSupport);
+        var rightSourceSupported =
+            HasSourcePathSupport(
                 right,
                 model.RightSourcePath,
                 scaleX,
                 scaleY,
                 MaximumCurveSourceDeviation,
-                MinimumCurveSourceSupport) ||
-            !HasPairedWidthProfileSupport(
+                MinimumCurveSourceSupport);
+        var widthProfileSupported =
+            HasPairedWidthProfileSupport(
                 left,
                 right,
                 model.LeftSourcePath,
                 model.RightSourcePath,
                 scaleX,
-                scaleY))
+                scaleY);
+
+        if (!leftSourceSupported ||
+            !rightSourceSupported ||
+            !widthProfileSupported)
         {
+            Console.Error.WriteLine(
+                $"[leaf-boundary-reject] left={leftSourceSupported}, right={rightSourceSupported}, width={widthProfileSupported}");
             // Reject the WHOLE paired fit. Applying only the locally-supported pieces would mix
             // old and new outlines and create the exact small shoulders/kinks the specialist mode
             // is intended to remove.
