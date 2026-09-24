@@ -10,9 +10,22 @@ internal static class ElegantArcFitter
 
     public static ElegantArcFit Fit(
         LeafPetalArcModel model,
-        bool taperApex = true)
+        bool taperApex = true,
+        int maximumAnchors = MaximumAnchors,
+        int smoothingPasses = 1)
     {
         ArgumentNullException.ThrowIfNull(model);
+
+        maximumAnchors =
+            Math.Clamp(
+                maximumAnchors,
+                4,
+                MaximumAnchors);
+        smoothingPasses =
+            Math.Clamp(
+                smoothingPasses,
+                1,
+                4);
 
         var source = model.Samples;
         if (source.Count < 4)
@@ -25,8 +38,23 @@ internal static class ElegantArcFitter
                 double.PositiveInfinity);
         }
 
-        var smoothed = SmoothSourceSamples(source);
-        var anchors = ReduceAnchors(smoothed, MaximumAnchors);
+        IReadOnlyList<ElegantArcPoint> smoothed =
+            SmoothSourceSamples(
+                source);
+
+        for (var pass = 1;
+             pass < smoothingPasses;
+             pass++)
+        {
+            smoothed =
+                SmoothArcPoints(
+                    smoothed);
+        }
+
+        var anchors =
+            ReduceAnchors(
+                smoothed,
+                maximumAnchors);
         var points = InterpolateCatmullRom(anchors, SamplesPerSegment);
 
         if (points.Count < 4)
@@ -90,6 +118,50 @@ internal static class ElegantArcFitter
                     previous.Y * 0.20 +
                     current.Y * 0.60 +
                     next.Y * 0.20,
+                    Math.Max(
+                        0.45,
+                        previous.HalfWidth * 0.20 +
+                        current.HalfWidth * 0.60 +
+                        next.HalfWidth * 0.20)));
+        }
+
+        return result;
+    }
+
+    private static List<ElegantArcPoint> SmoothArcPoints(
+        IReadOnlyList<ElegantArcPoint> source)
+    {
+        var result =
+            new List<ElegantArcPoint>(
+                source.Count);
+
+        for (var i = 0;
+             i < source.Count;
+             i++)
+        {
+            if (i == 0 ||
+                i == source.Count - 1)
+            {
+                result.Add(
+                    source[i]);
+                continue;
+            }
+
+            var previous =
+                source[i - 1];
+            var current =
+                source[i];
+            var next =
+                source[i + 1];
+
+            result.Add(
+                new ElegantArcPoint(
+                    previous.X * 0.25 +
+                    current.X * 0.50 +
+                    next.X * 0.25,
+                    previous.Y * 0.25 +
+                    current.Y * 0.50 +
+                    next.Y * 0.25,
                     Math.Max(
                         0.45,
                         previous.HalfWidth * 0.20 +
