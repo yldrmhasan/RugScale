@@ -1,0 +1,36 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RugScale.Core", "src\RugScale.Core\RugScale.Core.csproj", "{6B104DD8-E3C5-4CC0-B57C-06D5F37915C2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RugScale.Core.Tests", "tests\RugScale.Core.Tests\RugScale.Core.Tests.csproj", "{467248AE-57F8-441F-BBBC-B46257DE079F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RugScale.CurveScaleAudit", "tools\RugScale.CurveScaleAudit\RugScale.CurveScaleAudit.csproj", "{D92F1066-2A63-42B5-963B-E03B6826E166}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RugScale.RugScaleAudit", "tools\RugScale.RugScaleAudit\RugScale.RugScaleAudit.csproj", "{74945D32-8C1F-476A-9A01-32D8F3F516A5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6B104DD8-E3C5-4CC0-B57C-06D5F37915C2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6B104DD8-E3C5-4CC0-B57C-06D5F37915C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6B104DD8-E3C5-4CC0-B57C-06D5F37915C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6B104DD8-E3C5-4CC0-B57C-06D5F37915C2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{467248AE-57F8-441F-BBBC-B46257DE079F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{467248AE-57F8-441F-BBBC-B46257DE079F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{467248AE-57F8-441F-BBBC-B46257DE079F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{467248AE-57F8-441F-BBBC-B46257DE079F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D92F1066-2A63-42B5-963B-E03B6826E166}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D92F1066-2A63-42B5-963B-E03B6826E166}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D92F1066-2A63-42B5-963B-E03B6826E166}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D92F1066-2A63-42B5-963B-E03B6826E166}.Release|Any CPU.Build.0 = Release|Any CPU
+		{74945D32-8C1F-476A-9A01-32D8F3F516A5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{74945D32-8C1F-476A-9A01-32D8F3F516A5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{74945D32-8C1F-476A-9A01-32D8F3F516A5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{74945D32-8C1F-476A-9A01-32D8F3F516A5}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
