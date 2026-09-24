@@ -380,6 +380,8 @@ internal static class ToolFaithfulCurveStyleLearner
     {
         var bestScore =
             double.NegativeInfinity;
+        var bestScaleConsistency =
+            double.NegativeInfinity;
         var bestRoundness =
             ThroughPointRoundness[0];
 
@@ -393,10 +395,51 @@ internal static class ToolFaithfulCurveStyleLearner
                     sourceSet,
                     pixelCord);
 
-            if (score <= bestScore)
+            var controls =
+                indices
+                    .Select(index =>
+                        sourceChain[index])
+                    .ToArray();
+
+            // At source resolution several different Curve-tool roundness values can quantize to
+            // the same 1x1 raster. Picking the first/lowest slider value in that tie looks harmless
+            // at source size but can flatten an oval badly after enlargement. Use a deterministic
+            // self-consistency probe: render the hypothesis at a larger virtual grid, collapse it
+            // back to source coordinates, and prefer the tied model that most faithfully regenerates
+            // the immutable source chain.
+            var scaleConsistency =
+                ScaleConsistencyScore(
+                    controls,
+                    roundness,
+                    sourceSet,
+                    pixelCord);
+
+            const double SourceScoreTieTolerance = 0.004;
+
+            var clearlyBetterSourceFit =
+                score >
+                bestScore +
+                SourceScoreTieTolerance;
+            var sourceFitTied =
+                Math.Abs(
+                    score -
+                    bestScore) <=
+                SourceScoreTieTolerance;
+            var moreScaleStable =
+                scaleConsistency >
+                bestScaleConsistency +
+                0.002;
+
+            if (!clearlyBetterSourceFit &&
+                (!sourceFitTied ||
+                 !moreScaleStable))
+            {
                 continue;
+            }
 
             bestScore = score;
+            bestScaleConsistency =
+                scaleConsistency;
             bestRoundness = roundness;
         }
 
@@ -425,6 +468,60 @@ internal static class ToolFaithfulCurveStyleLearner
                 CurveType.SplineThroughPoints,
                 roundness,
                 pixelCord));
+    }
+
+    private static double ScaleConsistencyScore(
+        IReadOnlyList<(int X, int Y)> controls,
+        double roundness,
+        IReadOnlySet<(int X, int Y)> sourceSet,
+        bool pixelCord)
+    {
+        const double ProbeScale = 1.60;
+
+        var mappedControls =
+            controls
+                .Select(point =>
+                    (
+                        X: (int)Math.Round(
+                            (point.X + 0.5) *
+                            ProbeScale -
+                            0.5),
+                        Y: (int)Math.Round(
+                            (point.Y + 0.5) *
+                            ProbeScale -
+                            0.5)))
+                .ToArray();
+
+        IEnumerable<(int X, int Y)> enlarged =
+            CurveRasterizer.Draw(
+                mappedControls,
+                CurveType.SplineThroughPoints,
+                roundness);
+
+        if (pixelCord)
+        {
+            enlarged =
+                Rasterizer.ConnectDiagonalSteps(
+                    enlarged);
+        }
+
+        var collapsed =
+            enlarged
+                .Select(point =>
+                    (
+                        X: (int)Math.Round(
+                            (point.X + 0.5) /
+                            ProbeScale -
+                            0.5),
+                        Y: (int)Math.Round(
+                            (point.Y + 0.5) /
+                            ProbeScale -
+                            0.5)))
+                .ToHashSet();
+
+        return Score(
+            sourceSet,
+            collapsed);
     }
 
     private static void EvaluateOptimizedBezierFit(
