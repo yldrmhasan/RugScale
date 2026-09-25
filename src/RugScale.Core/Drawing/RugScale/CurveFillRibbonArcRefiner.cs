@@ -93,6 +93,9 @@ internal static class CurveFillRibbonArcRefiner
         var lastCubicReason = "not-attempted";
         var maxFitDeviation = 0d;
         var maxFitCurvatureFlips = 0;
+        var widthRegularized = 0;
+        var maxWidthRegularizationShift = 0d;
+        var maxWidthVariationReduction = 0d;
         var accepted =
             new List<(LeafPetalArcModel Model, ElegantArcFit Fit)>();
 
@@ -382,6 +385,26 @@ internal static class CurveFillRibbonArcRefiner
                 continue;
             }
 
+            fit =
+                CurveFillRibbonWidthProfileRegularizer.Regularize(
+                    model,
+                    fit,
+                    out var widthDiagnostics);
+
+            if (widthDiagnostics.Applied)
+            {
+                widthRegularized++;
+                maxWidthRegularizationShift =
+                    Math.Max(
+                        maxWidthRegularizationShift,
+                        widthDiagnostics.MaximumHalfWidthShift);
+                maxWidthVariationReduction =
+                    Math.Max(
+                        maxWidthVariationReduction,
+                        widthDiagnostics.BeforeAdjacentVariation -
+                        widthDiagnostics.AfterAdjacentVariation);
+            }
+
             fitSafe++;
 
             accepted.Add(
@@ -471,6 +494,9 @@ internal static class CurveFillRibbonArcRefiner
             LastCubicReason: lastCubicReason,
             MaxFitDeviation: maxFitDeviation,
             MaxFitCurvatureFlips: maxFitCurvatureFlips,
+            WidthRegularized: widthRegularized,
+            MaxWidthRegularizationShift: maxWidthRegularizationShift,
+            MaxWidthVariationReduction: maxWidthVariationReduction,
             MirrorPairs: mirrorPairDiagnostics.Pairs,
             MirrorPairReplacements: mirrorPairDiagnostics.Replacements,
             BestMirrorPairAgreement: mirrorPairDiagnostics.BestMirrorAgreement,
@@ -987,6 +1013,9 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     string LastCubicReason,
     double MaxFitDeviation,
     int MaxFitCurvatureFlips,
+    int WidthRegularized,
+    double MaxWidthRegularizationShift,
+    double MaxWidthVariationReduction,
     int MirrorPairs,
     int MirrorPairReplacements,
     double BestMirrorPairAgreement,
