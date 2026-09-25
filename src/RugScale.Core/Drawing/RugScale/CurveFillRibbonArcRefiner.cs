@@ -72,6 +72,11 @@ internal static class CurveFillRibbonArcRefiner
         var mirrorSourceFusions = 0;
         var bestMirrorSourceAgreement = 0d;
         var maxMirrorSourceFusionShift = 0d;
+        var compoundFits = 0;
+        var compoundAttempts = 0;
+        var maxCompoundP95Deviation = 0d;
+        var maxCompoundDeviation = 0d;
+        var lastCompoundReason = "not-attempted";
         var curveToolFits = 0;
         var curveToolThroughPointsFits = 0;
         var curveToolSplineFits = 0;
@@ -214,6 +219,8 @@ internal static class CurveFillRibbonArcRefiner
                 }
             }
 
+            var mirrorSourceFused = false;
+
             if (broadSparseArch &&
                 CurveFillRibbonMirrorPairRecovery.TryRecover(
                     model,
@@ -224,6 +231,7 @@ internal static class CurveFillRibbonArcRefiner
             {
                 model =
                     mirrorFusedModel;
+                mirrorSourceFused = true;
                 mirrorSourceFusions++;
                 bestMirrorSourceAgreement =
                     Math.Max(
@@ -240,6 +248,7 @@ internal static class CurveFillRibbonArcRefiner
             // Ribbon geometry is deliberately NOT apex-tapered. The source width profile already
             // contains the designer's constant/slowly-varying band thickness.
             ElegantArcFit fit;
+            var compoundFitSelected = false;
 
             if (CurveFillRibbonToolFitter.TryFit(
                     model,
@@ -305,6 +314,41 @@ internal static class CurveFillRibbonArcRefiner
                             fit =
                                 bezierFit;
                             cubicBezierFits++;
+                        }
+                        else if (mirrorSourceFused)
+                        {
+                            compoundAttempts++;
+
+                            if (CurveFillRibbonCompoundFitter.TryFit(
+                                    model,
+                                    out var compoundFit,
+                                    out var compoundDiagnostics))
+                            {
+                                fit =
+                                    compoundFit;
+                                compoundFitSelected = true;
+                                compoundFits++;
+                            }
+                            else
+                            {
+                                fit =
+                                    ElegantArcFitter.Fit(
+                                        model,
+                                        taperApex: false,
+                                        maximumAnchors: 8,
+                                        smoothingPasses: 2);
+                            }
+
+                            lastCompoundReason =
+                                compoundDiagnostics.Reason;
+                            maxCompoundDeviation =
+                                Math.Max(
+                                    maxCompoundDeviation,
+                                    compoundDiagnostics.MaximumDeviation);
+                            maxCompoundP95Deviation =
+                                Math.Max(
+                                    maxCompoundP95Deviation,
+                                    compoundDiagnostics.Percentile95Deviation);
                         }
                         else
                         {
@@ -406,8 +450,14 @@ internal static class CurveFillRibbonArcRefiner
                     maxFitCurvatureFlips,
                     fit.CurvatureSignFlips);
 
+            var maximumAllowedCurvatureFlips =
+                compoundFitSelected
+                    ? 2
+                    : 1;
+
             if (!fit.IsSafe ||
-                fit.CurvatureSignFlips > 1)
+                fit.CurvatureSignFlips >
+                    maximumAllowedCurvatureFlips)
             {
                 continue;
             }
@@ -512,6 +562,11 @@ internal static class CurveFillRibbonArcRefiner
             MirrorSourceFusions: mirrorSourceFusions,
             BestMirrorSourceAgreement: bestMirrorSourceAgreement,
             MaxMirrorSourceFusionShift: maxMirrorSourceFusionShift,
+            CompoundFits: compoundFits,
+            CompoundAttempts: compoundAttempts,
+            MaxCompoundP95Deviation: maxCompoundP95Deviation,
+            MaxCompoundDeviation: maxCompoundDeviation,
+            LastCompoundReason: lastCompoundReason,
             CurveToolFits: curveToolFits,
             CurveToolThroughPointsFits: curveToolThroughPointsFits,
             CurveToolSplineFits: curveToolSplineFits,
@@ -1057,6 +1112,11 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     int MirrorSourceFusions,
     double BestMirrorSourceAgreement,
     double MaxMirrorSourceFusionShift,
+    int CompoundFits,
+    int CompoundAttempts,
+    double MaxCompoundP95Deviation,
+    double MaxCompoundDeviation,
+    string LastCompoundReason,
     int CurveToolFits,
     int CurveToolThroughPointsFits,
     int CurveToolSplineFits,
