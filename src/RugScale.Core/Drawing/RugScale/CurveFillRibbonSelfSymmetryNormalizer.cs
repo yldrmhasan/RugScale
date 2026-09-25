@@ -240,60 +240,162 @@ internal static class CurveFillRibbonSelfSymmetryNormalizer
         IReadOnlyList<ElegantArcPoint> fit,
         IReadOnlyList<LeafPetalAxisSample> source)
     {
+        if (fit.Count < 2 ||
+            source.Count < 2)
+        {
+            return double.PositiveInfinity;
+        }
+
         var maximum = 0d;
 
         foreach (var point in fit)
         {
-            var nearest =
-                source.Min(sample =>
-                {
-                    var dx =
-                        point.X -
-                        sample.X;
-                    var dy =
-                        point.Y -
-                        sample.Y;
-
-                    return dx *
-                               dx +
-                           dy *
-                               dy;
-                });
-
             maximum =
                 Math.Max(
                     maximum,
-                    Math.Sqrt(
-                        nearest));
+                    DistanceToSourcePolyline(
+                        point.X,
+                        point.Y,
+                        source));
         }
 
         foreach (var sample in source)
         {
-            var nearest =
-                fit.Min(point =>
-                {
-                    var dx =
-                        point.X -
-                        sample.X;
-                    var dy =
-                        point.Y -
-                        sample.Y;
-
-                    return dx *
-                               dx +
-                           dy *
-                               dy;
-                });
-
             maximum =
                 Math.Max(
                     maximum,
-                    Math.Sqrt(
-                        nearest));
+                    DistanceToFitPolyline(
+                        sample.X,
+                        sample.Y,
+                        fit));
         }
 
         return maximum;
     }
+
+    private static double DistanceToSourcePolyline(
+        double x,
+        double y,
+        IReadOnlyList<LeafPetalAxisSample> polyline)
+    {
+        var minimumSquared =
+            double.PositiveInfinity;
+
+        for (var index = 1;
+             index < polyline.Count;
+             index++)
+        {
+            minimumSquared =
+                Math.Min(
+                    minimumSquared,
+                    PointSegmentDistanceSquared(
+                        x,
+                        y,
+                        polyline[index - 1].X,
+                        polyline[index - 1].Y,
+                        polyline[index].X,
+                        polyline[index].Y));
+        }
+
+        return Math.Sqrt(
+            minimumSquared);
+    }
+
+    private static double DistanceToFitPolyline(
+        double x,
+        double y,
+        IReadOnlyList<ElegantArcPoint> polyline)
+    {
+        var minimumSquared =
+            double.PositiveInfinity;
+
+        for (var index = 1;
+             index < polyline.Count;
+             index++)
+        {
+            minimumSquared =
+                Math.Min(
+                    minimumSquared,
+                    PointSegmentDistanceSquared(
+                        x,
+                        y,
+                        polyline[index - 1].X,
+                        polyline[index - 1].Y,
+                        polyline[index].X,
+                        polyline[index].Y));
+        }
+
+        return Math.Sqrt(
+            minimumSquared);
+    }
+
+    private static double PointSegmentDistanceSquared(
+        double px,
+        double py,
+        double ax,
+        double ay,
+        double bx,
+        double by)
+    {
+        var dx =
+            bx -
+            ax;
+        var dy =
+            by -
+            ay;
+        var lengthSquared =
+            dx *
+                dx +
+            dy *
+                dy;
+
+        if (lengthSquared <= 1e-12)
+        {
+            var ex =
+                px -
+                ax;
+            var ey =
+                py -
+                ay;
+
+            return ex *
+                       ex +
+                   ey *
+                       ey;
+        }
+
+        var t =
+            Math.Clamp(
+                ((px -
+                  ax) *
+                     dx +
+                 (py -
+                  ay) *
+                     dy) /
+                lengthSquared,
+                0d,
+                1d);
+        var qx =
+            ax +
+            dx *
+                t;
+        var qy =
+            ay +
+            dy *
+                t;
+        var rx =
+            px -
+            qx;
+        var ry =
+            py -
+            qy;
+
+        return rx *
+                   rx +
+               ry *
+                   ry;
+    }
+
 }
 
 internal readonly record struct RibbonSelfSymmetryDiagnostics(
