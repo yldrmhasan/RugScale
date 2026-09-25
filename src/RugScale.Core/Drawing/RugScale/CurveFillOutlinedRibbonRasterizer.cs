@@ -15,6 +15,9 @@ namespace RugScale.Core.Drawing;
 internal static class CurveFillOutlinedRibbonRasterizer
 {
     private const double BoundaryBandRadius = 2.15;
+    private const double CompoundBoundaryBandRadius = 3.25;
+    private const double OutlineExpansionSource = 1.0;
+    private const int NearbyOutlineRadius = 3;
     private const double MinimumOutlineNeighbourShare = 0.78;
     private const int MinimumOutlineContacts = 12;
 
@@ -69,6 +72,33 @@ internal static class CurveFillOutlinedRibbonRasterizer
         if (targetMask.Count == 0)
             return false;
 
+        // Rebuild the dedicated 1x1 outline as the same continuous ribbon geometry expanded by
+        // one source pixel. This is the missing outer silhouette: smoothing only the coloured
+        // band/outline boundary still leaves the eye following the old block-scaled white edge.
+        var compoundPoints =
+            fit.Points
+                .Select(point =>
+                    point with
+                    {
+                        HalfWidth =
+                            point.HalfWidth +
+                            OutlineExpansionSource,
+                    })
+                .ToArray();
+        var compoundPolygon =
+            LeafPetalArcRasterizer.BuildTargetPolygon(
+                compoundPoints,
+                scaleX,
+                scaleY);
+        var compoundMask =
+            LeafPetalArcRasterizer.RasterizePolygon(
+                compoundPolygon,
+                destination.Width,
+                destination.Height);
+
+        if (compoundMask.Count == 0)
+            return false;
+
         var region =
             model.Candidate.Region;
         var boundary =
@@ -77,28 +107,28 @@ internal static class CurveFillOutlinedRibbonRasterizer
             Math.Max(
                 0,
                 (int)Math.Floor(
-                    polygon.Min(point =>
+                    compoundPolygon.Min(point =>
                         point.X)) -
                 3);
         var maxX =
             Math.Min(
                 destination.Width - 1,
                 (int)Math.Ceiling(
-                    polygon.Max(point =>
+                    compoundPolygon.Max(point =>
                         point.X)) +
                 3);
         var minY =
             Math.Max(
                 0,
                 (int)Math.Floor(
-                    polygon.Min(point =>
+                    compoundPolygon.Min(point =>
                         point.Y)) -
                 3);
         var maxY =
             Math.Min(
                 destination.Height - 1,
                 (int)Math.Ceiling(
-                    polygon.Max(point =>
+                    compoundPolygon.Max(point =>
                         point.Y)) +
                 3);
 
@@ -225,6 +255,167 @@ internal static class CurveFillOutlinedRibbonRasterizer
             }
         }
 
+        // Phase 2: move the OUTER side of the dedicated outline to the same smooth geometry.
+        // Edits stay in the original local outline corridor and never cross another protected
+        // stroke role. When the old outline recedes, source-local exterior ownership restores the
+        // uncovered cell.
+        for (var y = minY;
+             y <= maxY;
+             y++)
+        {
+            var sourceY =
+                (y + 0.5) /
+                scaleY -
+                0.5;
+
+            for (var x = minX;
+                 x <= maxX;
+                 x++)
+            {
+                var sourceX =
+                    (x + 0.5) /
+                    scaleX -
+                    0.5;
+
+                if (!IsNearSourceBoundary(
+                        boundary,
+                        source.Width,
+                        source.Height,
+                        sourceX,
+                        sourceY,
+                        CompoundBoundaryBandRadius))
+                {
+                    continue;
+                }
+
+                var key =
+                    y *
+                    destination.Width +
+                    x;
+                var insideFill =
+                    targetMask.Contains(
+                        key);
+                var insideCompound =
+                    compoundMask.Contains(
+                        key);
+                var wantOutline =
+                    insideCompound &&
+                    !insideFill;
+                var current =
+                    destination.GetPixel(
+                        x,
+                        y);
+
+                var sx =
+                    Math.Clamp(
+                        (int)Math.Round(
+                            sourceX),
+                        0,
+                        source.Width - 1);
+                var sy =
+                    Math.Clamp(
+                        (int)Math.Round(
+                            sourceY),
+                        0,
+                        source.Height - 1);
+                var sourceOwner =
+                    source.GetPixel(
+                        sx,
+                        sy);
+
+                if (wantOutline)
+                {
+                    if (current ==
+                        outlineColor)
+                    {
+                        continue;
+                    }
+
+                    if (protectedStrokeColors.Contains(
+                            current))
+                    {
+                        continue;
+                    }
+
+                    if (protectedStrokeColors.Contains(
+                            sourceOwner) &&
+                        sourceOwner !=
+                            outlineColor)
+                    {
+                        continue;
+                    }
+
+                    if (!HasNearbyOriginalOutline(
+                            x,
+                            y,
+                            destination.Width,
+                            destination.Height,
+                            originalOutline,
+                            NearbyOutlineRadius))
+                    {
+                        continue;
+                    }
+
+                    if (current ==
+                            regionColor &&
+                        WouldDisconnectRegion(
+                            destination,
+                            x,
+                            y,
+                            regionColor))
+                    {
+                        continue;
+                    }
+
+                    destination.SetPixel(
+                        x,
+                        y,
+                        outlineColor);
+                    changed++;
+                    continue;
+                }
+
+                if (insideCompound ||
+                    current !=
+                        outlineColor ||
+                    !originalOutline.Contains(
+                        key))
+                {
+                    continue;
+                }
+
+                // The target fill must retain an outline neighbour. This makes the outer-boundary
+                // move safe even when the white role participates in a larger separator network.
+                if (HasTargetFillNeighbour(
+                        x,
+                        y,
+                        destination.Width,
+                        destination.Height,
+                        targetMask))
+                {
+                    continue;
+                }
+
+                if (!TryFindNearestExteriorColor(
+                        source,
+                        sourceX,
+                        sourceY,
+                        regionColor,
+                        outlineColor,
+                        protectedStrokeColors,
+                        out var replacement))
+                {
+                    continue;
+                }
+
+                destination.SetPixel(
+                    x,
+                    y,
+                    replacement);
+                changed++;
+            }
+        }
+
         return true;
     }
 
@@ -282,6 +473,204 @@ internal static class CurveFillOutlinedRibbonRasterizer
 
         return neighbours >= 2 &&
                groups >= 2;
+    }
+
+    private static bool HasNearbyOriginalOutline(
+        int x,
+        int y,
+        int width,
+        int height,
+        IReadOnlySet<int> originalOutline,
+        int radius)
+    {
+        var radiusSquared =
+            radius *
+            radius;
+
+        for (var dy = -radius;
+             dy <= radius;
+             dy++)
+        {
+            for (var dx = -radius;
+                 dx <= radius;
+                 dx++)
+            {
+                if (dx *
+                        dx +
+                    dy *
+                        dy >
+                    radiusSquared)
+                {
+                    continue;
+                }
+
+                var nx =
+                    x +
+                    dx;
+                var ny =
+                    y +
+                    dy;
+
+                if (nx < 0 ||
+                    nx >= width ||
+                    ny < 0 ||
+                    ny >= height)
+                {
+                    continue;
+                }
+
+                if (originalOutline.Contains(
+                        ny *
+                            width +
+                        nx))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasTargetFillNeighbour(
+        int x,
+        int y,
+        int width,
+        int height,
+        IReadOnlySet<int> targetMask)
+    {
+        for (var dy = -1;
+             dy <= 1;
+             dy++)
+        {
+            for (var dx = -1;
+                 dx <= 1;
+                 dx++)
+            {
+                if (dx == 0 &&
+                    dy == 0)
+                {
+                    continue;
+                }
+
+                var nx =
+                    x +
+                    dx;
+                var ny =
+                    y +
+                    dy;
+
+                if (nx < 0 ||
+                    nx >= width ||
+                    ny < 0 ||
+                    ny >= height)
+                {
+                    continue;
+                }
+
+                if (targetMask.Contains(
+                        ny *
+                            width +
+                        nx))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryFindNearestExteriorColor(
+        DesignDocument source,
+        double sourceX,
+        double sourceY,
+        byte regionColor,
+        byte outlineColor,
+        IReadOnlySet<byte> protectedStrokeColors,
+        out byte color)
+    {
+        var centerX =
+            Math.Clamp(
+                (int)Math.Round(
+                    sourceX),
+                0,
+                source.Width - 1);
+        var centerY =
+            Math.Clamp(
+                (int)Math.Round(
+                    sourceY),
+                0,
+                source.Height - 1);
+        var bestDistance =
+            double.PositiveInfinity;
+        var found = false;
+        color = 0;
+
+        const int SearchRadius = 4;
+
+        for (var y =
+                 Math.Max(
+                     0,
+                     centerY - SearchRadius);
+             y <=
+             Math.Min(
+                 source.Height - 1,
+                 centerY + SearchRadius);
+             y++)
+        {
+            for (var x =
+                     Math.Max(
+                         0,
+                         centerX - SearchRadius);
+                 x <=
+                 Math.Min(
+                     source.Width - 1,
+                     centerX + SearchRadius);
+                 x++)
+            {
+                var candidate =
+                    source.GetPixel(
+                        x,
+                        y);
+
+                if (candidate ==
+                        regionColor ||
+                    candidate ==
+                        outlineColor ||
+                    protectedStrokeColors.Contains(
+                        candidate))
+                {
+                    continue;
+                }
+
+                var dx =
+                    x -
+                    sourceX;
+                var dy =
+                    y -
+                    sourceY;
+                var distance =
+                    dx *
+                        dx +
+                    dy *
+                        dy;
+
+                if (distance >=
+                    bestDistance)
+                {
+                    continue;
+                }
+
+                bestDistance =
+                    distance;
+                color =
+                    candidate;
+                found = true;
+            }
+        }
+
+        return found;
     }
 
     private static bool TryFindDominantOutlineColor(
