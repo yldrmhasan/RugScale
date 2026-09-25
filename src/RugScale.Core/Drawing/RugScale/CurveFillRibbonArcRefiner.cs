@@ -96,6 +96,9 @@ internal static class CurveFillRibbonArcRefiner
         var widthRegularized = 0;
         var maxWidthRegularizationShift = 0d;
         var maxWidthVariationReduction = 0d;
+        var selfSymmetryNormalizations = 0;
+        var bestSelfSymmetryAgreement = 0d;
+        var maxSelfSymmetryDeviation = 0d;
         var accepted =
             new List<(LeafPetalArcModel Model, ElegantArcFit Fit)>();
 
@@ -405,6 +408,26 @@ internal static class CurveFillRibbonArcRefiner
                         widthDiagnostics.AfterAdjacentVariation);
             }
 
+            if (CurveFillRibbonSelfSymmetryNormalizer.TryNormalize(
+                    model,
+                    fit,
+                    source.Width,
+                    out var symmetricFit,
+                    out var selfSymmetryDiagnostics))
+            {
+                fit =
+                    symmetricFit;
+                selfSymmetryNormalizations++;
+                bestSelfSymmetryAgreement =
+                    Math.Max(
+                        bestSelfSymmetryAgreement,
+                        selfSymmetryDiagnostics.SourceMirrorAgreement);
+                maxSelfSymmetryDeviation =
+                    Math.Max(
+                        maxSelfSymmetryDeviation,
+                        selfSymmetryDiagnostics.MaximumDeviation);
+            }
+
             fitSafe++;
 
             accepted.Add(
@@ -497,6 +520,9 @@ internal static class CurveFillRibbonArcRefiner
             WidthRegularized: widthRegularized,
             MaxWidthRegularizationShift: maxWidthRegularizationShift,
             MaxWidthVariationReduction: maxWidthVariationReduction,
+            SelfSymmetryNormalizations: selfSymmetryNormalizations,
+            BestSelfSymmetryAgreement: bestSelfSymmetryAgreement,
+            MaxSelfSymmetryDeviation: maxSelfSymmetryDeviation,
             MirrorPairs: mirrorPairDiagnostics.Pairs,
             MirrorPairReplacements: mirrorPairDiagnostics.Replacements,
             BestMirrorPairAgreement: mirrorPairDiagnostics.BestMirrorAgreement,
@@ -1016,6 +1042,9 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     int WidthRegularized,
     double MaxWidthRegularizationShift,
     double MaxWidthVariationReduction,
+    int SelfSymmetryNormalizations,
+    double BestSelfSymmetryAgreement,
+    double MaxSelfSymmetryDeviation,
     int MirrorPairs,
     int MirrorPairReplacements,
     double BestMirrorPairAgreement,
