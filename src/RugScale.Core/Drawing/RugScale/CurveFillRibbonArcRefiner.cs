@@ -678,6 +678,10 @@ internal static class CurveFillRibbonArcRefiner
             var mainArcKeptFraction = 0d;
             var fitSafe = false;
             var accepted = false;
+            var compoundAttempted = false;
+            var compoundReason = "not-attempted";
+            var compoundP95Deviation = 0d;
+            var compoundMaximumDeviation = 0d;
             var fitKind = "none";
             var curveFamily = "none";
             var status =
@@ -850,18 +854,42 @@ internal static class CurveFillRibbonArcRefiner
                                 curveFamily =
                                     CurveType.Bezier.ToString();
                             }
-                            else if (mirrorSourceFused &&
-                                     CurveFillRibbonCompoundFitter.TryFit(
-                                         model,
-                                         out var compoundFit,
-                                         out _))
+                            else if (mirrorSourceFused)
                             {
-                                fit =
-                                    compoundFit;
-                                fitKind =
-                                    "compound";
-                                curveFamily =
-                                    "CompoundSpline";
+                                compoundAttempted = true;
+
+                                if (CurveFillRibbonCompoundFitter.TryFit(
+                                        model,
+                                        out var compoundFit,
+                                        out var compoundDiagnostics))
+                                {
+                                    fit =
+                                        compoundFit;
+                                    fitKind =
+                                        "compound";
+                                    curveFamily =
+                                        "CompoundSpline";
+                                }
+                                else
+                                {
+                                    fit =
+                                        ElegantArcFitter.Fit(
+                                            model,
+                                            taperApex: false,
+                                            maximumAnchors: 8,
+                                            smoothingPasses: 2);
+                                    fitKind =
+                                        "macro-spline";
+                                    curveFamily =
+                                        CurveType.Spline.ToString();
+                                }
+
+                                compoundReason =
+                                    compoundDiagnostics.Reason;
+                                compoundP95Deviation =
+                                    compoundDiagnostics.Percentile95Deviation;
+                                compoundMaximumDeviation =
+                                    compoundDiagnostics.MaximumDeviation;
                             }
                             else
                             {
@@ -959,6 +987,10 @@ internal static class CurveFillRibbonArcRefiner
                     mainArcStart,
                     mainArcEnd,
                     mainArcKeptFraction,
+                    compoundAttempted,
+                    compoundReason,
+                    compoundP95Deviation,
+                    compoundMaximumDeviation,
                     fitKind,
                     curveFamily,
                     roundness,
@@ -1136,6 +1168,10 @@ internal readonly record struct RibbonArcCandidateStage(
     int MainArcStart,
     int MainArcEnd,
     double MainArcKeptFraction,
+    bool CompoundAttempted,
+    string CompoundReason,
+    double CompoundP95Deviation,
+    double CompoundMaximumDeviation,
     string FitKind,
     string CurveFamily,
     double Roundness,
