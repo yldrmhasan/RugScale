@@ -69,6 +69,9 @@ internal static class CurveFillRibbonArcRefiner
         var symmetryRecoveries = 0;
         var mainArcExtractions = 0;
         var maxSymmetrySampleShift = 0d;
+        var mirrorSourceFusions = 0;
+        var bestMirrorSourceAgreement = 0d;
+        var maxMirrorSourceFusionShift = 0d;
         var curveToolFits = 0;
         var curveToolThroughPointsFits = 0;
         var curveToolSplineFits = 0;
@@ -209,6 +212,27 @@ internal static class CurveFillRibbonArcRefiner
                         mainArcModel;
                     mainArcExtractions++;
                 }
+            }
+
+            if (broadSparseArch &&
+                CurveFillRibbonMirrorPairRecovery.TryRecover(
+                    model,
+                    regions,
+                    source.Width,
+                    out var mirrorFusedModel,
+                    out var mirrorFusionDiagnostics))
+            {
+                model =
+                    mirrorFusedModel;
+                mirrorSourceFusions++;
+                bestMirrorSourceAgreement =
+                    Math.Max(
+                        bestMirrorSourceAgreement,
+                        mirrorFusionDiagnostics.MirrorAgreement);
+                maxMirrorSourceFusionShift =
+                    Math.Max(
+                        maxMirrorSourceFusionShift,
+                        mirrorFusionDiagnostics.MaximumFusionShift);
             }
 
             ribbonGeometryAccepted++;
@@ -485,6 +509,9 @@ internal static class CurveFillRibbonArcRefiner
             SymmetryRecoveries: symmetryRecoveries,
             MainArcExtractions: mainArcExtractions,
             MaxSymmetrySampleShift: maxSymmetrySampleShift,
+            MirrorSourceFusions: mirrorSourceFusions,
+            BestMirrorSourceAgreement: bestMirrorSourceAgreement,
+            MaxMirrorSourceFusionShift: maxMirrorSourceFusionShift,
             CurveToolFits: curveToolFits,
             CurveToolThroughPointsFits: curveToolThroughPointsFits,
             CurveToolSplineFits: curveToolSplineFits,
@@ -1015,6 +1042,9 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     int SymmetryRecoveries,
     int MainArcExtractions,
     double MaxSymmetrySampleShift,
+    int MirrorSourceFusions,
+    double BestMirrorSourceAgreement,
+    double MaxMirrorSourceFusionShift,
     int CurveToolFits,
     int CurveToolThroughPointsFits,
     int CurveToolSplineFits,
