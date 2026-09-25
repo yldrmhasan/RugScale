@@ -1777,6 +1777,211 @@ public class DesignResizerTests
     }
 
     [Fact]
+    public void CurveFillRibbonSelfSymmetryNormalizer_LocksCenteredArchToExactSharedGeometry()
+    {
+        const int sourceWidth = 100;
+        const double mirrorConstant = 99d;
+
+        var centerline =
+            Enumerable.Range(
+                    0,
+                    21)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        20d;
+
+                    return
+                        (
+                            X:
+                                18d +
+                                63d *
+                                t,
+                            Y:
+                                42d -
+                                22d *
+                                Math.Sin(
+                                    t *
+                                    Math.PI)
+                        );
+                })
+                .ToArray();
+        var samples =
+            centerline
+                .Select((point, index) =>
+                    new LeafPetalAxisSample(
+                        point.X,
+                        point.Y,
+                        3.0,
+                        index /
+                        20d))
+                .ToArray();
+
+        var regionPixels =
+            new HashSet<int>();
+
+        foreach (var sample in samples)
+        {
+            var x =
+                (int)Math.Round(
+                    sample.X);
+            var y =
+                (int)Math.Round(
+                    sample.Y);
+            var mirrorX =
+                (int)Math.Round(
+                    mirrorConstant -
+                    x);
+
+            regionPixels.Add(
+                y *
+                    sourceWidth +
+                x);
+            regionPixels.Add(
+                y *
+                    sourceWidth +
+                mirrorX);
+        }
+
+        var pixels =
+            regionPixels.ToArray();
+        var region =
+            new LeafPetalRegion(
+                1,
+                pixels,
+                pixels,
+                pixels.Min(pixel =>
+                    pixel %
+                    sourceWidth),
+                pixels.Min(pixel =>
+                    pixel /
+                    sourceWidth),
+                pixels.Max(pixel =>
+                    pixel %
+                    sourceWidth),
+                pixels.Max(pixel =>
+                    pixel /
+                    sourceWidth));
+        var candidate =
+            new LeafPetalArcCandidate(
+                region,
+                mirrorConstant *
+                    0.5,
+                30,
+                1,
+                0,
+                0,
+                1,
+                63,
+                10,
+                6.3,
+                0.2);
+        var model =
+            new LeafPetalArcModel(
+                candidate,
+                samples,
+                false,
+                3,
+                3,
+                1.0);
+
+        var fitPoints =
+            Enumerable.Range(
+                    0,
+                    41)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        40d;
+                    var baseX =
+                        18d +
+                        63d *
+                        t;
+                    var baseY =
+                        42d -
+                        22d *
+                        Math.Sin(
+                            t *
+                            Math.PI);
+
+                    // Deliberately give the right half a small independent inverse-fit phase.
+                    var rightHalf =
+                        t >
+                        0.5;
+
+                    return new ElegantArcPoint(
+                        baseX +
+                        (rightHalf
+                            ? 0.35
+                            : -0.10),
+                        baseY +
+                        (rightHalf
+                            ? 0.22
+                            : -0.08),
+                        3.0 +
+                        (rightHalf
+                            ? 0.18
+                            : -0.06));
+                })
+                .ToArray();
+        var fit =
+            new ElegantArcFit(
+                fitPoints,
+                true,
+                true,
+                0,
+                0.8);
+
+        var applied =
+            CurveFillRibbonSelfSymmetryNormalizer.TryNormalize(
+                model,
+                fit,
+                sourceWidth,
+                out var normalized,
+                out var diagnostics);
+
+        Assert.True(
+            applied,
+            $"Expected exact source symmetry to normalize the fit. " +
+            $"agreement={diagnostics.SourceMirrorAgreement:0.000}, " +
+            $"dev={diagnostics.MaximumDeviation:0.000}, allowed={diagnostics.AllowedDeviation:0.000}.");
+        Assert.Equal(
+            1.0,
+            diagnostics.SourceMirrorAgreement,
+            3);
+
+        for (var leftIndex = 0;
+             leftIndex < normalized.Points.Count / 2;
+             leftIndex++)
+        {
+            var rightIndex =
+                normalized.Points.Count -
+                1 -
+                leftIndex;
+            var left =
+                normalized.Points[leftIndex];
+            var right =
+                normalized.Points[rightIndex];
+
+            Assert.Equal(
+                mirrorConstant,
+                left.X +
+                right.X,
+                8);
+            Assert.Equal(
+                left.Y,
+                right.Y,
+                8);
+            Assert.Equal(
+                left.HalfWidth,
+                right.HalfWidth,
+                8);
+        }
+    }
+
+    [Fact]
     public void CurveFillRibbonMirrorPairNormalizer_SharesOneGeometryAcrossExactMirrorPartners()
     {
         const int sourceWidth = 100;
