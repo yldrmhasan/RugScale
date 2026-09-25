@@ -1412,6 +1412,208 @@ public class DesignResizerTests
     }
 
     [Fact]
+    public void CurveFillOutlinedRibbonRasterizer_RedrawsOuterOutlineAsParallelCurve()
+    {
+        var palette =
+            new Palette(
+                new[]
+                {
+                    new RugColor(218, 210, 184),
+                    new RugColor(255, 255, 255),
+                    new RugColor(216, 185, 124),
+                });
+        var source =
+            new DesignDocument(
+                72,
+                54,
+                palette);
+        var controls =
+            new (int X, int Y)[]
+            {
+                (7, 45),
+                (14, 20),
+                (36, 7),
+                (58, 20),
+                (65, 45),
+            };
+        var sourceCenterline =
+            CurveRasterizer.Draw(
+                    controls,
+                    CurveType.SplineThroughPoints,
+                    0.85)
+                .ToArray();
+
+        // Dedicated one-pixel outline outside a 5px designer ribbon.
+        foreach (var point in Rasterizer.Dilate(
+                     sourceCenterline,
+                     7,
+                     7))
+        {
+            if (point.X >= 0 &&
+                point.X < source.Width &&
+                point.Y >= 0 &&
+                point.Y < source.Height)
+            {
+                source.SetPixel(
+                    point.X,
+                    point.Y,
+                    1);
+            }
+        }
+
+        foreach (var point in Rasterizer.Dilate(
+                     sourceCenterline,
+                     5,
+                     5))
+        {
+            if (point.X >= 0 &&
+                point.X < source.Width &&
+                point.Y >= 0 &&
+                point.Y < source.Height)
+            {
+                source.SetPixel(
+                    point.X,
+                    point.Y,
+                    2);
+            }
+        }
+
+        const int targetWidth = 119;
+        const int targetHeight = 89;
+        var target =
+            DesignResizer.Scale(
+                source,
+                targetWidth,
+                targetHeight,
+                ScaleMode.NearestNeighbor,
+                40,
+                60,
+                40,
+                60);
+
+        static HashSet<(int X, int Y)> CompoundPixels(
+            DesignDocument document)
+        {
+            var result =
+                new HashSet<(int X, int Y)>();
+
+            for (var y = 0;
+                 y < document.Height;
+                 y++)
+            {
+                for (var x = 0;
+                     x < document.Width;
+                     x++)
+                {
+                    var color =
+                        document.GetPixel(
+                            x,
+                            y);
+
+                    if (color is 1 or 2)
+                    {
+                        result.Add(
+                            (x, y));
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        var idealCompoundArc =
+            Enumerable.Range(
+                    0,
+                    193)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        192d;
+                    var point =
+                        CurveRasterizer.Evaluate(
+                            controls,
+                            CurveType.SplineThroughPoints,
+                            0.85,
+                            t);
+
+                    return new ElegantArcPoint(
+                        point.X,
+                        point.Y,
+                        3.5);
+                })
+                .ToArray();
+        var idealCompoundPolygon =
+            LeafPetalArcRasterizer.BuildTargetPolygon(
+                idealCompoundArc,
+                targetWidth /
+                    (double)source.Width,
+                targetHeight /
+                    (double)source.Height);
+        var expectedCompound =
+            LeafPetalArcRasterizer.RasterizePolygon(
+                    idealCompoundPolygon,
+                    targetWidth,
+                    targetHeight)
+                .Select(key =>
+                    (
+                        X:
+                            key %
+                            targetWidth,
+                        Y:
+                            key /
+                            targetWidth
+                    ))
+                .ToHashSet();
+
+        var before =
+            CompoundPixels(
+                target);
+        var beforeScore =
+            PixelF1(
+                before,
+                expectedCompound);
+
+        var diagnostics =
+            CurveFillRibbonArcRefiner.ApplyWithDiagnostics(
+                source,
+                target);
+
+        var after =
+            CompoundPixels(
+                target);
+        var afterScore =
+            PixelF1(
+                after,
+                expectedCompound);
+
+        Assert.True(
+            diagnostics.OutlinedRefined >= 1,
+            $"Expected the dedicated white outline path. outlined={diagnostics.OutlinedRefined}, " +
+            $"refined={diagnostics.Refined}, changed={diagnostics.BoundaryPixelsChanged}.");
+        Assert.True(
+            diagnostics.BoundaryPixelsChanged > 0,
+            "Compound ribbon geometry should move at least one categorical boundary pixel.");
+        Assert.True(
+            afterScore >=
+                beforeScore +
+                0.002,
+            $"Outer outlined silhouette did not improve toward continuous geometry: " +
+            $"before={beforeScore:P2}, after={afterScore:P2}, changed={diagnostics.BoundaryPixelsChanged}.");
+        Assert.Equal(
+            1,
+            CountComponents(
+                target,
+                2));
+        Assert.True(
+            CountColor(
+                target,
+                1) >
+            0,
+            "Dedicated outline disappeared while smoothing the compound ribbon.");
+    }
+
+    [Fact]
     public void CurveFillRibbonMirrorPairNormalizer_SharesOneGeometryAcrossExactMirrorPartners()
     {
         const int sourceWidth = 100;
