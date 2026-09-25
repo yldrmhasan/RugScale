@@ -705,6 +705,18 @@ internal static class CurveFillRibbonArcRefiner
                             }
                         }
 
+                        if (broadSparseArch &&
+                            CurveFillRibbonMirrorPairRecovery.TryRecover(
+                                model,
+                                regions,
+                                source.Width,
+                                out var mirrorFusedModel,
+                                out _))
+                        {
+                            model =
+                                mirrorFusedModel;
+                        }
+
                         ElegantArcFit fit;
 
                         if (CurveFillRibbonToolFitter.TryFit(
