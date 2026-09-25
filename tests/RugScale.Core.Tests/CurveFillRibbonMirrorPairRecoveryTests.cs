@@ -1,0 +1,417 @@
+using RugScale.Core.Drawing;
+using RugScale.Core.Models;
+using Xunit;
+
+namespace RugScale.Core.Tests;
+
+public sealed class CurveFillRibbonMirrorPairRecoveryTests
+{
+    [Fact]
+    public void Recover_NearMirrorPair_FusesRasterPhaseBeforeCurveFit()
+    {
+        const int Width = 80;
+        const int Height = 92;
+        const int MirrorConstant = Width - 1;
+
+        var palette =
+            new Palette(
+                new[]
+                {
+                    new RugColor(220, 214, 192),
+                    new RugColor(132, 158, 121),
+                });
+        var source =
+            new DesignDocument(
+                Width,
+                Height,
+                palette);
+        var controls =
+            new (int X, int Y)[]
+            {
+                (9, 75),
+                (10, 52),
+                (17, 30),
+                (27, 20),
+                (31, 8),
+            };
+        var leftPixels =
+            Rasterizer.Dilate(
+                    CurveRasterizer.Draw(
+                        controls,
+                        CurveType.SplineThroughPoints,
+                        0.80),
+                    5,
+                    5)
+                .Where(point =>
+                    point.X >= 0 &&
+                    point.X < Width &&
+                    point.Y >= 0 &&
+                    point.Y < Height)
+                .Distinct()
+                .ToArray();
+
+        foreach (var point in leftPixels)
+        {
+            source.SetPixel(
+                point.X,
+                point.Y,
+                1);
+
+            source.SetPixel(
+                MirrorConstant -
+                    point.X,
+                point.Y,
+                1);
+        }
+
+        var regions =
+            LeafPetalRegionExtractor.Extract(
+                    source)
+                .Where(region =>
+                    region.Color == 1 &&
+                    region.Area >= 30)
+                .OrderBy(region =>
+                    region.MinX)
+                .ToArray();
+
+        Assert.Equal(
+            2,
+            regions.Length);
+
+        Assert.True(
+            LeafPetalArcClassifier.TryClassify(
+                regions[0],
+                Width,
+                out var leftCandidate));
+        Assert.True(
+            LeafPetalArcClassifier.TryClassify(
+                regions[1],
+                Width,
+                out var rightCandidate));
+        Assert.True(
+            CurveFillRibbonCenterlineBuilder.TryBuild(
+                leftCandidate,
+                Width,
+                out var leftModel,
+                out _));
+        Assert.True(
+            CurveFillRibbonCenterlineBuilder.TryBuild(
+                rightCandidate,
+                Width,
+                out var rightModel,
+                out _));
+
+        var noisySamples =
+            leftModel.Samples
+                .Select((sample, index) =>
+                {
+                    if (index == 0 ||
+                        index ==
+                        leftModel.Samples.Count - 1)
+                    {
+                        return sample;
+                    }
+
+                    // Model the sort of phase wobble created by thick raster thinning. The
+                    // underlying source regions remain exact mirrors; only one recovered spine is
+                    // perturbed.
+                    var phase =
+                        index %
+                        4;
+
+                    return sample with
+                    {
+                        X =
+                            sample.X +
+                            (phase == 0
+                                ? 1.2
+                                : phase == 2
+                                    ? -0.8
+                                    : 0.35),
+                        Y =
+                            sample.Y +
+                            (phase == 1
+                                ? 0.9
+                                : phase == 3
+                                    ? -0.7
+                                    : 0.20),
+                    };
+                })
+                .ToArray();
+        var noisyModel =
+            leftModel with
+            {
+                Samples =
+                    noisySamples,
+            };
+        var before =
+            MeanMirrorDistance(
+                noisyModel.Samples,
+                rightModel.Samples,
+                MirrorConstant);
+
+        var recovered =
+            CurveFillRibbonMirrorPairRecovery.TryRecover(
+                noisyModel,
+                regions,
+                Width,
+                out var fused,
+                out var diagnostics);
+        var after =
+            MeanMirrorDistance(
+                fused.Samples,
+                rightModel.Samples,
+                MirrorConstant);
+
+        Assert.True(
+            recovered,
+            $"Near-mirror pair should fuse before fitting: reason={diagnostics.Reason}, " +
+            $"agreement={diagnostics.MirrorAgreement:0.000}, " +
+            $"shift={diagnostics.MeanFusionShift:0.000}/{diagnostics.MaximumFusionShift:0.000}.");
+        Assert.InRange(
+            diagnostics.MirrorAgreement,
+            0.99,
+            1.0);
+        Assert.True(
+            diagnostics.MeanFusionShift > 0d);
+        Assert.True(
+            after <
+            before *
+            0.75,
+            $"Source-pair fusion should suppress medial-path phase noise: before={before:0.000}, after={after:0.000}.");
+    }
+
+    [Fact]
+    public void Recover_UnrelatedOppositeRegion_DoesNotInventSharedGeometry()
+    {
+        const int Width = 80;
+        var palette =
+            new Palette(
+                new[]
+                {
+                    new RugColor(220, 214, 192),
+                    new RugColor(132, 158, 121),
+                });
+        var source =
+            new DesignDocument(
+                Width,
+                92,
+                palette);
+
+        foreach (var point in Rasterizer.Dilate(
+                     CurveRasterizer.Draw(
+                         new[]
+                         {
+                             (8, 75),
+                             (11, 48),
+                             (20, 24),
+                             (30, 10),
+                         },
+                         CurveType.SplineThroughPoints,
+                         0.80),
+                     5,
+                     5))
+        {
+            if (point.X >= 0 &&
+                point.X < source.Width &&
+                point.Y >= 0 &&
+                point.Y < source.Height)
+            {
+                source.SetPixel(
+                    point.X,
+                    point.Y,
+                    1);
+            }
+        }
+
+        foreach (var point in Rasterizer.Dilate(
+                     CurveRasterizer.Draw(
+                         new[]
+                         {
+                             (54, 80),
+                             (62, 62),
+                             (67, 40),
+                             (70, 17),
+                         },
+                         CurveType.SplineThroughPoints,
+                         0.30),
+                     5,
+                     5))
+        {
+            if (point.X >= 0 &&
+                point.X < source.Width &&
+                point.Y >= 0 &&
+                point.Y < source.Height)
+            {
+                source.SetPixel(
+                    point.X,
+                    point.Y,
+                    1);
+            }
+        }
+
+        var regions =
+            LeafPetalRegionExtractor.Extract(
+                    source)
+                .Where(region =>
+                    region.Color == 1 &&
+                    region.Area >= 30)
+                .OrderBy(region =>
+                    region.MinX)
+                .ToArray();
+
+        Assert.Equal(
+            2,
+            regions.Length);
+        Assert.True(
+            LeafPetalArcClassifier.TryClassify(
+                regions[0],
+                Width,
+                out var candidate));
+        Assert.True(
+            CurveFillRibbonCenterlineBuilder.TryBuild(
+                candidate,
+                Width,
+                out var model,
+                out _));
+
+        var recovered =
+            CurveFillRibbonMirrorPairRecovery.TryRecover(
+                model,
+                regions,
+                Width,
+                out var result,
+                out var diagnostics);
+
+        Assert.False(
+            recovered);
+        Assert.Same(
+            model,
+            result);
+        Assert.NotEqual(
+            "ok",
+            diagnostics.Reason);
+    }
+
+    private static double MeanMirrorDistance(
+        IReadOnlyList<LeafPetalAxisSample> source,
+        IReadOnlyList<LeafPetalAxisSample> partner,
+        double mirrorConstant)
+    {
+        var forward =
+            MeanMirrorDistance(
+                source,
+                partner,
+                mirrorConstant,
+                reverse: false);
+        var reversed =
+            MeanMirrorDistance(
+                source,
+                partner,
+                mirrorConstant,
+                reverse: true);
+
+        return Math.Min(
+            forward,
+            reversed);
+    }
+
+    private static double MeanMirrorDistance(
+        IReadOnlyList<LeafPetalAxisSample> source,
+        IReadOnlyList<LeafPetalAxisSample> partner,
+        double mirrorConstant,
+        bool reverse)
+    {
+        var count =
+            Math.Max(
+                source.Count,
+                partner.Count);
+        var sum = 0d;
+
+        for (var index = 0;
+             index < count;
+             index++)
+        {
+            var t =
+                index /
+                (double)Math.Max(
+                    1,
+                    count - 1);
+            var a =
+                SampleAt(
+                    source,
+                    t);
+            var b =
+                SampleAt(
+                    partner,
+                    reverse
+                        ? 1d -
+                          t
+                        : t);
+            var dx =
+                a.X -
+                (mirrorConstant -
+                 b.X);
+            var dy =
+                a.Y -
+                b.Y;
+
+            sum +=
+                Math.Sqrt(
+                    dx *
+                        dx +
+                    dy *
+                        dy);
+        }
+
+        return sum /
+               Math.Max(
+                   1,
+                   count);
+    }
+
+    private static LeafPetalAxisSample SampleAt(
+        IReadOnlyList<LeafPetalAxisSample> samples,
+        double t)
+    {
+        var position =
+            Math.Clamp(
+                t,
+                0d,
+                1d) *
+            (samples.Count -
+             1);
+        var left =
+            Math.Clamp(
+                (int)Math.Floor(
+                    position),
+                0,
+                samples.Count - 1);
+        var right =
+            Math.Min(
+                samples.Count - 1,
+                left + 1);
+        var local =
+            position -
+            left;
+        var a =
+            samples[left];
+        var b =
+            samples[right];
+
+        return new LeafPetalAxisSample(
+            a.X +
+            (b.X -
+             a.X) *
+            local,
+            a.Y +
+            (b.Y -
+             a.Y) *
+            local,
+            a.HalfWidth +
+            (b.HalfWidth -
+             a.HalfWidth) *
+            local,
+            t);
+    }
+}
