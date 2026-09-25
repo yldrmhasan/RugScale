@@ -1571,6 +1571,9 @@ internal static class Program
             $"sourceMirror={directStyleDiagnostics.RibbonArcMirrorSourceFusions:N0} " +
             $"match={directStyleDiagnostics.RibbonArcBestMirrorSourceAgreement:0.000} " +
             $"shift={directStyleDiagnostics.RibbonArcMaxMirrorSourceFusionShift:0.000}, " +
+            $"compound={directStyleDiagnostics.RibbonArcCompoundFits:N0}/{directStyleDiagnostics.RibbonArcCompoundAttempts:N0} " +
+            $"p95={directStyleDiagnostics.RibbonArcCompoundMaxP95Deviation:0.000} " +
+            $"max={directStyleDiagnostics.RibbonArcCompoundMaxDeviation:0.000}, " +
             $"widthLP={directStyleDiagnostics.RibbonArcWidthRegularized:N0} " +
             $"shift={directStyleDiagnostics.RibbonArcMaxWidthRegularizationShift:0.000} " +
             $"dv={directStyleDiagnostics.RibbonArcMaxWidthVariationReduction:0.000}), " +
