@@ -192,6 +192,8 @@ internal static class CurveFillRibbonArcRefiner
                 continue;
             }
 
+            var mainArcExtractedForRegion = false;
+
             if (broadSparseArch &&
                 centerlineDiagnostics.Endpoints > 2 &&
                 CurveFillRibbonSymmetryRecovery.TryRecover(
@@ -215,6 +217,7 @@ internal static class CurveFillRibbonArcRefiner
                 {
                     model =
                         mainArcModel;
+                    mainArcExtractedForRegion = true;
                     mainArcExtractions++;
                 }
             }
@@ -241,6 +244,24 @@ internal static class CurveFillRibbonArcRefiner
                     Math.Max(
                         maxMirrorSourceFusionShift,
                         mirrorFusionDiagnostics.MaximumFusionShift);
+
+                // Mirror-pair fusion is another high-confidence way to suppress one-sided raster
+                // phase. Multi-endpoint hooked ribbons may fail self-symmetry recovery yet still
+                // have an obvious dominant designer sweep. Extract that sweep AFTER fusion so the
+                // main arc can be fitted by the normal Curve-tool family while terminal hooks stay
+                // on the categorical baseline.
+                if (!mainArcExtractedForRegion &&
+                    centerlineDiagnostics.Endpoints > 2 &&
+                    CurveFillRibbonMainArcExtractor.TryExtract(
+                        model,
+                        out var mirrorMainArcModel,
+                        out _))
+                {
+                    model =
+                        mirrorMainArcModel;
+                    mainArcExtractedForRegion = true;
+                    mainArcExtractions++;
+                }
             }
 
             ribbonGeometryAccepted++;
@@ -795,6 +816,24 @@ internal static class CurveFillRibbonArcRefiner
                             {
                                 model =
                                     mirrorFusedModel;
+
+                                if (!mainArcExtracted &&
+                                    centerlineDiagnostics.Endpoints > 2 &&
+                                    CurveFillRibbonMainArcExtractor.TryExtract(
+                                        model,
+                                        out var mirrorMainArcModel,
+                                        out var mirrorMainArcDiagnostics))
+                                {
+                                    model =
+                                        mirrorMainArcModel;
+                                    mainArcExtracted = true;
+                                    mainArcStart =
+                                        mirrorMainArcDiagnostics.StartIndex;
+                                    mainArcEnd =
+                                        mirrorMainArcDiagnostics.EndIndex;
+                                    mainArcKeptFraction =
+                                        mirrorMainArcDiagnostics.KeptFraction;
+                                }
                             }
                         }
 
