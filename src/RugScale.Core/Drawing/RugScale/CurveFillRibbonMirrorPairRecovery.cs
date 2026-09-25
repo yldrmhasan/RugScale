@@ -157,6 +157,12 @@ internal static class CurveFillRibbonMirrorPairRecovery
             model.Samples;
         var partnerSamples =
             partnerModel.Samples;
+        var sourceArcLength =
+            BuildNormalizedArcLength(
+                sourceSamples);
+        var partnerArcLength =
+            BuildNormalizedArcLength(
+                partnerSamples);
 
         if (partnerSamples.Count < 8)
         {
@@ -209,8 +215,9 @@ internal static class CurveFillRibbonMirrorPairRecovery
                     1,
                     count - 1);
             var sourceSample =
-                SampleAt(
+                SampleAtArcLength(
                     sourceSamples,
+                    sourceArcLength,
                     t);
             var partnerT =
                 reverse
@@ -218,8 +225,9 @@ internal static class CurveFillRibbonMirrorPairRecovery
                       t
                     : t;
             var partnerSample =
-                SampleAt(
+                SampleAtArcLength(
                     partnerSamples,
+                    partnerArcLength,
                     partnerT);
             var mirroredPartnerX =
                 bestMirrorConstant -
@@ -529,33 +537,98 @@ internal static class CurveFillRibbonMirrorPairRecovery
                 partnerLast.Y);
     }
 
-    private static LeafPetalAxisSample SampleAt(
+    private static double[] BuildNormalizedArcLength(
+        IReadOnlyList<LeafPetalAxisSample> samples)
+    {
+        var cumulative =
+            new double[samples.Count];
+
+        if (samples.Count <= 1)
+            return cumulative;
+
+        var total = 0d;
+
+        for (var index = 1;
+             index < samples.Count;
+             index++)
+        {
+            total +=
+                Distance(
+                    samples[index - 1].X,
+                    samples[index - 1].Y,
+                    samples[index].X,
+                    samples[index].Y);
+            cumulative[index] =
+                total;
+        }
+
+        if (total <= 1e-9)
+        {
+            for (var index = 1;
+                 index < cumulative.Length;
+                 index++)
+            {
+                cumulative[index] =
+                    index /
+                    (double)Math.Max(
+                        1,
+                        cumulative.Length - 1);
+            }
+
+            return cumulative;
+        }
+
+        for (var index = 1;
+             index < cumulative.Length;
+             index++)
+        {
+            cumulative[index] /=
+                total;
+        }
+
+        return cumulative;
+    }
+
+    private static LeafPetalAxisSample SampleAtArcLength(
         IReadOnlyList<LeafPetalAxisSample> samples,
+        IReadOnlyList<double> cumulative,
         double t)
     {
         if (samples.Count == 1)
             return samples[0];
 
-        var position =
+        t =
             Math.Clamp(
                 t,
                 0d,
-                1d) *
-            (samples.Count -
-             1);
+                1d);
+
+        var right = 1;
+
+        while (right <
+                   cumulative.Count - 1 &&
+               cumulative[right] <
+                   t)
+        {
+            right++;
+        }
+
         var left =
-            Math.Clamp(
-                (int)Math.Floor(
-                    position),
+            Math.Max(
                 0,
-                samples.Count - 1);
-        var right =
-            Math.Min(
-                samples.Count - 1,
-                left + 1);
+                right - 1);
+        var span =
+            cumulative[right] -
+            cumulative[left];
         var local =
-            position -
-            left;
+            span <= 1e-9
+                ? 0d
+                : Math.Clamp(
+                    (t -
+                     cumulative[left]) /
+                    span,
+                    0d,
+                    1d);
         var a =
             samples[left];
         var b =
