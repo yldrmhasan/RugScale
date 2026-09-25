@@ -667,6 +667,11 @@ internal static class CurveFillRibbonArcRefiner
             var mirrorAgreement = 0d;
             var symmetryMeanShift = 0d;
             var symmetryMaxShift = 0d;
+            var mirrorSourceRecovered = false;
+            var mirrorSourceReason = "not-attempted";
+            var mirrorSourceAgreement = 0d;
+            var mirrorSourceMeanShift = 0d;
+            var mirrorSourceMaxShift = 0d;
             var mainArcExtracted = false;
             var mainArcStart = 0;
             var mainArcEnd = 0;
@@ -762,17 +767,31 @@ internal static class CurveFillRibbonArcRefiner
 
                         var mirrorSourceFused = false;
 
-                        if (broadSparseArch &&
-                            CurveFillRibbonMirrorPairRecovery.TryRecover(
-                                model,
-                                regions,
-                                source.Width,
-                                out var mirrorFusedModel,
-                                out _))
+                        if (broadSparseArch)
                         {
-                            model =
-                                mirrorFusedModel;
-                            mirrorSourceFused = true;
+                            mirrorSourceFused =
+                                CurveFillRibbonMirrorPairRecovery.TryRecover(
+                                    model,
+                                    regions,
+                                    source.Width,
+                                    out var mirrorFusedModel,
+                                    out var mirrorSourceDiagnostics);
+                            mirrorSourceRecovered =
+                                mirrorSourceFused;
+                            mirrorSourceReason =
+                                mirrorSourceDiagnostics.Reason;
+                            mirrorSourceAgreement =
+                                mirrorSourceDiagnostics.MirrorAgreement;
+                            mirrorSourceMeanShift =
+                                mirrorSourceDiagnostics.MeanFusionShift;
+                            mirrorSourceMaxShift =
+                                mirrorSourceDiagnostics.MaximumFusionShift;
+
+                            if (mirrorSourceFused)
+                            {
+                                model =
+                                    mirrorFusedModel;
+                            }
                         }
 
                         ElegantArcFit fit;
@@ -931,6 +950,11 @@ internal static class CurveFillRibbonArcRefiner
                     mirrorAgreement,
                     symmetryMeanShift,
                     symmetryMaxShift,
+                    mirrorSourceRecovered,
+                    mirrorSourceReason,
+                    mirrorSourceAgreement,
+                    mirrorSourceMeanShift,
+                    mirrorSourceMaxShift,
                     mainArcExtracted,
                     mainArcStart,
                     mainArcEnd,
@@ -1103,6 +1127,11 @@ internal readonly record struct RibbonArcCandidateStage(
     double MirrorAgreement,
     double SymmetryMeanShift,
     double SymmetryMaxShift,
+    bool MirrorSourceRecovered,
+    string MirrorSourceReason,
+    double MirrorSourceAgreement,
+    double MirrorSourceMeanShift,
+    double MirrorSourceMaxShift,
     bool MainArcExtracted,
     int MainArcStart,
     int MainArcEnd,
