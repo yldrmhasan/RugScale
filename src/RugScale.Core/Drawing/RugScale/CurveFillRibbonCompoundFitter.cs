@@ -15,11 +15,20 @@ namespace RugScale.Core.Drawing;
 /// </summary>
 internal static class CurveFillRibbonCompoundFitter
 {
-    private const int MaximumAnchors = 12;
-    private const int SmoothingPasses = 2;
     private const int MaximumCurvatureSignFlips = 2;
     private const double MaximumP95Deviation = 3.80;
     private const double MaximumDeviation = 6.10;
+
+    private static readonly (int Anchors, int SmoothingPasses)[] CandidateSettings =
+    [
+        (8, 1),
+        (8, 2),
+        (10, 1),
+        (10, 2),
+        (12, 1),
+        (12, 2),
+        (12, 3),
+    ];
 
     public static bool TryFit(
         LeafPetalArcModel model,
@@ -28,18 +37,17 @@ internal static class CurveFillRibbonCompoundFitter
     {
         ArgumentNullException.ThrowIfNull(model);
 
-        fit =
-            ElegantArcFitter.Fit(
-                model,
-                taperApex: false,
-                maximumAnchors: MaximumAnchors,
-                smoothingPasses: SmoothingPasses);
-
         diagnostics = default;
 
-        if (fit.Points.Count < 8 ||
-            model.Samples.Count < 8)
+        if (model.Samples.Count < 8)
         {
+            fit =
+                new ElegantArcFit(
+                    Array.Empty<ElegantArcPoint>(),
+                    false,
+                    false,
+                    int.MaxValue,
+                    double.PositiveInfinity);
             diagnostics =
                 new RibbonCompoundFitDiagnostics(
                     "insufficient-evidence",
@@ -49,45 +57,114 @@ internal static class CurveFillRibbonCompoundFitter
             return false;
         }
 
-        var deviation =
-            SymmetricPolylineDeviation(
-                fit.Points,
-                model.Samples);
-        var safe =
-            fit.CurvatureSignFlips <=
-                MaximumCurvatureSignFlips &&
-            deviation.Percentile95 <=
-                MaximumP95Deviation &&
-            deviation.Maximum <=
-                MaximumDeviation;
+        CompoundCandidate? best = null;
+
+        foreach (var setting in CandidateSettings)
+        {
+            var candidateFit =
+                ElegantArcFitter.Fit(
+                    model,
+                    taperApex: false,
+                    maximumAnchors: setting.Anchors,
+                    smoothingPasses: setting.SmoothingPasses);
+
+            if (candidateFit.Points.Count < 8)
+                continue;
+
+            var deviation =
+                SymmetricPolylineDeviation(
+                    candidateFit.Points,
+                    model.Samples);
+            var safe =
+                candidateFit.CurvatureSignFlips <=
+                    MaximumCurvatureSignFlips &&
+                deviation.Percentile95 <=
+                    MaximumP95Deviation &&
+                deviation.Maximum <=
+                    MaximumDeviation;
+
+            // Geometry dominates. A tiny complexity penalty makes ties deterministic and prefers
+            // the simpler designer stroke instead of fitting residual skeleton staircase.
+            var score =
+                deviation.Percentile95 +
+                deviation.Maximum *
+                    0.12 +
+                candidateFit.CurvatureSignFlips *
+                    1.50 +
+                setting.Anchors *
+                    0.008 +
+                setting.SmoothingPasses *
+                    0.012;
+
+            var candidate =
+                new CompoundCandidate(
+                    candidateFit,
+                    deviation.Maximum,
+                    deviation.Percentile95,
+                    safe,
+                    score);
+
+            if (best is null ||
+                candidate.Safe &&
+                !best.Value.Safe ||
+                candidate.Safe ==
+                    best.Value.Safe &&
+                candidate.Score <
+                    best.Value.Score)
+            {
+                best =
+                    candidate;
+            }
+        }
+
+        if (best is null)
+        {
+            fit =
+                new ElegantArcFit(
+                    Array.Empty<ElegantArcPoint>(),
+                    false,
+                    false,
+                    int.MaxValue,
+                    double.PositiveInfinity);
+            diagnostics =
+                new RibbonCompoundFitDiagnostics(
+                    "insufficient-evidence",
+                    double.PositiveInfinity,
+                    double.PositiveInfinity,
+                    int.MaxValue);
+            return false;
+        }
+
+        var selected =
+            best.Value;
+        fit =
+            selected.Fit with
+            {
+                IsSafe =
+                    selected.Safe,
+                IsMonotonic =
+                    selected.Fit.CurvatureSignFlips <=
+                    MaximumCurvatureSignFlips,
+                MaximumCenterlineDeviation =
+                    selected.MaximumDeviation,
+            };
 
         diagnostics =
             new RibbonCompoundFitDiagnostics(
-                safe
+                selected.Safe
                     ? "ok"
-                    : fit.CurvatureSignFlips >
+                    : selected.Fit.CurvatureSignFlips >
                       MaximumCurvatureSignFlips
                         ? "curvature-flips"
-                        : deviation.Percentile95 >
+                        : selected.Percentile95Deviation >
                           MaximumP95Deviation
                             ? "typical-deviation"
                             : "maximum-deviation",
-                deviation.Maximum,
-                deviation.Percentile95,
-                fit.CurvatureSignFlips);
+                selected.MaximumDeviation,
+                selected.Percentile95Deviation,
+                selected.Fit.CurvatureSignFlips);
 
-        fit =
-            fit with
-            {
-                IsSafe = safe,
-                IsMonotonic =
-                    fit.CurvatureSignFlips <=
-                    MaximumCurvatureSignFlips,
-                MaximumCenterlineDeviation =
-                    deviation.Maximum,
-            };
-
-        return safe;
+        return selected.Safe;
     }
 
     private static (double Maximum, double Percentile95) SymmetricPolylineDeviation(
@@ -266,6 +343,12 @@ internal static class CurveFillRibbonCompoundFitter
                ry *
                    ry;
     }
+    private readonly record struct CompoundCandidate(
+        ElegantArcFit Fit,
+        double MaximumDeviation,
+        double Percentile95Deviation,
+        bool Safe,
+        double Score);
 }
 
 internal readonly record struct RibbonCompoundFitDiagnostics(
