@@ -3182,6 +3182,10 @@ internal readonly record struct ToolFaithfulOverlayReport(
     int RibbonArcMirrorSourceFusions = 0,
     double RibbonArcBestMirrorSourceAgreement = 0d,
     double RibbonArcMaxMirrorSourceFusionShift = 0d,
+    int RibbonArcCompoundFits = 0,
+    int RibbonArcCompoundAttempts = 0,
+    double RibbonArcCompoundMaxP95Deviation = 0d,
+    double RibbonArcCompoundMaxDeviation = 0d,
     int RibbonArcWidthRegularized = 0,
     double RibbonArcMaxWidthRegularizationShift = 0d,
     double RibbonArcMaxWidthVariationReduction = 0d);
