@@ -2,16 +2,19 @@ namespace RugScale.Core.Drawing;
 
 internal static class ElegantArcFitter
 {
-    // Twelve macro anchors suppress pixel-staircase wiggles while still following long floral
-    // bends. More anchors reintroduced tiny alternating curvature on the real B996 green leaf.
-    private const int MaximumAnchors = 12;
+    // Ordinary leaf/oval fitting stays at twelve macro anchors: that suppresses pixel-staircase
+    // wiggles on real designs such as B996. Mirror-fused compound ribbons are substantially
+    // cleaner source evidence, so callers may explicitly request up to twenty anchors when a
+    // long designer sweep continues into a tight hook/curl.
+    private const int DefaultMaximumAnchors = 12;
+    private const int MaximumSupportedAnchors = 20;
     private const int SamplesPerSegment = 4;
     private const double MaximumCenterlineDeviation = 1.55;
 
     public static ElegantArcFit Fit(
         LeafPetalArcModel model,
         bool taperApex = true,
-        int maximumAnchors = MaximumAnchors,
+        int maximumAnchors = DefaultMaximumAnchors,
         int smoothingPasses = 1)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -20,7 +23,7 @@ internal static class ElegantArcFitter
             Math.Clamp(
                 maximumAnchors,
                 4,
-                MaximumAnchors);
+                MaximumSupportedAnchors);
         smoothingPasses =
             Math.Clamp(
                 smoothingPasses,
