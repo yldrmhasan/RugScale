@@ -1138,8 +1138,8 @@ internal static class Program
                     $"match={stage.MirrorAgreement:0.000} shift={stage.SymmetryMeanShift:0.000}/{stage.SymmetryMaxShift:0.000}, " +
                     $"sourceMirror={stage.MirrorSourceRecovered}/{stage.MirrorSourceReason} " +
                     $"match={stage.MirrorSourceAgreement:0.000} shift={stage.MirrorSourceMeanShift:0.000}/{stage.MirrorSourceMaxShift:0.000}, " +
-                    $"mainArc={stage.MainArcExtracted} {stage.MainArcStart}-{stage.MainArcEnd} " +
-                    $"keep={stage.MainArcKeptFraction:0.000}, " +
+                    $"mainArc={stage.MainArcExtracted}/{stage.MainArcReason} " +
+                    $"{stage.MainArcStart}-{stage.MainArcEnd} keep={stage.MainArcKeptFraction:0.000}, " +
                     $"compound={stage.CompoundAttempted}/{stage.CompoundReason} " +
                     $"p95={stage.CompoundP95Deviation:0.000} max={stage.CompoundMaximumDeviation:0.000}, " +
                     $"fit={stage.FitKind}/{stage.CurveFamily}, r={stage.Roundness:0.000}, " +
@@ -1644,7 +1644,7 @@ internal static class Program
             new StringBuilder();
 
         sb.AppendLine(
-            "color,min_x,min_y,max_x,max_y,area,elongation,boundary_ratio,bounding_fill,broad_sparse_arch,prefilter,centerline,skeleton_pixels,endpoints,principal_path_pixels,path_coverage,designer_ribbon,symmetry_recovered,symmetry_axis,mirror_agreement,symmetry_mean_shift,symmetry_max_shift,mirror_source_recovered,mirror_source_reason,mirror_source_agreement,mirror_source_mean_shift,mirror_source_max_shift,main_arc_extracted,main_arc_start,main_arc_end,main_arc_kept_fraction,compound_attempted,compound_reason,compound_p95_deviation,compound_max_deviation,fit_kind,curve_family,roundness,fit_safe,max_deviation,curvature_flips,accepted,status");
+            "color,min_x,min_y,max_x,max_y,area,elongation,boundary_ratio,bounding_fill,broad_sparse_arch,prefilter,centerline,skeleton_pixels,endpoints,principal_path_pixels,path_coverage,designer_ribbon,symmetry_recovered,symmetry_axis,mirror_agreement,symmetry_mean_shift,symmetry_max_shift,mirror_source_recovered,mirror_source_reason,mirror_source_agreement,mirror_source_mean_shift,mirror_source_max_shift,main_arc_extracted,main_arc_reason,main_arc_start,main_arc_end,main_arc_kept_fraction,compound_attempted,compound_reason,compound_p95_deviation,compound_max_deviation,fit_kind,curve_family,roundness,fit_safe,max_deviation,curvature_flips,accepted,status");
 
         foreach (var stage in stages)
         {
@@ -1676,6 +1676,7 @@ internal static class Program
             sb.Append(stage.MirrorSourceMeanShift.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
             sb.Append(stage.MirrorSourceMaxShift.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
             sb.Append(stage.MainArcExtracted ? 1 : 0).Append(',');
+            sb.Append(stage.MainArcReason).Append(',');
             sb.Append(stage.MainArcStart).Append(',');
             sb.Append(stage.MainArcEnd).Append(',');
             sb.Append(stage.MainArcKeptFraction.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
