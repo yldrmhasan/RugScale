@@ -760,6 +760,8 @@ internal static class CurveFillRibbonArcRefiner
                             }
                         }
 
+                        var mirrorSourceFused = false;
+
                         if (broadSparseArch &&
                             CurveFillRibbonMirrorPairRecovery.TryRecover(
                                 model,
@@ -770,6 +772,7 @@ internal static class CurveFillRibbonArcRefiner
                         {
                             model =
                                 mirrorFusedModel;
+                            mirrorSourceFused = true;
                         }
 
                         ElegantArcFit fit;
@@ -828,6 +831,19 @@ internal static class CurveFillRibbonArcRefiner
                                 curveFamily =
                                     CurveType.Bezier.ToString();
                             }
+                            else if (mirrorSourceFused &&
+                                     CurveFillRibbonCompoundFitter.TryFit(
+                                         model,
+                                         out var compoundFit,
+                                         out _))
+                            {
+                                fit =
+                                    compoundFit;
+                                fitKind =
+                                    "compound";
+                                curveFamily =
+                                    "CompoundSpline";
+                            }
                             else
                             {
                                 fit =
@@ -868,10 +884,15 @@ internal static class CurveFillRibbonArcRefiner
                                 CurveType.Spline.ToString();
                         }
 
+                        var maximumAllowedFlips =
+                            fitKind ==
+                            "compound"
+                                ? 2
+                                : 1;
                         fitSafe =
                             fit.IsSafe &&
                             fit.CurvatureSignFlips <=
-                                1;
+                                maximumAllowedFlips;
                         accepted =
                             fitSafe;
                         maximumDeviation =
