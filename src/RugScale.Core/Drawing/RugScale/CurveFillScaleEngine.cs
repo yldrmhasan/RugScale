@@ -325,6 +325,12 @@ internal static class CurveFillScaleEngine
                 ribbonArc.BestMirrorPairAgreement,
             RibbonArcMaxMirrorPairDeviation =
                 ribbonArc.MaxMirrorPairDeviation,
+            RibbonArcWidthRegularized =
+                ribbonArc.WidthRegularized,
+            RibbonArcMaxWidthRegularizationShift =
+                ribbonArc.MaxWidthRegularizationShift,
+            RibbonArcMaxWidthVariationReduction =
+                ribbonArc.MaxWidthVariationReduction,
         };
     }
 
