@@ -1614,6 +1614,169 @@ public class DesignResizerTests
     }
 
     [Fact]
+    public void CurveFillRibbonWidthProfileRegularizer_RemovesPixelWidthWobbleButKeepsSlowTaper()
+    {
+        const int sourceWidth = 120;
+        var samples =
+            Enumerable.Range(
+                    0,
+                    61)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        60d;
+                    var slowTrend =
+                        3.0 +
+                        0.55 *
+                        t;
+                    var sourceWobble =
+                        index % 2 == 0
+                            ? 0.32
+                            : -0.32;
+
+                    return new LeafPetalAxisSample(
+                        12 +
+                        76 *
+                        t,
+                        46 -
+                        24 *
+                        Math.Sin(
+                            t *
+                            Math.PI),
+                        slowTrend +
+                        sourceWobble,
+                        t);
+                })
+                .ToArray();
+        var pixels =
+            samples
+                .Select(sample =>
+                    (int)Math.Round(
+                        sample.Y) *
+                        sourceWidth +
+                    (int)Math.Round(
+                        sample.X))
+                .Distinct()
+                .ToArray();
+        var region =
+            new LeafPetalRegion(
+                1,
+                pixels,
+                pixels,
+                pixels.Min(pixel =>
+                    pixel %
+                    sourceWidth),
+                pixels.Min(pixel =>
+                    pixel /
+                    sourceWidth),
+                pixels.Max(pixel =>
+                    pixel %
+                    sourceWidth),
+                pixels.Max(pixel =>
+                    pixel /
+                    sourceWidth));
+        var candidate =
+            new LeafPetalArcCandidate(
+                region,
+                50,
+                30,
+                1,
+                0,
+                0,
+                1,
+                76,
+                8,
+                9.5,
+                0.2);
+        var model =
+            new LeafPetalArcModel(
+                candidate,
+                samples,
+                false,
+                samples[0].HalfWidth,
+                samples[^1].HalfWidth,
+                1.0);
+        var fitPoints =
+            Enumerable.Range(
+                    0,
+                    121)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        120d;
+                    var slowTrend =
+                        3.0 +
+                        0.55 *
+                        t;
+                    var wobble =
+                        index % 2 == 0
+                            ? 0.40
+                            : -0.40;
+
+                    return new ElegantArcPoint(
+                        12 +
+                        76 *
+                        t,
+                        46 -
+                        24 *
+                        Math.Sin(
+                            t *
+                            Math.PI),
+                        slowTrend +
+                        wobble);
+                })
+                .ToArray();
+        var fit =
+            new ElegantArcFit(
+                fitPoints,
+                true,
+                true,
+                0,
+                0.5);
+
+        var regularized =
+            CurveFillRibbonWidthProfileRegularizer.Regularize(
+                model,
+                fit,
+                out var diagnostics);
+
+        Assert.True(
+            diagnostics.Applied,
+            $"Expected width regularization. cv={diagnostics.SourceWidthCoefficientVariation:0.000}, " +
+            $"terminal={diagnostics.TerminalWidthRatio:0.000}, " +
+            $"before={diagnostics.BeforeAdjacentVariation:0.000}, " +
+            $"after={diagnostics.AfterAdjacentVariation:0.000}.");
+        Assert.True(
+            diagnostics.AfterAdjacentVariation <
+            diagnostics.BeforeAdjacentVariation *
+            0.45,
+            $"High-frequency width wobble was not sufficiently suppressed: " +
+            $"before={diagnostics.BeforeAdjacentVariation:0.000}, " +
+            $"after={diagnostics.AfterAdjacentVariation:0.000}.");
+        Assert.InRange(
+            regularized.Points[^1].HalfWidth -
+            regularized.Points[0].HalfWidth,
+            0.25,
+            0.80);
+
+        for (var index = 0;
+             index < fit.Points.Count;
+             index++)
+        {
+            Assert.Equal(
+                fit.Points[index].X,
+                regularized.Points[index].X,
+                8);
+            Assert.Equal(
+                fit.Points[index].Y,
+                regularized.Points[index].Y,
+                8);
+        }
+    }
+
+    [Fact]
     public void CurveFillRibbonMirrorPairNormalizer_SharesOneGeometryAcrossExactMirrorPartners()
     {
         const int sourceWidth = 100;
