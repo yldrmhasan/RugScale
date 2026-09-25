@@ -540,49 +540,70 @@ internal static class CurveFillRibbonMainArcExtractor
                     continue;
                 }
 
-                CommitRun();
+                ConsiderRun(
+                    start,
+                    lastMatching,
+                    sign,
+                    ref bestStart,
+                    ref bestEnd,
+                    ref bestSign,
+                    ref bestLength);
 
                 start = -1;
                 lastMatching = -1;
                 zeroGap = 0;
             }
 
-            CommitRun();
-
-            void CommitRun()
-            {
-                if (start < 0 ||
-                    lastMatching <
-                        start)
-                {
-                    return;
-                }
-
-                var length =
-                    lastMatching -
-                    start +
-                    1;
-
-                if (length <=
-                    bestLength)
-                {
-                    return;
-                }
-
-                bestLength =
-                    length;
-                bestStart =
-                    start;
-                bestEnd =
-                    lastMatching;
-                bestSign =
-                    sign;
-            }
+            ConsiderRun(
+                start,
+                lastMatching,
+                sign,
+                ref bestStart,
+                ref bestEnd,
+                ref bestSign,
+                ref bestLength);
         }
 
         return bestStart >= 0 &&
                bestEnd >
                bestStart;
+    }
+
+    private static void ConsiderRun(
+        int start,
+        int end,
+        int sign,
+        ref int bestStart,
+        ref int bestEnd,
+        ref int bestSign,
+        ref int bestLength)
+    {
+        if (start < 0 ||
+            end <
+                start)
+        {
+            return;
+        }
+
+        var length =
+            end -
+            start +
+            1;
+
+        if (length <=
+            bestLength)
+        {
+            return;
+        }
+
+        bestLength =
+            length;
+        bestStart =
+            start;
+        bestEnd =
+            end;
+        bestSign =
+            sign;
     }
 
     private static LeafPetalAxisSample[] SmoothGeometry(
