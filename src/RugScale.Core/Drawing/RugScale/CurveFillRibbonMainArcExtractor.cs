@@ -20,11 +20,41 @@ internal static class CurveFillRibbonMainArcExtractor
     private const double MinimumNormalizedCurvature = 0.03;
     private const double MinimumKeptFraction = 0.42;
     private const double MaximumKeptFraction = 0.82;
+    private const double MinimumOneSidedKeptFraction = 0.48;
+    private const double MaximumOneSidedKeptFraction = 0.95;
+    private const double MinimumOneSidedTrimFraction = 0.05;
     private const int MinimumSamples = 24;
     private const int MaximumZeroGap = 5;
 
     public static bool TryExtract(
         LeafPetalArcModel model,
+        out LeafPetalArcModel extracted,
+        out RibbonMainArcExtractionDiagnostics diagnostics) =>
+        TryExtractCore(
+            model,
+            symmetricTrim: true,
+            out extracted,
+            out diagnostics);
+
+    /// <summary>
+    /// Extracts the dominant sweep from one member of a mirrored ribbon PAIR. Each member can
+    /// carry a hook on only its OUTER endpoint, so trimming both ends equally would throw away
+    /// valid inner-shoulder geometry. Mirror-pair source fusion already supplies the cross-design
+    /// evidence; here we keep the clean endpoint and trim only through the opposite-curvature hook.
+    /// </summary>
+    public static bool TryExtractMirrorFusedSweep(
+        LeafPetalArcModel model,
+        out LeafPetalArcModel extracted,
+        out RibbonMainArcExtractionDiagnostics diagnostics) =>
+        TryExtractCore(
+            model,
+            symmetricTrim: false,
+            out extracted,
+            out diagnostics);
+
+    private static bool TryExtractCore(
+        LeafPetalArcModel model,
+        bool symmetricTrim,
         out LeafPetalArcModel extracted,
         out RibbonMainArcExtractionDiagnostics diagnostics)
     {
@@ -233,21 +263,78 @@ internal static class CurveFillRibbonMainArcExtractor
             return false;
         }
 
-        // Symmetry recovery guarantees sample i pairs with sample (N-1-i). Use the larger trim
-        // demanded by either side so the specialist arc cannot become asymmetrical due to a
-        // one-sided curvature quantization at the shoulder.
-        var trim =
-            Math.Max(
-                bestStart,
+        int startIndex;
+        int endIndex;
+        double minimumKeptFraction;
+        double maximumKeptFraction;
+
+        if (symmetricTrim)
+        {
+            // Self-symmetry recovery guarantees sample i pairs with sample (N-1-i). Use the larger
+            // trim demanded by either side so the specialist arc cannot become asymmetrical due to
+            // one-sided curvature quantization at the shoulder.
+            var trim =
+                Math.Max(
+                    bestStart,
+                    samples.Count -
+                        1 -
+                        bestEnd);
+            startIndex =
+                trim;
+            endIndex =
                 samples.Count -
-                    1 -
-                    bestEnd);
-        var startIndex =
-            trim;
-        var endIndex =
-            samples.Count -
-            1 -
-            trim;
+                1 -
+                trim;
+            minimumKeptFraction =
+                MinimumKeptFraction;
+            maximumKeptFraction =
+                MaximumKeptFraction;
+        }
+        else
+        {
+            // A mirror-paired region is symmetric with its SIBLING region, not necessarily along
+            // its own path. Preserve the clean terminal side and stop expansion only when a true
+            // opposite-curvature hook is encountered.
+            startIndex =
+                bestStart;
+            endIndex =
+                bestEnd;
+
+            while (startIndex > 0)
+            {
+                var sign =
+                    signs[startIndex - 1];
+
+                if (sign != 0 &&
+                    sign != bestSign)
+                {
+                    break;
+                }
+
+                startIndex--;
+            }
+
+            while (endIndex <
+                   samples.Count - 1)
+            {
+                var sign =
+                    signs[endIndex + 1];
+
+                if (sign != 0 &&
+                    sign != bestSign)
+                {
+                    break;
+                }
+
+                endIndex++;
+            }
+
+            minimumKeptFraction =
+                MinimumOneSidedKeptFraction;
+            maximumKeptFraction =
+                MaximumOneSidedKeptFraction;
+        }
+
         var kept =
             endIndex -
             startIndex +
@@ -255,17 +342,28 @@ internal static class CurveFillRibbonMainArcExtractor
         var keptFraction =
             kept /
             (double)samples.Count;
+        var trimmed =
+            samples.Count -
+            kept;
+        var trimmedFraction =
+            trimmed /
+            (double)samples.Count;
 
         if (kept <
                 MinimumSamples ||
             keptFraction <
-                MinimumKeptFraction ||
+                minimumKeptFraction ||
             keptFraction >
-                MaximumKeptFraction)
+                maximumKeptFraction ||
+            (!symmetricTrim &&
+             trimmedFraction <
+                 MinimumOneSidedTrimFraction))
         {
             diagnostics =
                 new RibbonMainArcExtractionDiagnostics(
-                    "kept-fraction",
+                    symmetricTrim
+                        ? "kept-fraction"
+                        : "one-sided-kept-fraction",
                     startIndex,
                     endIndex,
                     keptFraction,
@@ -318,7 +416,9 @@ internal static class CurveFillRibbonMainArcExtractor
 
         diagnostics =
             new RibbonMainArcExtractionDiagnostics(
-                "ok",
+                symmetricTrim
+                    ? "ok"
+                    : "ok-one-sided",
                 startIndex,
                 endIndex,
                 keptFraction,
