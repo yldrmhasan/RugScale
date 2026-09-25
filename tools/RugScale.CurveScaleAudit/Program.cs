@@ -1564,7 +1564,10 @@ internal static class Program
             $"r={directStyleDiagnostics.RibbonArcGeometricThroughMeanRoundness:0.000} " +
             $"p95={directStyleDiagnostics.RibbonArcGeometricThroughMaxP95Deviation:0.000}, " +
             $"oval={directStyleDiagnostics.RibbonArcBroadOvalFits:N0}/{directStyleDiagnostics.RibbonArcBroadOvalAttempts:N0}, " +
-            $"cubic={directStyleDiagnostics.RibbonArcCubicBezierFits:N0}, outlined={directStyleDiagnostics.RibbonArcOutlinedRefined:N0}), " +
+            $"cubic={directStyleDiagnostics.RibbonArcCubicBezierFits:N0}, outlined={directStyleDiagnostics.RibbonArcOutlinedRefined:N0}, " +
+            $"mirror={directStyleDiagnostics.RibbonArcMirrorPairReplacements:N0}/{directStyleDiagnostics.RibbonArcMirrorPairs:N0} " +
+            $"match={directStyleDiagnostics.RibbonArcBestMirrorPairAgreement:0.000} " +
+            $"dev={directStyleDiagnostics.RibbonArcMaxMirrorPairDeviation:0.000}), " +
             $"cache={directStyleDiagnostics.StyleFitCacheHits:N0}, round={directStyleDiagnostics.MeanLearnedRoundness:0.000}");
 
         return row;
