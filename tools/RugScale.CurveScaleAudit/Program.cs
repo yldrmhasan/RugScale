@@ -34,6 +34,28 @@ internal static class Program
                 Environment.CurrentDirectory,
                 "curve-scale-audit");
 
+        var fixtureName =
+            GetArg(
+                args,
+                "--fixture");
+        var selectedFixtures =
+            string.IsNullOrWhiteSpace(
+                fixtureName)
+                ? Fixtures
+                : Fixtures
+                    .Where(fixture =>
+                        string.Equals(
+                            fixture.Name,
+                            fixtureName,
+                            StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+        if (selectedFixtures.Length == 0)
+        {
+            throw new ArgumentException(
+                $"Unknown --fixture '{fixtureName}'. Expected one of: {string.Join(", ", Fixtures.Select(fixture => fixture.Name))}.");
+        }
+
         Directory.CreateDirectory(outputDir);
 
         var styleTraining =
@@ -42,7 +64,7 @@ internal static class Program
 
         var rows = new List<DesignAuditRow>();
 
-        foreach (var fixture in Fixtures)
+        foreach (var fixture in selectedFixtures)
         {
             var input =
                 Path.Combine(
