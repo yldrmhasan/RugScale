@@ -252,7 +252,7 @@ internal static class CurveFillRibbonArcRefiner
                 // on the categorical baseline.
                 if (!mainArcExtractedForRegion &&
                     centerlineDiagnostics.Endpoints > 2 &&
-                    CurveFillRibbonMainArcExtractor.TryExtract(
+                    CurveFillRibbonMainArcExtractor.TryExtractMirrorFusedSweep(
                         model,
                         out var mirrorMainArcModel,
                         out _))
@@ -819,7 +819,7 @@ internal static class CurveFillRibbonArcRefiner
 
                                 if (!mainArcExtracted &&
                                     centerlineDiagnostics.Endpoints > 2 &&
-                                    CurveFillRibbonMainArcExtractor.TryExtract(
+                                    CurveFillRibbonMainArcExtractor.TryExtractMirrorFusedSweep(
                                         model,
                                         out var mirrorMainArcModel,
                                         out var mirrorMainArcDiagnostics))
