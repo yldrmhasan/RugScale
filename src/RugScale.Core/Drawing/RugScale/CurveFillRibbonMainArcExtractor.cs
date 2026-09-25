@@ -86,12 +86,22 @@ internal static class CurveFillRibbonMainArcExtractor
             SmoothGeometry(
                 smoothed);
 
+        // Self-symmetric arches only need a local shoulder detector. A mirror-fused
+        // one-sided hook is different: the thinned principal path still carries branch/staircase
+        // micro-turns, so curvature must be measured at a MACRO scale. C069's real navy hooked
+        // ribbon only exposes its dominant sweep once the chord spans roughly 1/11 of the path.
         var radius =
-            Math.Clamp(
-                samples.Count /
-                55,
-                3,
-                8);
+            symmetricTrim
+                ? Math.Clamp(
+                    samples.Count /
+                    55,
+                    3,
+                    8)
+                : Math.Clamp(
+                    samples.Count /
+                    11,
+                    6,
+                    20);
         var signs =
             new int[samples.Count];
 
