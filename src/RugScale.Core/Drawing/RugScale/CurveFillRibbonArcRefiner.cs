@@ -388,6 +388,11 @@ internal static class CurveFillRibbonArcRefiner
                 (model, fit));
         }
 
+        var mirrorPairDiagnostics =
+            CurveFillRibbonMirrorPairNormalizer.Normalize(
+                accepted,
+                source.Width);
+
         var changed = 0;
         var outlinedRefined = 0;
 
@@ -466,6 +471,10 @@ internal static class CurveFillRibbonArcRefiner
             LastCubicReason: lastCubicReason,
             MaxFitDeviation: maxFitDeviation,
             MaxFitCurvatureFlips: maxFitCurvatureFlips,
+            MirrorPairs: mirrorPairDiagnostics.Pairs,
+            MirrorPairReplacements: mirrorPairDiagnostics.Replacements,
+            BestMirrorPairAgreement: mirrorPairDiagnostics.BestMirrorAgreement,
+            MaxMirrorPairDeviation: mirrorPairDiagnostics.MaximumMirroredDeviation,
             Refined: accepted.Count,
             OutlinedRefined: outlinedRefined,
             BoundaryPixelsChanged: changed);
@@ -978,6 +987,10 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     string LastCubicReason,
     double MaxFitDeviation,
     int MaxFitCurvatureFlips,
+    int MirrorPairs,
+    int MirrorPairReplacements,
+    double BestMirrorPairAgreement,
+    double MaxMirrorPairDeviation,
     int Refined,
     int OutlinedRefined,
     int BoundaryPixelsChanged);
