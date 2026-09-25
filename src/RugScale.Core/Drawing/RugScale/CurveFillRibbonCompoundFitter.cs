@@ -28,6 +28,13 @@ internal static class CurveFillRibbonCompoundFitter
         (12, 1),
         (12, 2),
         (12, 3),
+        (14, 1),
+        (14, 2),
+        (16, 1),
+        (16, 2),
+        (18, 2),
+        (20, 2),
+        (20, 3),
     ];
 
     public static bool TryFit(
@@ -92,7 +99,7 @@ internal static class CurveFillRibbonCompoundFitter
                 candidateFit.CurvatureSignFlips *
                     1.50 +
                 setting.Anchors *
-                    0.008 +
+                    0.015 +
                 setting.SmoothingPasses *
                     0.012;
 
