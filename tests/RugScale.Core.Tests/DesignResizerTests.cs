@@ -1412,6 +1412,237 @@ public class DesignResizerTests
     }
 
     [Fact]
+    public void CurveFillRibbonMirrorPairNormalizer_SharesOneGeometryAcrossExactMirrorPartners()
+    {
+        const int sourceWidth = 100;
+        const double mirrorConstant = 99d;
+
+        static LeafPetalRegion Region(
+            byte color,
+            IReadOnlyList<(int X, int Y)> points,
+            int sourceWidth)
+        {
+            var pixels =
+                points
+                    .Select(point =>
+                        point.Y *
+                            sourceWidth +
+                        point.X)
+                    .ToArray();
+
+            return new LeafPetalRegion(
+                color,
+                pixels,
+                pixels,
+                points.Min(point => point.X),
+                points.Min(point => point.Y),
+                points.Max(point => point.X),
+                points.Max(point => point.Y));
+        }
+
+        var leftPixels =
+            Enumerable.Range(
+                    0,
+                    21)
+                .SelectMany(index =>
+                {
+                    var y =
+                        10 +
+                        index;
+                    var centerX =
+                        18 -
+                        (int)Math.Round(
+                            5d *
+                            Math.Sin(
+                                index /
+                                20d *
+                                Math.PI));
+
+                    return Enumerable.Range(
+                            centerX -
+                            2,
+                            5)
+                        .Select(x =>
+                            (X: x, Y: y));
+                })
+                .ToArray();
+        var rightPixels =
+            leftPixels
+                .Select(point =>
+                    (
+                        X:
+                            (int)Math.Round(
+                                mirrorConstant -
+                                point.X),
+                        point.Y
+                    ))
+                .ToArray();
+
+        var leftRegion =
+            Region(
+                1,
+                leftPixels,
+                sourceWidth);
+        var rightRegion =
+            Region(
+                1,
+                rightPixels,
+                sourceWidth);
+
+        static LeafPetalArcModel Model(
+            LeafPetalRegion region,
+            IReadOnlyList<LeafPetalAxisSample> samples) =>
+            new(
+                new LeafPetalArcCandidate(
+                    region,
+                    0d,
+                    0d,
+                    0d,
+                    1d,
+                    1d,
+                    0d,
+                    20d,
+                    4d,
+                    5d,
+                    0.30),
+                samples,
+                ReversedForApex: false,
+                BaseWidth: 2.5,
+                ApexWidth: 2.5,
+                SkeletonCoverage: 1d);
+
+        var leftSamples =
+            Enumerable.Range(
+                    0,
+                    21)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        20d;
+                    var x =
+                        18d -
+                        5d *
+                        Math.Sin(
+                            t *
+                            Math.PI);
+
+                    return new LeafPetalAxisSample(
+                        x,
+                        10d +
+                        index,
+                        2.5,
+                        t);
+                })
+                .ToArray();
+        var rightSamples =
+            leftSamples
+                .Select(sample =>
+                    sample with
+                    {
+                        X =
+                            mirrorConstant -
+                            sample.X,
+                    })
+                .ToArray();
+
+        var leftFitPoints =
+            leftSamples
+                .Select(sample =>
+                    new ElegantArcPoint(
+                        sample.X,
+                        sample.Y,
+                        sample.HalfWidth))
+                .ToArray();
+        var rightNoisyFitPoints =
+            rightSamples
+                .Select((sample, index) =>
+                    new ElegantArcPoint(
+                        sample.X +
+                        (index % 3 == 0
+                            ? 0.55
+                            : -0.25),
+                        sample.Y,
+                        sample.HalfWidth))
+                .ToArray();
+
+        var accepted =
+            new List<(LeafPetalArcModel Model, ElegantArcFit Fit)>
+            {
+                (
+                    Model(
+                        leftRegion,
+                        leftSamples),
+                    new ElegantArcFit(
+                        leftFitPoints,
+                        true,
+                        true,
+                        0,
+                        0.25)
+                ),
+                (
+                    Model(
+                        rightRegion,
+                        rightSamples),
+                    new ElegantArcFit(
+                        rightNoisyFitPoints,
+                        true,
+                        true,
+                        0,
+                        0.90)
+                ),
+            };
+
+        var diagnostics =
+            CurveFillRibbonMirrorPairNormalizer.Normalize(
+                accepted,
+                sourceWidth);
+
+        Assert.Equal(
+            1,
+            diagnostics.Pairs);
+        Assert.Equal(
+            1,
+            diagnostics.Replacements);
+        Assert.InRange(
+            diagnostics.BestMirrorAgreement,
+            0.999,
+            1.001);
+
+        var normalizedRight =
+            accepted[1].Fit.Points;
+
+        Assert.Equal(
+            leftFitPoints.Length,
+            normalizedRight.Count);
+
+        for (var index = 0;
+             index < leftFitPoints.Length;
+             index++)
+        {
+            Assert.InRange(
+                Math.Abs(
+                    normalizedRight[index].X -
+                    (mirrorConstant -
+                     leftFitPoints[index].X)),
+                0d,
+                1e-9);
+            Assert.InRange(
+                Math.Abs(
+                    normalizedRight[index].Y -
+                    leftFitPoints[index].Y),
+                0d,
+                1e-9);
+            Assert.InRange(
+                Math.Abs(
+                    normalizedRight[index].HalfWidth -
+                    leftFitPoints[index].HalfWidth),
+                0d,
+                1e-9);
+        }
+    }
+
+    [Fact]
     public void Scale_CurveFill_DoesNotEraseNestedFillWhenOutlineAndInteriorShareCurvature()
     {
         var palette = new Palette(new[]
