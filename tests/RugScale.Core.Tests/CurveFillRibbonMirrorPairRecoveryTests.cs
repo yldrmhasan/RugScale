@@ -182,6 +182,185 @@ public sealed class CurveFillRibbonMirrorPairRecoveryTests
     }
 
     [Fact]
+    public void Recover_ExactMirrorPair_WithUnevenSkeletonSampling_UsesArcLengthAlignment()
+    {
+        const int Width = 96;
+        const int Height = 104;
+        const int MirrorConstant = Width - 1;
+
+        var palette =
+            new Palette(
+                new[]
+                {
+                    new RugColor(220, 214, 192),
+                    new RugColor(0, 0, 102),
+                });
+        var source =
+            new DesignDocument(
+                Width,
+                Height,
+                palette);
+        var controls =
+            new (int X, int Y)[]
+            {
+                (10, 92),
+                (12, 64),
+                (20, 35),
+                (34, 18),
+                (39, 7),
+            };
+
+        foreach (var point in Rasterizer.Dilate(
+                     CurveRasterizer.Draw(
+                         controls,
+                         CurveType.SplineThroughPoints,
+                         0.72),
+                     6,
+                     6))
+        {
+            if (point.X < 0 ||
+                point.X >= Width ||
+                point.Y < 0 ||
+                point.Y >= Height)
+            {
+                continue;
+            }
+
+            source.SetPixel(
+                point.X,
+                point.Y,
+                1);
+            source.SetPixel(
+                MirrorConstant -
+                    point.X,
+                point.Y,
+                1);
+        }
+
+        var regions =
+            LeafPetalRegionExtractor.Extract(
+                    source)
+                .Where(region =>
+                    region.Color == 1 &&
+                    region.Area >= 30)
+                .OrderBy(region =>
+                    region.MinX)
+                .ToArray();
+
+        Assert.Equal(
+            2,
+            regions.Length);
+        Assert.True(
+            LeafPetalArcClassifier.TryClassify(
+                regions[0],
+                Width,
+                out var leftCandidate));
+        Assert.True(
+            LeafPetalArcClassifier.TryClassify(
+                regions[1],
+                Width,
+                out var rightCandidate));
+        Assert.True(
+            CurveFillRibbonCenterlineBuilder.TryBuild(
+                leftCandidate,
+                Width,
+                out var leftModel,
+                out _));
+        Assert.True(
+            CurveFillRibbonCenterlineBuilder.TryBuild(
+                rightCandidate,
+                Width,
+                out var rightModel,
+                out _));
+
+        // Keep exactly the same left-hand polyline geometry, but make the upper half much more
+        // densely sampled than the lower half. Matching samples by list index now pairs different
+        // physical locations; normalized arc length should remain invariant.
+        var uneven =
+            new List<LeafPetalAxisSample>();
+
+        for (var index = 0;
+             index < leftModel.Samples.Count - 1;
+             index++)
+        {
+            var a =
+                leftModel.Samples[index];
+            var b =
+                leftModel.Samples[index + 1];
+            var subdivisions =
+                index <
+                leftModel.Samples.Count /
+                2
+                    ? 5
+                    : 1;
+
+            for (var step = 0;
+                 step < subdivisions;
+                 step++)
+            {
+                var t =
+                    step /
+                    (double)subdivisions;
+
+                uneven.Add(
+                    new LeafPetalAxisSample(
+                        a.X +
+                        (b.X -
+                         a.X) *
+                        t,
+                        a.Y +
+                        (b.Y -
+                         a.Y) *
+                        t,
+                        a.HalfWidth +
+                        (b.HalfWidth -
+                         a.HalfWidth) *
+                        t,
+                        0d));
+            }
+        }
+
+        uneven.Add(
+            leftModel.Samples[^1]);
+
+        var unevenModel =
+            leftModel with
+            {
+                Samples =
+                    uneven,
+            };
+
+        var recovered =
+            CurveFillRibbonMirrorPairRecovery.TryRecover(
+                unevenModel,
+                regions,
+                Width,
+                out var fused,
+                out var diagnostics);
+
+        Assert.True(
+            recovered,
+            $"Uneven skeleton sampling should not break exact mirror fusion: " +
+            $"reason={diagnostics.Reason}, agreement={diagnostics.MirrorAgreement:0.000}, " +
+            $"shift={diagnostics.MeanFusionShift:0.000}/{diagnostics.MaximumFusionShift:0.000}.");
+        Assert.InRange(
+            diagnostics.MirrorAgreement,
+            0.99,
+            1.0);
+        Assert.InRange(
+            diagnostics.MeanFusionShift,
+            0d,
+            1.25);
+        Assert.InRange(
+            diagnostics.MaximumFusionShift,
+            0d,
+            2.50);
+        Assert.True(
+            fused.Samples.Count >=
+            rightModel.Samples.Count);
+    }
+
+    [Fact]
     public void Recover_UnrelatedOppositeRegion_DoesNotInventSharedGeometry()
     {
         const int Width = 80;
