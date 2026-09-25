@@ -99,7 +99,7 @@ internal static class CurveFillRibbonMainArcExtractor
                     8)
                 : Math.Clamp(
                     samples.Count /
-                    11,
+                    10,
                     6,
                     20);
         var signs =
