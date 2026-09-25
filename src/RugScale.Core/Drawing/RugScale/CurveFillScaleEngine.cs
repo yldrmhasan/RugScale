@@ -317,6 +317,14 @@ internal static class CurveFillScaleEngine
                 ribbonArc.CubicBezierFits,
             RibbonArcOutlinedRefined =
                 ribbonArc.OutlinedRefined,
+            RibbonArcMirrorPairs =
+                ribbonArc.MirrorPairs,
+            RibbonArcMirrorPairReplacements =
+                ribbonArc.MirrorPairReplacements,
+            RibbonArcBestMirrorPairAgreement =
+                ribbonArc.BestMirrorPairAgreement,
+            RibbonArcMaxMirrorPairDeviation =
+                ribbonArc.MaxMirrorPairDeviation,
         };
     }
 
