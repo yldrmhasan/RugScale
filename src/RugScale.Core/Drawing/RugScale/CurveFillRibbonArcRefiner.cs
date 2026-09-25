@@ -694,6 +694,7 @@ internal static class CurveFillRibbonArcRefiner
             var mirrorSourceMeanShift = 0d;
             var mirrorSourceMaxShift = 0d;
             var mainArcExtracted = false;
+            var mainArcReason = "not-attempted";
             var mainArcStart = 0;
             var mainArcEnd = 0;
             var mainArcKeptFraction = 0d;
@@ -773,10 +774,15 @@ internal static class CurveFillRibbonArcRefiner
                             symmetryMaxShift =
                                 symmetryDiagnostics.MaximumSampleShift;
 
-                            if (CurveFillRibbonMainArcExtractor.TryExtract(
+                            var selfMainArcExtracted =
+                                CurveFillRibbonMainArcExtractor.TryExtract(
                                     model,
                                     out var mainArcModel,
-                                    out var mainArcDiagnostics))
+                                    out var mainArcDiagnostics);
+                            mainArcReason =
+                                mainArcDiagnostics.Reason;
+
+                            if (selfMainArcExtracted)
                             {
                                 model =
                                     mainArcModel;
@@ -818,21 +824,28 @@ internal static class CurveFillRibbonArcRefiner
                                     mirrorFusedModel;
 
                                 if (!mainArcExtracted &&
-                                    centerlineDiagnostics.Endpoints > 2 &&
-                                    CurveFillRibbonMainArcExtractor.TryExtractMirrorFusedSweep(
-                                        model,
-                                        out var mirrorMainArcModel,
-                                        out var mirrorMainArcDiagnostics))
+                                    centerlineDiagnostics.Endpoints > 2)
                                 {
-                                    model =
-                                        mirrorMainArcModel;
-                                    mainArcExtracted = true;
-                                    mainArcStart =
-                                        mirrorMainArcDiagnostics.StartIndex;
-                                    mainArcEnd =
-                                        mirrorMainArcDiagnostics.EndIndex;
-                                    mainArcKeptFraction =
-                                        mirrorMainArcDiagnostics.KeptFraction;
+                                    var mirrorMainArcExtracted =
+                                        CurveFillRibbonMainArcExtractor.TryExtractMirrorFusedSweep(
+                                            model,
+                                            out var mirrorMainArcModel,
+                                            out var mirrorMainArcDiagnostics);
+                                    mainArcReason =
+                                        mirrorMainArcDiagnostics.Reason;
+
+                                    if (mirrorMainArcExtracted)
+                                    {
+                                        model =
+                                            mirrorMainArcModel;
+                                        mainArcExtracted = true;
+                                        mainArcStart =
+                                            mirrorMainArcDiagnostics.StartIndex;
+                                        mainArcEnd =
+                                            mirrorMainArcDiagnostics.EndIndex;
+                                        mainArcKeptFraction =
+                                            mirrorMainArcDiagnostics.KeptFraction;
+                                    }
                                 }
                             }
                         }
@@ -1023,6 +1036,7 @@ internal static class CurveFillRibbonArcRefiner
                     mirrorSourceMeanShift,
                     mirrorSourceMaxShift,
                     mainArcExtracted,
+                    mainArcReason,
                     mainArcStart,
                     mainArcEnd,
                     mainArcKeptFraction,
@@ -1204,6 +1218,7 @@ internal readonly record struct RibbonArcCandidateStage(
     double MirrorSourceMeanShift,
     double MirrorSourceMaxShift,
     bool MainArcExtracted,
+    string MainArcReason,
     int MainArcStart,
     int MainArcEnd,
     double MainArcKeptFraction,
