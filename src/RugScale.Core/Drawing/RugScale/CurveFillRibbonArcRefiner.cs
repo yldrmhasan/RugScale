@@ -781,18 +781,18 @@ internal static class CurveFillRibbonArcRefiner
                                     out var mainArcDiagnostics);
                             mainArcReason =
                                 mainArcDiagnostics.Reason;
+                            mainArcStart =
+                                mainArcDiagnostics.StartIndex;
+                            mainArcEnd =
+                                mainArcDiagnostics.EndIndex;
+                            mainArcKeptFraction =
+                                mainArcDiagnostics.KeptFraction;
 
                             if (selfMainArcExtracted)
                             {
                                 model =
                                     mainArcModel;
                                 mainArcExtracted = true;
-                                mainArcStart =
-                                    mainArcDiagnostics.StartIndex;
-                                mainArcEnd =
-                                    mainArcDiagnostics.EndIndex;
-                                mainArcKeptFraction =
-                                    mainArcDiagnostics.KeptFraction;
                             }
                         }
 
@@ -833,18 +833,18 @@ internal static class CurveFillRibbonArcRefiner
                                             out var mirrorMainArcDiagnostics);
                                     mainArcReason =
                                         mirrorMainArcDiagnostics.Reason;
+                                    mainArcStart =
+                                        mirrorMainArcDiagnostics.StartIndex;
+                                    mainArcEnd =
+                                        mirrorMainArcDiagnostics.EndIndex;
+                                    mainArcKeptFraction =
+                                        mirrorMainArcDiagnostics.KeptFraction;
 
                                     if (mirrorMainArcExtracted)
                                     {
                                         model =
                                             mirrorMainArcModel;
                                         mainArcExtracted = true;
-                                        mainArcStart =
-                                            mirrorMainArcDiagnostics.StartIndex;
-                                        mainArcEnd =
-                                            mirrorMainArcDiagnostics.EndIndex;
-                                        mainArcKeptFraction =
-                                            mirrorMainArcDiagnostics.KeptFraction;
                                     }
                                 }
                             }
