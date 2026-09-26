@@ -12,7 +12,8 @@ internal static class LeafPetalArcRasterizer
         DesignDocument destination,
         LeafPetalArcModel model,
         ElegantArcFit fit,
-        IReadOnlySet<byte> protectedStrokeColors)
+        IReadOnlySet<byte> protectedStrokeColors,
+        bool restrictToFittedSweep = false)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
@@ -108,6 +109,16 @@ internal static class LeafPetalArcRasterizer
                         sourceX,
                         sourceY,
                         BoundaryBandRadius))
+                {
+                    continue;
+                }
+
+                if (restrictToFittedSweep &&
+                    !CurveFillRibbonRasterScope.Contains(
+                        fit,
+                        sourceX,
+                        sourceY,
+                        extraMargin: BoundaryBandRadius))
                 {
                     continue;
                 }
