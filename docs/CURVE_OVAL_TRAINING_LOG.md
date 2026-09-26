@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** `f74a9c34ab5ae347b4877860a949625485fb785a` — sparse-taper-specific dominant-sweep acceptance; CI/audit queued at this exact documentation point.
+**Last documented experiment:** `03a77a23f7c25e05d0220c47898002225e9e3589` — expose compound fitter anchor/smoothing diagnostics; C069 audit pending at this exact documentation point.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -255,7 +255,7 @@ the scoping rule is **KEEP**. Do not return to whole-region compound redraw.
 The remaining problem is only that the generic mirror-oriented 0.48 kept-fraction gate is too strict
 for this separately classified sparse-taper family.
 
-### 4.10 Sparse-taper-specific dominant-sweep fraction — CURRENT EXPERIMENT
+### 4.10 Sparse-taper-specific dominant-sweep fraction — KEEP
 
 Commits:
 - `ef108fa8be7bbc5a3f7c2c7ec96bb61f3111a146` — add sparse-taper-specific extractor gate,
@@ -267,16 +267,30 @@ Change:
 - maximum remains 0.95,
 - all existing source/classifier/raster-scope gates still apply.
 
-Why 0.38:
-the measured C069 coherent sweep is 0.409266. The specialized threshold is set below that measured
-evidence without weakening any other ribbon family.
+C069 focus result for `83,146 - 175,348`:
+- main arc extracted: **yes**,
+- reason: `ok-one-sided`,
+- selected sample span: `96-200`,
+- kept fraction: **0.405405**,
+- after extraction the normal Through-Points geometric fitter became safe, so compound was no
+  longer needed for this region,
+- fit kind: `through-geometry / SplineThroughPoints`,
+- max deviation: **1.570419 px**,
+- curvature flips: **0**,
+- selected smoothness: **0.019230**,
+- candidate accepted: **yes**.
 
-Expected result:
-the same span should be accepted and rasterization should stay restricted to that extracted sweep,
-avoiding the whole-region white-gap regression.
+Visual result:
+- the rectangular/white ownership damage from the unscoped experiment is gone,
+- only about **500 target pixels** differ from the old safe baseline, concentrated in the intended
+  sweep,
+- the change is a localized improvement, not a whole-component rewrite.
 
-Status:
-**CI / C069 / four-design audit queued at the time this entry was written.**
+Aggregate C069 round-trip exact moved from about **93.26% to 93.24%** while ±1 px stayed **99.56%**.
+This tiny exact-F1 change is accepted because exact F1 is not the aesthetic objective and the source
+corridor/topology gates remain intact.
+
+Decision: **KEEP**.
 
 ### 4.11 Regression and visual-audit infrastructure — KEEP
 
@@ -294,6 +308,31 @@ Every C069 audit now also emits:
 
 These focus files are the preferred visual continuation artifacts for the user-reported left
 spiral/oval problem.
+
+### 4.12 Compound spiral configuration diagnostics — CURRENT EXPERIMENT
+
+Commits:
+- `c6e400c59e4e19458e6a25de96d9ecce51b3c48b`
+- `707b393984eac96c766b8e7089458af415fbf019`
+- `03a77a23f7c25e05d0220c47898002225e9e3589`
+
+Problem:
+large accepted green/filled compound sweeps still have high visual roughness even though they are
+source-safe. Current examples:
+- `105,181 - 191,313`: smoothness about **0.190283**, p95 about 0.249, max about 0.339,
+- `105,566 - 156,812`: smoothness about **0.234319**, p95 about 1.681, max about 3.057.
+
+Before changing anchor counts again, the compound fitter now exposes the actually selected:
+- roughness,
+- anchor count,
+- smoothing-pass count.
+
+These fields are written into the C069 ribbon candidate CSV and console audit. The next experiment
+must use these measurements to decide whether:
+- safer lower-anchor candidates already exist but lose scoring,
+- or a genuinely new spiral/curvature-continuity fitter is required.
+
+Status: **C069 diagnostic audit pending at the time this entry was written.**
 
 ## 5. Do-not-repeat rules
 
