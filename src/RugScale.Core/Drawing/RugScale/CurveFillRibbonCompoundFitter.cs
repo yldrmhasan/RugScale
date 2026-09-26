@@ -82,6 +82,7 @@ internal static class CurveFillRibbonCompoundFitter
 
         CompoundCandidate? best = null;
         CompoundCandidate? smoothestSafe = null;
+        CompoundCandidate? smoothestCurvatureValid = null;
 
         foreach (var setting in CandidateSettings)
         {
@@ -140,6 +141,23 @@ internal static class CurveFillRibbonCompoundFitter
                     setting.SmoothingPasses,
                     safe,
                     score);
+
+            if (candidateFit.CurvatureSignFlips <=
+                    MaximumCurvatureSignFlips &&
+                (smoothestCurvatureValid is null ||
+                 candidate.Roughness <
+                    smoothestCurvatureValid.Value.Roughness -
+                    1e-9 ||
+                 Math.Abs(
+                     candidate.Roughness -
+                     smoothestCurvatureValid.Value.Roughness) <=
+                    1e-9 &&
+                 candidate.Percentile95Deviation <
+                    smoothestCurvatureValid.Value.Percentile95Deviation))
+            {
+                smoothestCurvatureValid =
+                    candidate;
+            }
 
             if (candidate.Safe &&
                 (smoothestSafe is null ||
@@ -239,7 +257,12 @@ internal static class CurveFillRibbonCompoundFitter
                 smoothestSafe?.Anchors ?? 0,
                 smoothestSafe?.SmoothingPasses ?? 0,
                 smoothestSafe?.Percentile95Deviation ?? 0d,
-                smoothestSafe?.MaximumDeviation ?? 0d);
+                smoothestSafe?.MaximumDeviation ?? 0d,
+                smoothestCurvatureValid?.Roughness ?? 0d,
+                smoothestCurvatureValid?.Anchors ?? 0,
+                smoothestCurvatureValid?.SmoothingPasses ?? 0,
+                smoothestCurvatureValid?.Percentile95Deviation ?? 0d,
+                smoothestCurvatureValid?.MaximumDeviation ?? 0d);
 
         return selected.Safe;
     }
@@ -443,4 +466,9 @@ internal readonly record struct RibbonCompoundFitDiagnostics(
     int SmoothestSafeAnchors = 0,
     int SmoothestSafeSmoothingPasses = 0,
     double SmoothestSafeP95Deviation = 0d,
-    double SmoothestSafeMaximumDeviation = 0d);
+    double SmoothestSafeMaximumDeviation = 0d,
+    double SmoothestCurvatureValidRoughness = 0d,
+    int SmoothestCurvatureValidAnchors = 0,
+    int SmoothestCurvatureValidSmoothingPasses = 0,
+    double SmoothestCurvatureValidP95Deviation = 0d,
+    double SmoothestCurvatureValidMaximumDeviation = 0d);
