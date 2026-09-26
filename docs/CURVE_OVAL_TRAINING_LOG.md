@@ -407,13 +407,65 @@ Important:
 this is the first experiment that can genuinely replace the old enlarged staircase with the fitted
 curve instead of merely shaving it locally.
 
-Status:
-**CI / C069 / four-design audit running at the time this entry was written.**
-Before keeping this path:
-1. inspect the real C069 BMP and the persistent left-spiral focus crop,
-2. verify no protected third-color strokes are crossed,
-3. verify B163A and four-design regressions remain green,
-4. compare against the last safe BMP visually, not only by exact F1.
+Status after commit `6890fe8a18f722ae6cdb62869735e8a7aff89052`:
+- RugScale CI: **success**,
+- Workbench: **success**,
+- B163A real-design validation: **success**,
+- B163A drawing self-training: **success**,
+- B163A motif audit: **success**,
+- C069 curve training: **success**,
+- four-design curve suite was still running at the exact documentation point below.
+
+C069 real-raster observation:
+- round-trip exact moved to **92.83%** (Nearest **90.52%**),
+- ±1 px round-trip agreement remained **99.36%**,
+- direct 160% output differs from direct Nearest by about **130,604 px / 5.78%**,
+- persistent left-spiral focus crop differs from Nearest by about **6,964 px / 5.67%**,
+- visually, several formerly block-scaled green/gold ribbon edges now follow the fitted curve rather
+  than the old nearest staircase. This is the first stage where the raster output visibly reflects
+  the fitted geometry instead of only boundary touch-up.
+
+Important:
+the visual result is improved but **not yet globally correct**. Some compact spiral fills are still
+untouched because they never enter the ribbon pipeline. Keep the true-redraw architecture and move
+the next work to candidate coverage rather than weakening the fitted redraw itself.
+
+Decision so far: **KEEP / CONTINUE**, pending final four-design completion.
+
+### 4.14 Compact spiral ribbon coverage probe — CURRENT DIAGNOSTIC
+
+Commit:
+`016b85119a9458518615063f513fddf7f098bffb`
+
+Finding:
+some visibly curved C069 filled spirals still fail before centerline analysis because PCA elongation
+is low when a curve wraps around itself. Example from the left focus area:
+
+- color 2,
+- bbox `99,219 - 148,298`,
+- elongation **1.547**,
+- boundary ratio **0.181**,
+- bounding fill **0.502**,
+- old production prefilter: rejected.
+
+This does not prove it is a ribbon; compact filled leaves can have similar PCA statistics.
+
+Diagnostic-only change:
+- candidates with elongation >= 1.25,
+- bounding fill <= 0.58,
+- boundary ratio <= 0.32
+
+are allowed to run through centerline / ribbon-shape / fitter analysis **only in
+`AnalyzeCandidateStages`**.
+They still receive no production redraw authority and are reported as
+`compact-probe-*`.
+
+Goal:
+measure skeleton coverage, endpoints, width CV, terminal ratio, bend and safe-fit quality before
+creating any production `compact spiral ribbon` class.
+
+Do not convert this probe into a production gate until the C069 artifact proves the targeted spiral
+has coherent source evidence and four-design/B163A regressions remain protected.
 
 ## 5. Do-not-repeat rules
 
