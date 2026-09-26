@@ -732,7 +732,7 @@ valid model by changing the raw acceptance score.
 Status:
 CI / C069 / four-design validation pending at this documentation point.
 
-### 4.24 Short tapered-hook coverage probe — CURRENT DIAGNOSTIC
+### 4.24 Short tapered-hook coverage probe — SAFE, CONTINUE DIAGNOSTIC
 
 Commit:
 `a300c7ce4dcde169c3768ef1c3f13f762b92fc3a`
@@ -752,10 +752,6 @@ deliberately redrawn curve. Its source candidate is:
 - terminal ratio: **0.163016**,
 - maximum bend: **11.353804** vs required **1.583281**.
 
-The ordinary ribbon classifier rejects it only because its ends intentionally have very different
-widths. It is too short / too strongly tapered for the existing `ok-sparse-taper` production
-class.
-
 Diagnostic-only probe criteria:
 - rejected specifically by `terminal-width-ratio`,
 - exactly 2 skeleton endpoints,
@@ -767,13 +763,37 @@ Diagnostic-only probe criteria:
 - terminal ratio 0.10 .. 0.25,
 - measured bend >= 2x required bend.
 
-The probe is reported as `probe-tapered-hook` but **cannot become accepted/production output**.
-Its only purpose is to run the existing Curve/Through-Points/Bezier fitters and measure source
-safety before deciding whether this motif deserves a separate production family.
+C069 probe result:
+all four repeated/mirrored navy hooks became **fit-safe** while remaining production-disabled.
 
-Next decision:
-- safe + smooth fit -> consider separately gated tapered-hook true redraw,
-- unsafe fit -> keep baseline and improve the model; do not loosen general ribbon thresholds.
+Top pair:
+- fit kind: compound,
+- max deviation: **1.027677 px**,
+- curvature flips: **1**,
+- smoothness: **0.080480**.
+
+Bottom pair:
+- fit kind: Through-Points,
+- max deviation: **3.348360 px**,
+- curvature flips: **0**,
+- smoothness: **0.072020**.
+
+Decision:
+the motif class is real enough to continue, but do **not** enable production while repeated copies
+choose different fitter families. First prove one common model across all repeats.
+
+### 4.25 Common compound model for tapered hooks — CURRENT DIAGNOSTIC
+
+Commit:
+`f4e7875ef207caad2c8a363180475e4182b3e867`
+
+Change:
+the diagnostic tapered-hook route tries the same low-frequency compound fitter first for every
+repeated copy. It still cannot affect production output.
+
+Goal:
+measure whether one repeat-consistent model can explain all four hooks inside the source safety
+corridor. Only after that can a separately gated true-redraw production class be considered.
 
 ## 5. Do-not-repeat rules
 
