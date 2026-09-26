@@ -943,6 +943,37 @@ internal static class CurveFillRibbonArcRefiner
                                 toolStyle.Type.ToString();
                             roundness =
                                 toolStyle.Roundness;
+
+                            if (broadSparseArch &&
+                                mainArcExtracted &&
+                                CurveFillRibbonThroughPointsFitter.TryFit(
+                                    model,
+                                    out var preferredThroughFit,
+                                    out var preferredThroughDiagnostics))
+                            {
+                                var toolRoughness =
+                                    CurveFillRibbonSmoothness.Measure(
+                                        toolFit.Points);
+                                var throughRoughness =
+                                    CurveFillRibbonSmoothness.Measure(
+                                        preferredThroughFit.Points);
+
+                                if (CurveFillRibbonFitSelector.PreferGeometricThroughPoints(
+                                        toolFit,
+                                        toolRoughness,
+                                        preferredThroughFit,
+                                        throughRoughness))
+                                {
+                                    fit =
+                                        preferredThroughFit;
+                                    fitKind =
+                                        "through-geometry-preferred";
+                                    curveFamily =
+                                        CurveType.SplineThroughPoints.ToString();
+                                    roundness =
+                                        preferredThroughDiagnostics.Roundness;
+                                }
+                            }
                         }
                         else if (broadSparseArch)
                         {
