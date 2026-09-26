@@ -668,6 +668,49 @@ The C069 gate requires BOTH known mirrored compact-spiral fixtures to remain:
 This is a fixture-level regression assertion only. The production algorithm contains no C069
 coordinates or design-name hard coding.
 
+### 4.22 Pixel-Cord cadence-aware Curve-style selection — CURRENT EXPERIMENT
+
+Evidence before enabling selection:
+the synthetic Curve-tool self-training audit now measures ordered pixel-step cadence in addition to
+set overlap. At the current green baseline, learned target curves beat literal graph replay by:
+
+- Bezier cadence: about **+0.115**,
+- Spline cadence: about **+0.093**,
+- Spline Through Points cadence: about **+0.157**.
+
+This proves that two rasters can be equally close spatially while having materially different
+designer-visible Pixel-Cord step rhythm.
+
+Commits:
+- `78a3acd55587...` — shared `CurvePixelCadence` metric,
+- `e8a24f2f85a6...` — training audit uses the shared metric,
+- `5bde92657044...` — cadence regression tests,
+- `edb8781768a3d1115ef8dfdc563a3fa1c71a3c2b` — cadence enters Curve-style model selection.
+
+Selection rule:
+- source geometry/set overlap remains dominant,
+- cadence contributes **10%** of source-fit score for Pixel-Cord chains,
+- cadence contributes only **4%** for ordinary non-Pixel-Cord curves,
+- the same complexity penalty and model-vs-polyline gain gates remain in force.
+
+Goal:
+when two Curve-tool hypotheses occupy essentially the same source corridor, prefer the one whose
+ordered H/V/diagonal step transitions match the designer's source raster instead of treating the
+pixels as an unordered set.
+
+Status:
+- RugScale CI: **success** at the documentation point,
+- C069 real-raster and four-design audit: **running**.
+
+Acceptance decision must compare:
+1. synthetic exact F1 and cadence before/after,
+2. C069 learned family mix / graph fallback counts,
+3. actual C069 BMP, especially navy/white Pixel-Cord curves,
+4. four-design + B163A regression gates.
+
+If cadence weighting lowers geometry materially or creates new corner smoothing, reduce it to a
+tie-break-only signal rather than removing the metric.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
