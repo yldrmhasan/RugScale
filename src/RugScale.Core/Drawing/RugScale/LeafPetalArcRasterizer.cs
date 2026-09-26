@@ -339,6 +339,155 @@ internal static class LeafPetalArcRasterizer
         return left;
     }
 
+    /// <summary>
+    /// Builds the scaled ribbon polygon and then expands each side by a fixed number of TARGET
+    /// pixels. This is different from increasing source HalfWidth before scaling: a dedicated 1x1
+    /// Pixel-Cord outline must stay one target-grid pixel thick when physical design size changes
+    /// at the same warp/weft quality.
+    /// </summary>
+    internal static List<(double X, double Y)> BuildTargetExpandedPolygon(
+        IReadOnlyList<ElegantArcPoint> points,
+        double scaleX,
+        double scaleY,
+        double additionalTargetPixels)
+    {
+        var left =
+            new List<(double X, double Y)>(
+                points.Count);
+        var right =
+            new List<(double X, double Y)>(
+                points.Count);
+
+        additionalTargetPixels =
+            Math.Max(
+                0d,
+                additionalTargetPixels);
+
+        for (var i = 0;
+             i < points.Count;
+             i++)
+        {
+            var previous =
+                points[Math.Max(
+                    0,
+                    i - 1)];
+            var next =
+                points[Math.Min(
+                    points.Count - 1,
+                    i + 1)];
+            var sourceTangentX =
+                next.X -
+                previous.X;
+            var sourceTangentY =
+                next.Y -
+                previous.Y;
+            var sourceLength =
+                Math.Sqrt(
+                    sourceTangentX *
+                        sourceTangentX +
+                    sourceTangentY *
+                        sourceTangentY);
+
+            if (sourceLength <=
+                1e-9)
+            {
+                continue;
+            }
+
+            var sourceNormalX =
+                -sourceTangentY /
+                sourceLength;
+            var sourceNormalY =
+                sourceTangentX /
+                sourceLength;
+            var point =
+                points[i];
+
+            var leftBase =
+                Map(
+                    point.X +
+                    sourceNormalX *
+                        point.HalfWidth,
+                    point.Y +
+                    sourceNormalY *
+                        point.HalfWidth,
+                    scaleX,
+                    scaleY);
+            var rightBase =
+                Map(
+                    point.X -
+                    sourceNormalX *
+                        point.HalfWidth,
+                    point.Y -
+                    sourceNormalY *
+                        point.HalfWidth,
+                    scaleX,
+                    scaleY);
+
+            var previousTarget =
+                Map(
+                    previous.X,
+                    previous.Y,
+                    scaleX,
+                    scaleY);
+            var nextTarget =
+                Map(
+                    next.X,
+                    next.Y,
+                    scaleX,
+                    scaleY);
+            var targetTangentX =
+                nextTarget.X -
+                previousTarget.X;
+            var targetTangentY =
+                nextTarget.Y -
+                previousTarget.Y;
+            var targetLength =
+                Math.Sqrt(
+                    targetTangentX *
+                        targetTangentX +
+                    targetTangentY *
+                        targetTangentY);
+
+            if (targetLength <=
+                1e-9)
+            {
+                continue;
+            }
+
+            var targetNormalX =
+                -targetTangentY /
+                targetLength;
+            var targetNormalY =
+                targetTangentX /
+                targetLength;
+
+            left.Add(
+                (
+                    leftBase.X +
+                    targetNormalX *
+                        additionalTargetPixels,
+                    leftBase.Y +
+                    targetNormalY *
+                        additionalTargetPixels
+                ));
+            right.Add(
+                (
+                    rightBase.X -
+                    targetNormalX *
+                        additionalTargetPixels,
+                    rightBase.Y -
+                    targetNormalY *
+                        additionalTargetPixels
+                ));
+        }
+
+        right.Reverse();
+        left.AddRange(
+            right);
+        return left;
+    }
+
     private static (double X, double Y) Map(
         double x,
         double y,
