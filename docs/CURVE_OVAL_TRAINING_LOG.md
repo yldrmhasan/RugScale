@@ -668,48 +668,69 @@ The C069 gate requires BOTH known mirrored compact-spiral fixtures to remain:
 This is a fixture-level regression assertion only. The production algorithm contains no C069
 coordinates or design-name hard coding.
 
-### 4.22 Pixel-Cord cadence-aware Curve-style selection — CURRENT EXPERIMENT
+### 4.22 Pixel-Cord cadence-aware Curve-style selection — ADJUST
 
 Evidence before enabling selection:
-the synthetic Curve-tool self-training audit now measures ordered pixel-step cadence in addition to
-set overlap. At the current green baseline, learned target curves beat literal graph replay by:
+the synthetic Curve-tool self-training audit showed learned curves have substantially better ordered
+step cadence than literal graph replay:
 
-- Bezier cadence: about **+0.115**,
-- Spline cadence: about **+0.093**,
-- Spline Through Points cadence: about **+0.157**.
+- Bezier cadence gain: about **+0.115**,
+- Spline cadence gain: about **+0.093**,
+- Spline Through Points cadence gain: about **+0.157**.
 
-This proves that two rasters can be equally close spatially while having materially different
-designer-visible Pixel-Cord step rhythm.
+Commit:
+`edb8781768a3d1115ef8dfdc563a3fa1c71a3c2b`
+
+First selection rule:
+cadence was blended directly into the raw source-fit score at 10% for Pixel-Cord and 4% for ordinary
+curves.
+
+Synthetic result versus the previous baseline:
+- Through-Points accepted: **59/60 -> 60/60**,
+- Through-Points family correct: **59/59 -> 60/60**,
+- Through-Points target exact F1: **93.54% -> 93.61%**,
+- Through-Points roundness MAE: **0.023 -> 0.015**,
+- Through-Points cadence: **99.37% -> 99.59%**,
+- Bezier family correctness: **10/17 -> 11/17**.
+
+Real C069 result:
+- learned open curves: **33 -> 29**,
+- learned Through-Points: **17 -> 13**,
+- whole direct output changed about **3,078 target pixels**,
+- persistent left-spiral focus crop changed **0 pixels**,
+- round-trip exact moved about **92.86% -> 92.82%**,
+- ±1 px moved about **99.45% -> 99.42%**.
+
+Visual inspection found some changed Pixel-Cord areas, but the user-reported left focus geometry was
+unchanged. The main concern is architectural: cadence must not influence whether source geometry is
+accepted strongly enough to reject otherwise valid learned curves.
+
+Decision:
+**ADJUST, do not keep raw-score blending as production authority.**
+The cadence metric itself is valuable; move it to a small model-selection/tie-break role while
+keeping raw acceptance pure geometry.
+
+### 4.23 Cadence as bounded model-selection bonus — CURRENT EXPERIMENT
 
 Commits:
-- `78a3acd55587...` — shared `CurvePixelCadence` metric,
-- `e8a24f2f85a6...` — training audit uses the shared metric,
-- `5bde92657044...` — cadence regression tests,
-- `edb8781768a3d1115ef8dfdc563a3fa1c71a3c2b` — cadence enters Curve-style model selection.
+- `bb80f733e53dc3cfe54b6a960bdcddca451da9a2`,
+- `d991785660b342eb956ee8998d11df292640fa32`.
 
-Selection rule:
-- source geometry/set overlap remains dominant,
-- cadence contributes **10%** of source-fit score for Pixel-Cord chains,
-- cadence contributes only **4%** for ordinary non-Pixel-Cord curves,
-- the same complexity penalty and model-vs-polyline gain gates remain in force.
+New rule:
+- control/roundness optimization may still use cadence to search better raster hypotheses,
+- final `Score` and minimum raw acceptance threshold are **pure source geometry** again,
+- polyline and Curve models both receive only a small post-geometry cadence bonus,
+- maximum bonus:
+  - Pixel-Cord: **0.006** model-score points,
+  - ordinary curve: **0.002** model-score points,
+- existing complexity penalties and model-vs-polyline gain remain intact.
 
-Goal:
-when two Curve-tool hypotheses occupy essentially the same source corridor, prefer the one whose
-ordered H/V/diagonal step transitions match the designer's source raster instead of treating the
-pixels as an unordered set.
+Intent:
+cadence decides a near tie; it cannot rescue a geometrically weak model or suppress a geometrically
+valid model by changing the raw acceptance score.
 
 Status:
-- RugScale CI: **success** at the documentation point,
-- C069 real-raster and four-design audit: **running**.
-
-Acceptance decision must compare:
-1. synthetic exact F1 and cadence before/after,
-2. C069 learned family mix / graph fallback counts,
-3. actual C069 BMP, especially navy/white Pixel-Cord curves,
-4. four-design + B163A regression gates.
-
-If cadence weighting lowers geometry materially or creates new corner smoothing, reduce it to a
-tie-break-only signal rather than removing the metric.
+CI / C069 / four-design validation pending at this documentation point.
 
 ## 5. Do-not-repeat rules
 
