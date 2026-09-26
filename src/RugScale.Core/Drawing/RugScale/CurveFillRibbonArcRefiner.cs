@@ -948,6 +948,11 @@ internal static class CurveFillRibbonArcRefiner
                             ribbonShapeDiagnostics.Reason,
                             "ok-sparse-taper",
                             StringComparison.Ordinal);
+                    var compactSpiralSweep =
+                        string.Equals(
+                            ribbonShapeDiagnostics.Reason,
+                            "ok-compact-spiral",
+                            StringComparison.Ordinal);
                     ribbonShapeReason =
                         ribbonShapeDiagnostics.Reason;
                     ribbonMeanWidth =
@@ -1100,7 +1105,82 @@ internal static class CurveFillRibbonArcRefiner
 
                         ElegantArcFit fit;
 
-                        if (CurveFillRibbonToolFitter.TryFit(
+                        if (compactSpiralSweep)
+                        {
+                            // Diagnostic routing only: compact spirals are multi-turn shapes, so a
+                            // single cubic or generic 8-anchor macro spline is the wrong first
+                            // model. Test source-faithful Through-Points first, then the
+                            // low-frequency compound fitter. Production prefilter still excludes
+                            // this family until one of these models proves safe on real raster.
+                            if (CurveFillRibbonThroughPointsFitter.TryFit(
+                                    model,
+                                    out var compactThroughFit,
+                                    out var compactThroughDiagnostics))
+                            {
+                                fit =
+                                    compactThroughFit;
+                                fitKind =
+                                    "compact-through";
+                                curveFamily =
+                                    CurveType.SplineThroughPoints.ToString();
+                                roundness =
+                                    compactThroughDiagnostics.Roundness;
+                            }
+                            else
+                            {
+                                compoundAttempted = true;
+
+                                if (CurveFillRibbonCompoundFitter.TryFit(
+                                        model,
+                                        out var compactCompoundFit,
+                                        out var compactCompoundDiagnostics))
+                                {
+                                    fit =
+                                        compactCompoundFit;
+                                    fitKind =
+                                        "compact-compound";
+                                    curveFamily =
+                                        "CompoundSpline";
+                                }
+                                else
+                                {
+                                    fit =
+                                        ElegantArcFitter.Fit(
+                                            model,
+                                            taperApex: false,
+                                            maximumAnchors: 8,
+                                            smoothingPasses: 2);
+                                    fitKind =
+                                        "compact-macro-fallback";
+                                    curveFamily =
+                                        CurveType.Spline.ToString();
+                                }
+
+                                compoundReason =
+                                    compactCompoundDiagnostics.Reason;
+                                compoundP95Deviation =
+                                    compactCompoundDiagnostics.Percentile95Deviation;
+                                compoundMaximumDeviation =
+                                    compactCompoundDiagnostics.MaximumDeviation;
+                                compoundSelectedRoughness =
+                                    compactCompoundDiagnostics.Roughness;
+                                compoundSelectedAnchors =
+                                    compactCompoundDiagnostics.Anchors;
+                                compoundSelectedSmoothingPasses =
+                                    compactCompoundDiagnostics.SmoothingPasses;
+                                compoundSmoothestSafeRoughness =
+                                    compactCompoundDiagnostics.SmoothestSafeRoughness;
+                                compoundSmoothestSafeAnchors =
+                                    compactCompoundDiagnostics.SmoothestSafeAnchors;
+                                compoundSmoothestSafeSmoothingPasses =
+                                    compactCompoundDiagnostics.SmoothestSafeSmoothingPasses;
+                                compoundSmoothestSafeP95Deviation =
+                                    compactCompoundDiagnostics.SmoothestSafeP95Deviation;
+                                compoundSmoothestSafeMaximumDeviation =
+                                    compactCompoundDiagnostics.SmoothestSafeMaximumDeviation;
+                            }
+                        }
+                        else if (CurveFillRibbonToolFitter.TryFit(
                                 model,
                                 out var toolFit,
                                 out var toolStyle))
