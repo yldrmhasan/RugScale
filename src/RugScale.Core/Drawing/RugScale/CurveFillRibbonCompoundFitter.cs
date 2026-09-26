@@ -184,7 +184,10 @@ internal static class CurveFillRibbonCompoundFitter
                             : "maximum-deviation",
                 selected.MaximumDeviation,
                 selected.Percentile95Deviation,
-                selected.Fit.CurvatureSignFlips);
+                selected.Fit.CurvatureSignFlips,
+                selected.Roughness,
+                selected.Anchors,
+                selected.SmoothingPasses);
 
         return selected.Safe;
     }
@@ -380,4 +383,7 @@ internal readonly record struct RibbonCompoundFitDiagnostics(
     string Reason,
     double MaximumDeviation,
     double Percentile95Deviation,
-    int CurvatureSignFlips);
+    int CurvatureSignFlips,
+    double Roughness = 0d,
+    int Anchors = 0,
+    int SmoothingPasses = 0);
