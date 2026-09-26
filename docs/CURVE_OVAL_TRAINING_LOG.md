@@ -430,7 +430,8 @@ the visual result is improved but **not yet globally correct**. Some compact spi
 untouched because they never enter the ribbon pipeline. Keep the true-redraw architecture and move
 the next work to candidate coverage rather than weakening the fitted redraw itself.
 
-Decision so far: **KEEP / CONTINUE**, pending final four-design completion.
+Decision: **KEEP / CONTINUE**. The four-design curve suite also completed **success**, so the first
+authoritative true-redraw architecture is now the fully green baseline for subsequent curve work.
 
 ### 4.14 Compact spiral ribbon coverage probe — CURRENT DIAGNOSTIC
 
@@ -506,6 +507,63 @@ compound geometry can fit the complete compact spiral safely and aesthetically.
 Next decision after C069 audit:
 - if fitter is safe and smooth, create a separately gated production compact-spiral route;
 - if fitter is unsafe/high-deviation, improve spiral-specific fitting rather than loosening safety.
+
+### 4.16 Pixel-Cord outline thickness must be target-grid based — KEEP
+
+Commits:
+- `76b1fbafd870909a51bdf297bd242a2cfcb0a62f` — target-space polygon expansion helper,
+- `e15bb6d635d75adcc9389989aab87029fa25d5f0` — outlined-ribbon path uses target-pixel expansion,
+- `15d0edab81e922c5af82bb4b5b263927b137c972` — true-redraw path uses target-pixel expansion,
+- `01ffea3040b3229b97b89005a66b983ceea4e32d` — regression test.
+
+Architectural correction:
+a dedicated 1x1 Pixel-Cord outline is a **weave-grid stroke**, not a motif dimension. At the same
+warp/weft quality, enlarging the physical design must not turn that one cell into 1.6 or 2 target
+cells merely because motif coordinates scale.
+
+Old behaviour:
+`HalfWidth + 1 source pixel` was applied before scaling, so a 160% enlargement expanded the
+dedicated outline by roughly 1.6 target pixels.
+
+New behaviour:
+- the filled ribbon geometry still scales normally,
+- its mapped target tangent/normal is calculated,
+- the dedicated outer outline is expanded by exactly **1 target pixel** in target space.
+
+The regression test explicitly checks a 2x enlargement and requires the additional outline offset
+to remain approximately 1 target pixel rather than 2.
+
+Status:
+the later combined CI at `0c12e76...` passes with this change included.
+
+### 4.17 Compact spiral fitter selection — CURRENT DIAGNOSTIC
+
+First classification result at `9f1e4f419370e828bbdb18f9f105089daf8d68af`:
+
+For C069 green spiral `99,219 - 148,298`:
+- shape reason: `ok-compact-spiral`,
+- generic macro-spline max deviation: **6.192887 px**,
+- curvature flips: 0,
+- smoothness: **0.312195**,
+- result: **unsafe / rejected**.
+
+Right mirror:
+- max deviation: **6.616967 px**,
+- smoothness: **0.295574**,
+- also unsafe.
+
+Decision:
+do **not** loosen source-deviation safety. The generic macro spline is the wrong model for a
+multi-turn compact spiral.
+
+Commit `0c12e76b9c3a45d093c7f34813e380ed5a146285` changes diagnostic fitter order for
+`ok-compact-spiral` only:
+1. Spline Through Points,
+2. low-frequency compound fitter,
+3. generic macro spline only as final diagnostic fallback.
+
+Production prefilter remains closed. The next C069 artifact decides whether either source-bounded
+fitter is good enough to justify a production compact-spiral path.
 
 ## 5. Do-not-repeat rules
 
