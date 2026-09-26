@@ -777,6 +777,91 @@ public sealed class CurveOvalTrainingTests
             1.05);
     }
 
+    [Fact]
+    public void PixelCadence_IdenticalOrderedStepsScoreOne()
+    {
+        var path =
+            new (int X, int Y)[]
+            {
+                (0, 0),
+                (1, 0),
+                (1, 1),
+                (2, 1),
+                (2, 2),
+                (3, 2),
+                (3, 3),
+            };
+
+        var score =
+            CurvePixelCadence.Measure(
+                path,
+                path);
+
+        Assert.Equal(
+            1d,
+            score,
+            precision: 12);
+    }
+
+    [Fact]
+    public void PixelCadence_PrefersPixelCordAlternationOverSameEndpointWrongRhythm()
+    {
+        var expected =
+            new (int X, int Y)[]
+            {
+                (0, 0),
+                (1, 0),
+                (1, 1),
+                (2, 1),
+                (2, 2),
+                (3, 2),
+                (3, 3),
+                (4, 3),
+                (4, 4),
+            };
+        var faithful =
+            new (int X, int Y)[]
+            {
+                (0, 0),
+                (1, 0),
+                (1, 1),
+                (2, 1),
+                (2, 2),
+                (3, 2),
+                (3, 3),
+                (4, 3),
+                (4, 4),
+            };
+        var wrongCadence =
+            new (int X, int Y)[]
+            {
+                (0, 0),
+                (1, 0),
+                (2, 0),
+                (3, 0),
+                (4, 0),
+                (4, 1),
+                (4, 2),
+                (4, 3),
+                (4, 4),
+            };
+
+        var faithfulScore =
+            CurvePixelCadence.Measure(
+                faithful,
+                expected);
+        var wrongScore =
+            CurvePixelCadence.Measure(
+                wrongCadence,
+                expected);
+
+        Assert.True(
+            faithfulScore >
+            wrongScore +
+                0.25,
+            $"Expected ordered Pixel-Cord cadence to matter: faithful={faithfulScore:0.000}, wrong={wrongScore:0.000}.");
+    }
+
     private static LeafPetalArcModel Model(
         IReadOnlyList<LeafPetalAxisSample> samples,
         int width,
