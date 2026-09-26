@@ -1205,17 +1205,6 @@ internal static class ToolFaithfulCurveStyleLearner
     {
         foreach (var roundness in roundnessValues)
         {
-            var rawScore =
-                ScoreCandidate(
-                    sourceChain,
-                    sourceSet,
-                    RenderCurveOrdered(
-                        controls,
-                        type,
-                        roundness,
-                        pixelCord),
-                    pixelCord);
-
             ConsiderFit(
                 type,
                 roundness,
