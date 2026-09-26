@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** `03a77a23f7c25e05d0220c47898002225e9e3589` — expose compound fitter anchor/smoothing diagnostics; C069 audit pending at this exact documentation point.
+**Last documented experiment:** `3ad0be4caa8f059b1360f86fc8892a52a580047d` — measured compound smoothness selector with regression tests; CI/C069 audit pending at this exact documentation point.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -309,30 +309,54 @@ Every C069 audit now also emits:
 These focus files are the preferred visual continuation artifacts for the user-reported left
 spiral/oval problem.
 
-### 4.12 Compound spiral configuration diagnostics — CURRENT EXPERIMENT
+### 4.12 Compound spiral configuration diagnostics — KEEP
 
 Commits:
 - `c6e400c59e4e19458e6a25de96d9ecce51b3c48b`
 - `707b393984eac96c766b8e7089458af415fbf019`
 - `03a77a23f7c25e05d0220c47898002225e9e3589`
+- `f7746329dbc11527425804398cfb13efe6cc53de`
+- `cbf5fb5ec44d793213d59446a5865459ca1d03af`
+- `6d404accb098de16770ce0f1660e3fa637b22454`
 
-Problem:
-large accepted green/filled compound sweeps still have high visual roughness even though they are
-source-safe. Current examples:
-- `105,181 - 191,313`: smoothness about **0.190283**, p95 about 0.249, max about 0.339,
-- `105,566 - 156,812`: smoothness about **0.234319**, p95 about 1.681, max about 3.057.
+Finding:
+the compound score was consistently selecting **20 anchors**. The smoothest-safe audit proved that
+lower-anchor candidates already exist inside the hard source corridor:
 
-Before changing anchor counts again, the compound fitter now exposes the actually selected:
-- roughness,
-- anchor count,
-- smoothing-pass count.
+| C069 region | selected | smoothest safe | source cost |
+|---|---|---|---|
+| `105,181 - 191,313` | 20a/2s, rough 0.190283, p95 0.249, max 0.339 | 18a/2s, rough **0.168047**, p95 0.371, max 0.923 | small |
+| `105,1065 - 191,1197` | 20a/2s, rough 0.184167, p95 0.262, max 0.448 | 16a/2s, rough **0.173056**, p95 0.525, max 1.340 | bounded |
+| `105,566 - 156,812` | 20a/2s, rough 0.234319 | 18a/2s, rough 0.227841 | aesthetic gain too small |
+| `240,168 - 317,288` | 20a/2s, rough 0.121662, p95 0.815, max 1.893 | 10a/2s, rough 0.064239, p95 2.368, max 3.281 | too much drift |
 
-These fields are written into the C069 ribbon candidate CSV and console audit. The next experiment
-must use these measurements to decide whether:
-- safer lower-anchor candidates already exist but lose scoring,
-- or a genuinely new spiral/curvature-continuity fitter is required.
+Conclusion:
+a new spiral model is **not yet justified**. The existing candidate family contains useful smoother
+solutions; selection policy was the immediate bottleneck.
 
-Status: **C069 diagnostic audit pending at the time this entry was written.**
+### 4.13 Bounded smoother-safe compound selector — CURRENT EXPERIMENT
+
+Commits:
+- `a8fc4e4ba72c38bcb28350cc80e270619cb3bede` — selector,
+- `a04d9a3729f51d27e94be0887587d4ec79885893` — fitter integration,
+- `3ad0be4caa8f059b1360f86fc8892a52a580047d` — measured regression tests.
+
+Selection rules:
+- alternative anchor count may not exceed the current selection,
+- roughness must improve by at least **5%**,
+- p95 deviation may regress by at most **0.65 px**,
+- maximum deviation may regress by at most **1.00 px**,
+- both candidates already passed the compound fitter's hard safety gates.
+
+Measured expectations encoded in tests:
+- upper C069 green spiral: **select** 18-anchor smoother candidate,
+- lower mirrored green family: **select** 16-anchor smoother candidate,
+- gold 10-anchor underfit: **reject** because source drift is too large,
+- long color-6 curve: **reject** because roughness gain is too small.
+
+Status:
+**CI / C069 / four-design validation pending at the time this entry was written.**
+Actual BMP must be inspected before this selector is declared KEEP.
 
 ## 5. Do-not-repeat rules
 
