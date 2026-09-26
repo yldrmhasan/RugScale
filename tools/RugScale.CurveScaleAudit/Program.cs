@@ -1399,6 +1399,92 @@ internal static class Program
                 directHeight,
                 ScaleMode.NearestNeighbor);
 
+        if (string.Equals(
+                fixture.Name,
+                "C069A_CREAM_N69",
+                StringComparison.Ordinal))
+        {
+            // Persistent visual calibration crop for the user-reported ugly left oval/spiral
+            // region. Keep source + RugScale + Nearest together in every C069 artifact so future
+            // training sessions can judge the same local geometry without rediscovering the area.
+            const int FocusSourceX = 70;
+            const int FocusSourceY = 120;
+            const int FocusSourceWidth = 160;
+            const int FocusSourceHeight = 300;
+
+            var focusSource =
+                Crop(
+                    source,
+                    FocusSourceX,
+                    FocusSourceY,
+                    FocusSourceWidth,
+                    FocusSourceHeight);
+            var focusTargetX =
+                (int)Math.Floor(
+                    FocusSourceX *
+                    direct.Width /
+                    (double)source.Width);
+            var focusTargetY =
+                (int)Math.Floor(
+                    FocusSourceY *
+                    direct.Height /
+                    (double)source.Height);
+            var focusTargetRight =
+                (int)Math.Ceiling(
+                    (FocusSourceX +
+                     FocusSourceWidth) *
+                    direct.Width /
+                    (double)source.Width);
+            var focusTargetBottom =
+                (int)Math.Ceiling(
+                    (FocusSourceY +
+                     FocusSourceHeight) *
+                    direct.Height /
+                    (double)source.Height);
+            var focusWidth =
+                focusTargetRight -
+                focusTargetX;
+            var focusHeight =
+                focusTargetBottom -
+                focusTargetY;
+            var focusDirect =
+                Crop(
+                    direct,
+                    focusTargetX,
+                    focusTargetY,
+                    focusWidth,
+                    focusHeight);
+            var focusNearest =
+                Crop(
+                    directNearest,
+                    focusTargetX,
+                    focusTargetY,
+                    focusWidth,
+                    focusHeight);
+
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_left_spiral_source.bmp"),
+                focusSource,
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_left_spiral_rugscale.bmp"),
+                focusDirect,
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_left_spiral_nearest.bmp"),
+                focusNearest,
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+        }
+
         var roundTripAgreement =
             PixelAgreement(
                 source,
