@@ -17,7 +17,8 @@ internal static class ElegantArcFitter
         LeafPetalArcModel model,
         bool taperApex = true,
         int maximumAnchors = DefaultMaximumAnchors,
-        int smoothingPasses = 1)
+        int smoothingPasses = 1,
+        bool useCentripetalInterpolation = false)
     {
         ArgumentNullException.ThrowIfNull(model);
 
@@ -61,9 +62,13 @@ internal static class ElegantArcFitter
                 smoothed,
                 maximumAnchors);
         var points =
-            InterpolateCatmullRom(
-                anchors,
-                MinimumSamplesPerSegment);
+            useCentripetalInterpolation
+                ? InterpolateCentripetalCatmullRom(
+                    anchors,
+                    MinimumSamplesPerSegment)
+                : InterpolateCatmullRom(
+                    anchors,
+                    MinimumSamplesPerSegment);
 
         if (points.Count < 4)
         {
@@ -272,6 +277,278 @@ internal static class ElegantArcFitter
 
         result.Add(anchors[^1]);
         return result;
+    }
+
+    private static List<ElegantArcPoint> InterpolateCentripetalCatmullRom(
+        IReadOnlyList<ElegantArcPoint> anchors,
+        int samplesPerSegment)
+    {
+        var result =
+            new List<ElegantArcPoint>();
+
+        if (anchors.Count < 2)
+            return result;
+
+        for (var segment = 0;
+             segment < anchors.Count - 1;
+             segment++)
+        {
+            var p1 =
+                anchors[segment];
+            var p2 =
+                anchors[segment + 1];
+            var p0 =
+                segment > 0
+                    ? anchors[segment - 1]
+                    : ReflectEndpoint(
+                        p1,
+                        p2);
+            var p3 =
+                segment + 2 <
+                anchors.Count
+                    ? anchors[segment + 2]
+                    : ReflectEndpoint(
+                        p2,
+                        p1);
+
+            var segmentX =
+                p2.X -
+                p1.X;
+            var segmentY =
+                p2.Y -
+                p1.Y;
+            var segmentLength =
+                Math.Sqrt(
+                    segmentX *
+                        segmentX +
+                    segmentY *
+                        segmentY);
+            var adaptiveSamples =
+                Math.Clamp(
+                    (int)Math.Ceiling(
+                        segmentLength *
+                        SamplesPerSourcePixel),
+                    samplesPerSegment,
+                    MaximumSamplesPerSegment);
+
+            for (var step = 0;
+                 step < adaptiveSamples;
+                 step++)
+            {
+                var u =
+                    step /
+                    (double)adaptiveSamples;
+
+                result.Add(
+                    Centripetal(
+                        p0,
+                        p1,
+                        p2,
+                        p3,
+                        u));
+            }
+        }
+
+        result.Add(
+            anchors[^1]);
+        return result;
+    }
+
+    private static ElegantArcPoint ReflectEndpoint(
+        ElegantArcPoint origin,
+        ElegantArcPoint neighbor) =>
+        new(
+            origin.X *
+                2d -
+            neighbor.X,
+            origin.Y *
+                2d -
+            neighbor.Y,
+            Math.Max(
+                0.45,
+                origin.HalfWidth *
+                    2d -
+                neighbor.HalfWidth));
+
+    private static ElegantArcPoint Centripetal(
+        ElegantArcPoint p0,
+        ElegantArcPoint p1,
+        ElegantArcPoint p2,
+        ElegantArcPoint p3,
+        double u)
+    {
+        const double MinimumInterval = 1e-5;
+
+        static double Interval(
+            ElegantArcPoint a,
+            ElegantArcPoint b)
+        {
+            var dx =
+                b.X -
+                a.X;
+            var dy =
+                b.Y -
+                a.Y;
+            var distance =
+                Math.Sqrt(
+                    dx *
+                        dx +
+                    dy *
+                        dy);
+
+            // alpha = 0.5: parameter interval is sqrt(chord length).
+            return Math.Sqrt(
+                Math.Max(
+                    distance,
+                    MinimumInterval));
+        }
+
+        var t0 = 0d;
+        var t1 =
+            t0 +
+            Interval(
+                p0,
+                p1);
+        var t2 =
+            t1 +
+            Interval(
+                p1,
+                p2);
+        var t3 =
+            t2 +
+            Interval(
+                p2,
+                p3);
+        var t =
+            t1 +
+            Math.Clamp(
+                u,
+                0d,
+                1d) *
+            (t2 -
+             t1);
+
+        static double LerpAt(
+            double a,
+            double b,
+            double ta,
+            double tb,
+            double t)
+        {
+            var span =
+                tb -
+                ta;
+
+            if (Math.Abs(
+                    span) <=
+                1e-12)
+            {
+                return
+                    (a +
+                     b) *
+                    0.5;
+            }
+
+            return
+                (tb -
+                 t) /
+                    span *
+                    a +
+                (t -
+                 ta) /
+                    span *
+                    b;
+        }
+
+        static double Eval(
+            double v0,
+            double v1,
+            double v2,
+            double v3,
+            double t0,
+            double t1,
+            double t2,
+            double t3,
+            double t)
+        {
+            var a1 =
+                LerpAt(
+                    v0,
+                    v1,
+                    t0,
+                    t1,
+                    t);
+            var a2 =
+                LerpAt(
+                    v1,
+                    v2,
+                    t1,
+                    t2,
+                    t);
+            var a3 =
+                LerpAt(
+                    v2,
+                    v3,
+                    t2,
+                    t3,
+                    t);
+            var b1 =
+                LerpAt(
+                    a1,
+                    a2,
+                    t0,
+                    t2,
+                    t);
+            var b2 =
+                LerpAt(
+                    a2,
+                    a3,
+                    t1,
+                    t3,
+                    t);
+
+            return
+                LerpAt(
+                    b1,
+                    b2,
+                    t1,
+                    t2,
+                    t);
+        }
+
+        return new ElegantArcPoint(
+            Eval(
+                p0.X,
+                p1.X,
+                p2.X,
+                p3.X,
+                t0,
+                t1,
+                t2,
+                t3,
+                t),
+            Eval(
+                p0.Y,
+                p1.Y,
+                p2.Y,
+                p3.Y,
+                t0,
+                t1,
+                t2,
+                t3,
+                t),
+            Math.Max(
+                0.45,
+                Eval(
+                    p0.HalfWidth,
+                    p1.HalfWidth,
+                    p2.HalfWidth,
+                    p3.HalfWidth,
+                    t0,
+                    t1,
+                    t2,
+                    t3,
+                    t)));
     }
 
     private static double Catmull(
