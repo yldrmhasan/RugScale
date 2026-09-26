@@ -176,6 +176,22 @@ internal static class CurveFillRibbonCompoundFitter
 
         var selected =
             best.Value;
+
+        if (smoothestSafe is { } smoother &&
+            CurveFillRibbonCompoundFitSelector.PreferSmootherSafeAlternative(
+                selected.Roughness,
+                selected.Percentile95Deviation,
+                selected.MaximumDeviation,
+                selected.Anchors,
+                smoother.Roughness,
+                smoother.Percentile95Deviation,
+                smoother.MaximumDeviation,
+                smoother.Anchors))
+        {
+            selected =
+                smoother;
+        }
+
         fit =
             selected.Fit with
             {
