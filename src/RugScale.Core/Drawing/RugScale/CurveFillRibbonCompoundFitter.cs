@@ -68,6 +68,7 @@ internal static class CurveFillRibbonCompoundFitter
         }
 
         CompoundCandidate? best = null;
+        CompoundCandidate? smoothestSafe = null;
 
         foreach (var setting in CandidateSettings)
         {
@@ -125,6 +126,22 @@ internal static class CurveFillRibbonCompoundFitter
                     setting.SmoothingPasses,
                     safe,
                     score);
+
+            if (candidate.Safe &&
+                (smoothestSafe is null ||
+                 candidate.Roughness <
+                    smoothestSafe.Value.Roughness -
+                    1e-9 ||
+                 Math.Abs(
+                     candidate.Roughness -
+                     smoothestSafe.Value.Roughness) <=
+                    1e-9 &&
+                 candidate.Score <
+                    smoothestSafe.Value.Score))
+            {
+                smoothestSafe =
+                    candidate;
+            }
 
             if (best is null ||
                 candidate.Safe &&
@@ -187,7 +204,12 @@ internal static class CurveFillRibbonCompoundFitter
                 selected.Fit.CurvatureSignFlips,
                 selected.Roughness,
                 selected.Anchors,
-                selected.SmoothingPasses);
+                selected.SmoothingPasses,
+                smoothestSafe?.Roughness ?? 0d,
+                smoothestSafe?.Anchors ?? 0,
+                smoothestSafe?.SmoothingPasses ?? 0,
+                smoothestSafe?.Percentile95Deviation ?? 0d,
+                smoothestSafe?.MaximumDeviation ?? 0d);
 
         return selected.Safe;
     }
@@ -386,4 +408,9 @@ internal readonly record struct RibbonCompoundFitDiagnostics(
     int CurvatureSignFlips,
     double Roughness = 0d,
     int Anchors = 0,
-    int SmoothingPasses = 0);
+    int SmoothingPasses = 0,
+    double SmoothestSafeRoughness = 0d,
+    int SmoothestSafeAnchors = 0,
+    int SmoothestSafeSmoothingPasses = 0,
+    double SmoothestSafeP95Deviation = 0d,
+    double SmoothestSafeMaximumDeviation = 0d);
