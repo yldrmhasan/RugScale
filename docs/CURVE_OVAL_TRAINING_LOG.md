@@ -732,6 +732,49 @@ valid model by changing the raw acceptance score.
 Status:
 CI / C069 / four-design validation pending at this documentation point.
 
+### 4.24 Short tapered-hook coverage probe — CURRENT DIAGNOSTIC
+
+Commit:
+`a300c7ce4dcde169c3768ef1c3f13f762b92fc3a`
+
+User-visible focus finding:
+the short navy hook near the left C069 spiral remains visually closer to a resized wedge than a
+deliberately redrawn curve. Its source candidate is:
+
+- color 4,
+- bbox `99,212 - 139,239`,
+- elongation **2.071920**,
+- bounding fill **0.249129**,
+- boundary ratio **0.402098**,
+- skeleton endpoints: **2**,
+- principal path coverage: **1.000000**,
+- width CV: **0.513861**,
+- terminal ratio: **0.163016**,
+- maximum bend: **11.353804** vs required **1.583281**.
+
+The ordinary ribbon classifier rejects it only because its ends intentionally have very different
+widths. It is too short / too strongly tapered for the existing `ok-sparse-taper` production
+class.
+
+Diagnostic-only probe criteria:
+- rejected specifically by `terminal-width-ratio`,
+- exactly 2 skeleton endpoints,
+- path coverage >= 0.95,
+- elongation 1.75 .. 2.40,
+- bounding fill 0.15 .. 0.32,
+- boundary ratio <= 0.46,
+- width CV <= 0.55,
+- terminal ratio 0.10 .. 0.25,
+- measured bend >= 2x required bend.
+
+The probe is reported as `probe-tapered-hook` but **cannot become accepted/production output**.
+Its only purpose is to run the existing Curve/Through-Points/Bezier fitters and measure source
+safety before deciding whether this motif deserves a separate production family.
+
+Next decision:
+- safe + smooth fit -> consider separately gated tapered-hook true redraw,
+- unsafe fit -> keep baseline and improve the model; do not loosen general ribbon thresholds.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
