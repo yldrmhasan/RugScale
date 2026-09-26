@@ -225,6 +225,115 @@ public sealed class CurveOvalTrainingTests
             0.20);
     }
 
+    [Fact]
+    public void OneSidedSweepExtractor_TrimsOppositeTerminalHookAndKeepsDominantArc()
+    {
+        var samples =
+            new List<LeafPetalAxisSample>();
+
+        const int mainCount = 72;
+
+        for (var index = 0;
+             index < mainCount;
+             index++)
+        {
+            var t =
+                index /
+                (double)(mainCount - 1);
+            var x =
+                10d +
+                70d *
+                    t;
+            var y =
+                48d -
+                22d *
+                    (t - 0.5) *
+                    (t - 0.5);
+
+            samples.Add(
+                new LeafPetalAxisSample(
+                    x,
+                    y,
+                    3.2,
+                    samples.Count));
+        }
+
+        var tailStart =
+            samples[^1];
+
+        const int hookCount = 24;
+
+        for (var index = 1;
+             index <= hookCount;
+             index++)
+        {
+            var u =
+                index /
+                (double)hookCount;
+
+            samples.Add(
+                new LeafPetalAxisSample(
+                    tailStart.X +
+                    18d *
+                        u,
+                    tailStart.Y -
+                    4d *
+                        u +
+                    15d *
+                        u *
+                        u,
+                    3.2 -
+                    1.8 *
+                        u,
+                    samples.Count));
+        }
+
+        var normalized =
+            samples
+                .Select((sample, index) =>
+                    sample with
+                    {
+                        AxisPosition =
+                            index /
+                            (double)Math.Max(
+                                1,
+                                samples.Count - 1),
+                    })
+                .ToArray();
+        var model =
+            Model(
+                normalized,
+                width: 110,
+                height: 70);
+
+        var extracted =
+            CurveFillRibbonMainArcExtractor.TryExtractOneSidedSweep(
+                model,
+                out var sweep,
+                out var diagnostics);
+
+        Assert.True(
+            extracted,
+            $"Expected dominant sweep extraction: reason={diagnostics.Reason}, " +
+            $"range={diagnostics.StartIndex}-{diagnostics.EndIndex}, " +
+            $"kept={diagnostics.KeptFraction:0.000}, radius={diagnostics.Radius}.");
+        Assert.Equal(
+            "ok-one-sided",
+            diagnostics.Reason);
+        Assert.InRange(
+            diagnostics.KeptFraction,
+            0.48,
+            0.95);
+        Assert.True(
+            sweep.Samples.Count <
+            model.Samples.Count,
+            "The opposite-curvature terminal hook must be excluded from the dominant sweep.");
+        Assert.True(
+            diagnostics.EndIndex <
+            model.Samples.Count - 1,
+            "The one-sided extractor should trim the terminal hook, not keep the complete path.");
+    }
+
     private static LeafPetalArcModel Model(
         IReadOnlyList<LeafPetalAxisSample> samples,
         int width,
