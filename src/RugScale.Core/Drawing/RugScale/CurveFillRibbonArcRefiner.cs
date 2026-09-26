@@ -123,6 +123,8 @@ internal static class CurveFillRibbonArcRefiner
             new List<(LeafPetalArcModel Model, ElegantArcFit Fit)>();
         var mainArcScopedRegions =
             new HashSet<LeafPetalRegion>();
+        var compactSpiralRegions =
+            new HashSet<LeafPetalRegion>();
 
         foreach (var region in regions)
         {
@@ -155,6 +157,13 @@ internal static class CurveFillRibbonArcRefiner
                     MaximumBroadArchBoundingFill &&
                 candidate.BoundaryRatio <=
                     MaximumBroadArchBoundaryRatio;
+            var compactSpiralPrefilter =
+                candidate.Elongation >=
+                    1.25 &&
+                boundingFillRatio <=
+                    0.58 &&
+                candidate.BoundaryRatio <=
+                    0.32;
 
             // A wide U/half-oval has poor PCA elongation because its two shoulders spread across
             // both axes, even though visually it is one long ribbon. Admit only sparse broad
@@ -162,7 +171,8 @@ internal static class CurveFillRibbonArcRefiner
             // remain the actual redraw authority.
             if ((candidate.Elongation <
                      MinimumRibbonElongation &&
-                 !broadSparseArch) ||
+                 !broadSparseArch &&
+                 !compactSpiralPrefilter) ||
                 candidate.BoundaryRatio >
                     MaximumBoundaryRatio)
             {
@@ -212,6 +222,22 @@ internal static class CurveFillRibbonArcRefiner
                     ribbonShapeDiagnostics.Reason,
                     "ok-sparse-taper",
                     StringComparison.Ordinal);
+            var compactSpiralSweep =
+                string.Equals(
+                    ribbonShapeDiagnostics.Reason,
+                    "ok-compact-spiral",
+                    StringComparison.Ordinal);
+
+            // A compact prefilter is only an analysis doorway. Production authority is granted
+            // exclusively by the strict ok-compact-spiral classifier after centerline evidence.
+            if (compactSpiralPrefilter &&
+                !compactSpiralSweep &&
+                candidate.Elongation <
+                    MinimumRibbonElongation &&
+                !broadSparseArch)
+            {
+                continue;
+            }
 
             var mainArcExtractedForRegion = false;
 
@@ -315,7 +341,48 @@ internal static class CurveFillRibbonArcRefiner
             ElegantArcFit fit;
             var compoundFitSelected = false;
 
-            if (CurveFillRibbonToolFitter.TryFit(
+            if (compactSpiralSweep)
+            {
+                // Compact spirals are complete multi-turn ribbons. The real-raster probe proved
+                // generic macro splines unsafe, while the low-frequency compound fitter stayed
+                // source-bounded with zero curvature flips. Do not fall back to a generic model:
+                // if compound fitting becomes unsafe, leave the categorical baseline untouched.
+                compoundAttempts++;
+
+                if (!CurveFillRibbonCompoundFitter.TryFit(
+                        model,
+                        out var compactCompoundFit,
+                        out var compactCompoundDiagnostics))
+                {
+                    lastCompoundReason =
+                        compactCompoundDiagnostics.Reason;
+                    maxCompoundDeviation =
+                        Math.Max(
+                            maxCompoundDeviation,
+                            compactCompoundDiagnostics.MaximumDeviation);
+                    maxCompoundP95Deviation =
+                        Math.Max(
+                            maxCompoundP95Deviation,
+                            compactCompoundDiagnostics.Percentile95Deviation);
+                    continue;
+                }
+
+                fit =
+                    compactCompoundFit;
+                compoundFitSelected = true;
+                compoundFits++;
+                lastCompoundReason =
+                    compactCompoundDiagnostics.Reason;
+                maxCompoundDeviation =
+                    Math.Max(
+                        maxCompoundDeviation,
+                        compactCompoundDiagnostics.MaximumDeviation);
+                maxCompoundP95Deviation =
+                    Math.Max(
+                        maxCompoundP95Deviation,
+                        compactCompoundDiagnostics.Percentile95Deviation);
+            }
+            else if (CurveFillRibbonToolFitter.TryFit(
                     model,
                     out var toolFit,
                     out var toolStyle))
@@ -636,6 +703,12 @@ internal static class CurveFillRibbonArcRefiner
             accepted.Add(
                 (model, fit));
 
+            if (compactSpiralSweep)
+            {
+                compactSpiralRegions.Add(
+                    model.Candidate.Region);
+            }
+
             if (mainArcExtractedForRegion)
             {
                 mainArcScopedRegions.Add(
@@ -669,6 +742,8 @@ internal static class CurveFillRibbonArcRefiner
             // wider deviation budget.
             var trueRedrawAuthority =
                 scopedMainArc ||
+                compactSpiralRegions.Contains(
+                    item.Model.Candidate.Region) ||
                 item.Fit.CurvatureSignFlips == 0 &&
                 item.Fit.MaximumCenterlineDeviation <=
                     1.75;
