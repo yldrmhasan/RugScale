@@ -12,7 +12,9 @@ namespace RugScale.Core.Drawing;
 /// </summary>
 internal static class CurveFillRibbonBezierFitter
 {
-    private const int ContinuousSamples = 96;
+    private const int MinimumContinuousSamples = 96;
+    private const int MaximumContinuousSamples = 384;
+    private const double SamplesPerControlPixel = 1.65;
     private const double MaximumTypicalCenterlineDeviation = 1.50;
     private const double MaximumOutlierCenterlineDeviation = 4.25;
     private const double MaximumHandleToChordRatio = 2.75;
@@ -238,19 +240,36 @@ internal static class CurveFillRibbonBezierFitter
             return false;
         }
 
+        var controlPolygonLength =
+            Distance(
+                p0,
+                p1) +
+            Distance(
+                p1,
+                p2) +
+            Distance(
+                p2,
+                p3);
+        var continuousSamples =
+            Math.Clamp(
+                (int)Math.Ceiling(
+                    controlPolygonLength *
+                    SamplesPerControlPixel),
+                MinimumContinuousSamples,
+                MaximumContinuousSamples);
         var points =
             new List<ElegantArcPoint>(
-                ContinuousSamples);
+                continuousSamples);
 
         for (var index = 0;
-             index < ContinuousSamples;
+             index < continuousSamples;
              index++)
         {
             var t =
                 index /
                 (double)Math.Max(
                     1,
-                    ContinuousSamples - 1);
+                    continuousSamples - 1);
             var point =
                 Evaluate(
                     p0,
