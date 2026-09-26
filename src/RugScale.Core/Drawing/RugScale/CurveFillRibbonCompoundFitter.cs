@@ -18,6 +18,9 @@ internal static class CurveFillRibbonCompoundFitter
     private const int MaximumCurvatureSignFlips = 2;
     private const double MaximumP95Deviation = 3.80;
     private const double MaximumDeviation = 6.10;
+    private const double SmoothnessWeight = 4.25;
+    private const double AnchorComplexityWeight = 0.025;
+    private const double SmoothingPassComplexityWeight = 0.010;
 
     private static readonly (int Anchors, int SmoothingPasses)[] CandidateSettings =
     [
@@ -90,24 +93,36 @@ internal static class CurveFillRibbonCompoundFitter
                 deviation.Maximum <=
                     MaximumDeviation;
 
-            // Geometry dominates. A tiny complexity penalty makes ties deterministic and prefers
-            // the simpler designer stroke instead of fitting residual skeleton staircase.
+            // Source geometry remains a hard safety gate, but once two candidates are safely
+            // inside that corridor the carpet designer's low-frequency curve must beat residual
+            // skeleton staircase. Previously deviation dominated so strongly that a 16-20 anchor
+            // spline could win by hugging every one-pixel phase error. Curvature roughness now has
+            // real authority, while a modest complexity term prefers the simpler redraw when two
+            // curves look equally smooth.
+            var roughness =
+                CurveFillRibbonSmoothness.Measure(
+                    candidateFit.Points);
             var score =
                 deviation.Percentile95 +
                 deviation.Maximum *
-                    0.12 +
+                    0.10 +
+                roughness *
+                    SmoothnessWeight +
                 candidateFit.CurvatureSignFlips *
                     1.50 +
                 setting.Anchors *
-                    0.015 +
+                    AnchorComplexityWeight +
                 setting.SmoothingPasses *
-                    0.012;
+                    SmoothingPassComplexityWeight;
 
             var candidate =
                 new CompoundCandidate(
                     candidateFit,
                     deviation.Maximum,
                     deviation.Percentile95,
+                    roughness,
+                    setting.Anchors,
+                    setting.SmoothingPasses,
                     safe,
                     score);
 
@@ -354,6 +369,9 @@ internal static class CurveFillRibbonCompoundFitter
         ElegantArcFit Fit,
         double MaximumDeviation,
         double Percentile95Deviation,
+        double Roughness,
+        int Anchors,
+        int SmoothingPasses,
         bool Safe,
         double Score);
 }
