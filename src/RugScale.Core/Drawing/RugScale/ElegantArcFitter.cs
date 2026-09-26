@@ -8,7 +8,9 @@ internal static class ElegantArcFitter
     // long designer sweep continues into a tight hook/curl.
     private const int DefaultMaximumAnchors = 12;
     private const int MaximumSupportedAnchors = 20;
-    private const int SamplesPerSegment = 4;
+    private const int MinimumSamplesPerSegment = 4;
+    private const int MaximumSamplesPerSegment = 24;
+    private const double SamplesPerSourcePixel = 1.65;
     private const double MaximumCenterlineDeviation = 1.55;
 
     public static ElegantArcFit Fit(
@@ -58,7 +60,10 @@ internal static class ElegantArcFitter
             ReduceAnchors(
                 smoothed,
                 maximumAnchors);
-        var points = InterpolateCatmullRom(anchors, SamplesPerSegment);
+        var points =
+            InterpolateCatmullRom(
+                anchors,
+                MinimumSamplesPerSegment);
 
         if (points.Count < 4)
         {
@@ -212,13 +217,33 @@ internal static class ElegantArcFitter
             var p2 = anchors[segment + 1];
             var p3 = anchors[Math.Min(anchors.Count - 1, segment + 2)];
 
+            var segmentX =
+                p2.X -
+                p1.X;
+            var segmentY =
+                p2.Y -
+                p1.Y;
+            var segmentLength =
+                Math.Sqrt(
+                    segmentX *
+                        segmentX +
+                    segmentY *
+                        segmentY);
+            var adaptiveSamples =
+                Math.Clamp(
+                    (int)Math.Ceiling(
+                        segmentLength *
+                        SamplesPerSourcePixel),
+                    samplesPerSegment,
+                    MaximumSamplesPerSegment);
+
             for (var step = 0;
-                 step < samplesPerSegment;
+                 step < adaptiveSamples;
                  step++)
             {
                 var t =
                     step /
-                    (double)samplesPerSegment;
+                    (double)adaptiveSamples;
 
                 result.Add(
                     new ElegantArcPoint(
