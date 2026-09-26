@@ -1106,24 +1106,23 @@ internal static class CurveFillRibbonArcRefiner
                     ribbonRequiredBend =
                         ribbonShapeDiagnostics.RequiredBend;
 
-                    // Diagnostic only: short ornamental hooks may be coherent two-endpoint tapered
-                    // sweeps even when they fail the constant-ribbon terminal ratio. Measure them
-                    // with the existing fitters before granting any production redraw authority.
-                    var taperedHookProbe =
+                    // Short tapered hooks are a separately gated production family. Reuse the
+                    // exact same source-evidence predicate as runtime so audit/CI cannot drift.
+                    var taperedHookSweep =
                         !designerRibbon &&
                         LooksLikeTaperedHook(
                             model,
                             centerlineDiagnostics,
                             ribbonShapeDiagnostics);
 
-                    if (taperedHookProbe)
+                    if (taperedHookSweep)
                     {
                         ribbonShapeReason =
-                            "probe-tapered-hook";
+                            "ok-tapered-hook";
                     }
 
                     if (!designerRibbon &&
-                        !taperedHookProbe)
+                        !taperedHookSweep)
                     {
                         status =
                             compactSpiralProbe
@@ -1262,52 +1261,24 @@ internal static class CurveFillRibbonArcRefiner
 
                         ElegantArcFit fit;
 
-                        if (taperedHookProbe)
+                        if (taperedHookSweep)
                         {
-                            // Diagnostic authority only. Force one common low-frequency family
-                            // across all repeated tapered hooks so the audit can prove whether a
-                            // single model explains every mirrored/translated copy consistently.
+                            // Production is deliberately compound-only. Audit the same candidate
+                            // even when unsafe; there is no Through-Points/macro fallback that could
+                            // make CI report a different authority than runtime.
                             compoundAttempted = true;
 
-                            if (CurveFillRibbonCompoundFitter.TryFit(
+                            _ =
+                                CurveFillRibbonCompoundFitter.TryFit(
                                     model,
                                     out var hookCompoundFit,
-                                    out var hookCompoundDiagnostics))
-                            {
-                                fit =
-                                    hookCompoundFit;
-                                fitKind =
-                                    "tapered-hook-compound";
-                                curveFamily =
-                                    "CompoundSpline";
-                            }
-                            else if (CurveFillRibbonThroughPointsFitter.TryFit(
-                                         model,
-                                         out var hookThroughFit,
-                                         out var hookThroughDiagnostics))
-                            {
-                                fit =
-                                    hookThroughFit;
-                                fitKind =
-                                    "tapered-hook-through";
-                                curveFamily =
-                                    CurveType.SplineThroughPoints.ToString();
-                                roundness =
-                                    hookThroughDiagnostics.Roundness;
-                            }
-                            else
-                            {
-                                fit =
-                                    ElegantArcFitter.Fit(
-                                        model,
-                                        taperApex: false,
-                                        maximumAnchors: 8,
-                                        smoothingPasses: 2);
-                                fitKind =
-                                    "tapered-hook-macro-fallback";
-                                curveFamily =
-                                    CurveType.Spline.ToString();
-                            }
+                                    out var hookCompoundDiagnostics);
+                            fit =
+                                hookCompoundFit;
+                            fitKind =
+                                "tapered-hook-compound";
+                            curveFamily =
+                                "CompoundSpline";
 
                             compoundReason =
                                 hookCompoundDiagnostics.Reason;
@@ -1617,8 +1588,9 @@ internal static class CurveFillRibbonArcRefiner
                         }
 
                         var maximumAllowedFlips =
-                            fitKind ==
-                            "compound"
+                            fitKind.EndsWith(
+                                "compound",
+                                StringComparison.Ordinal)
                                 ? 2
                                 : 1;
                         fitSafe =
@@ -1627,9 +1599,9 @@ internal static class CurveFillRibbonArcRefiner
                                 maximumAllowedFlips;
                         accepted =
                             fitSafe &&
-                            !taperedHookProbe &&
                             (prefilterAccepted ||
-                             compactSpiralSweep);
+                             compactSpiralSweep ||
+                             taperedHookSweep);
                         maximumDeviation =
                             fit.MaximumCenterlineDeviation;
                         curvatureFlips =
@@ -1680,16 +1652,15 @@ internal static class CurveFillRibbonArcRefiner
 
                         status =
                             accepted
-                                ? compactSpiralSweep &&
-                                  !prefilterAccepted
-                                    ? "accepted-compact-spiral"
-                                    : "accepted"
-                                : taperedHookProbe &&
-                                  fitSafe
-                                    ? "tapered-hook-probe-safe"
-                                    : taperedHookProbe
-                                        ? "tapered-hook-probe-fit-unsafe"
-                                        : compactSpiralProbe &&
+                                ? taperedHookSweep
+                                    ? "accepted-tapered-hook"
+                                    : compactSpiralSweep &&
+                                      !prefilterAccepted
+                                        ? "accepted-compact-spiral"
+                                        : "accepted"
+                                : taperedHookSweep
+                                    ? "tapered-hook-fit-unsafe"
+                                    : compactSpiralProbe &&
                                           fitSafe
                                             ? "compact-probe-safe"
                                             : compactSpiralProbe
