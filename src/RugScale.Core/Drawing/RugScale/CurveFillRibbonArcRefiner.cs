@@ -280,21 +280,78 @@ internal static class CurveFillRibbonArcRefiner
             {
                 fit =
                     toolFit;
-                curveToolFits++;
-                curveToolRoundnessSum +=
-                    toolStyle.Roundness;
+                var selectedToolFit = true;
 
-                switch (toolStyle.Type)
+                // Once a hooked/broad region has been reduced to its dominant designer sweep,
+                // compare the source-faithful inverse tool fit with a fixed 5-control
+                // Through-Points reconstruction. The alternative may win only when it is
+                // substantially smoother AND remains source-bounded; this is the aesthetic
+                // correction for the C069 green/gold arches, not a general smoothing override.
+                if (broadSparseArch &&
+                    mainArcExtractedForRegion)
                 {
-                    case CurveType.SplineThroughPoints:
-                        curveToolThroughPointsFits++;
-                        break;
-                    case CurveType.Spline:
-                        curveToolSplineFits++;
-                        break;
-                    case CurveType.Bezier:
-                        curveToolBezierFits++;
-                        break;
+                    geometricThroughAttempts++;
+
+                    var alternativeSafe =
+                        CurveFillRibbonThroughPointsFitter.TryFit(
+                            model,
+                            out var alternativeFit,
+                            out var alternativeDiagnostics);
+
+                    lastGeometricThroughReason =
+                        alternativeDiagnostics.Reason;
+                    maxGeometricThroughDeviation =
+                        Math.Max(
+                            maxGeometricThroughDeviation,
+                            alternativeDiagnostics.MaximumDeviation);
+                    maxGeometricThroughP95Deviation =
+                        Math.Max(
+                            maxGeometricThroughP95Deviation,
+                            alternativeDiagnostics.Percentile95Deviation);
+
+                    if (alternativeSafe)
+                    {
+                        var toolRoughness =
+                            CurveFillRibbonSmoothness.Measure(
+                                toolFit.Points);
+                        var alternativeRoughness =
+                            CurveFillRibbonSmoothness.Measure(
+                                alternativeFit.Points);
+
+                        if (CurveFillRibbonFitSelector.PreferGeometricThroughPoints(
+                                toolFit,
+                                toolRoughness,
+                                alternativeFit,
+                                alternativeRoughness))
+                        {
+                            fit =
+                                alternativeFit;
+                            selectedToolFit = false;
+                            geometricThroughFits++;
+                            geometricThroughRoundnessSum +=
+                                alternativeDiagnostics.Roundness;
+                        }
+                    }
+                }
+
+                if (selectedToolFit)
+                {
+                    curveToolFits++;
+                    curveToolRoundnessSum +=
+                        toolStyle.Roundness;
+
+                    switch (toolStyle.Type)
+                    {
+                        case CurveType.SplineThroughPoints:
+                            curveToolThroughPointsFits++;
+                            break;
+                        case CurveType.Spline:
+                            curveToolSplineFits++;
+                            break;
+                        case CurveType.Bezier:
+                            curveToolBezierFits++;
+                            break;
+                    }
                 }
             }
             else if (broadSparseArch)
