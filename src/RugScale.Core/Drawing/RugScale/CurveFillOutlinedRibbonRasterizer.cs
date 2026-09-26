@@ -65,10 +65,8 @@ internal static class CurveFillOutlinedRibbonRasterizer
             return false;
 
         var targetMask =
-            LeafPetalArcRasterizer.RasterizeCenterlineBand(
-                fit.Points,
-                source.Width,
-                source.Height,
+            LeafPetalArcRasterizer.RasterizePolygon(
+                polygon,
                 destination.Width,
                 destination.Height);
 
@@ -94,14 +92,10 @@ internal static class CurveFillOutlinedRibbonRasterizer
                 scaleX,
                 scaleY);
         var compoundMask =
-            LeafPetalArcRasterizer.RasterizeCenterlineBand(
-                fit.Points,
-                source.Width,
-                source.Height,
+            LeafPetalArcRasterizer.RasterizePolygon(
+                compoundPolygon,
                 destination.Width,
-                destination.Height,
-                additionalHalfWidth:
-                    OutlineExpansionSource);
+                destination.Height);
 
         if (compoundMask.Count == 0)
             return false;
