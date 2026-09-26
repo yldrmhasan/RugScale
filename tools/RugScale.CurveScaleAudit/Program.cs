@@ -698,13 +698,17 @@ internal static class Program
                 expectedTargetSet,
                 radius: 1);
         var targetCadenceSimilarity =
-            StepCadenceSimilarity(
+            CurvePixelCadence.Measure(
                 learnedTargetPath,
                 expectedTargetPath);
         var fallbackCadenceSimilarity =
-            StepCadenceSimilarity(
+            CurvePixelCadence.Measure(
                 fallbackTargetPath,
                 expectedTargetPath);
+        var learnedGraphCadenceSimilarity =
+            CurvePixelCadence.Measure(
+                learnedTargetPath,
+                fallbackTargetPath);
 
         return new CurveStyleTrainingRow(
             shape,
@@ -733,7 +737,8 @@ internal static class Program
             targetCadenceSimilarity,
             fallbackCadenceSimilarity,
             targetCadenceSimilarity -
-            fallbackCadenceSimilarity);
+            fallbackCadenceSimilarity,
+            learnedGraphCadenceSimilarity);
     }
 
     private static (int X, int Y) MapTrainingPoint(
@@ -792,164 +797,6 @@ internal static class Program
 
             previous = current;
         }
-    }
-
-    private static double StepCadenceSimilarity(
-        IReadOnlyList<(int X, int Y)> actual,
-        IReadOnlyList<(int X, int Y)> expected)
-    {
-        if (actual.Count < 2 ||
-            expected.Count < 2)
-        {
-            return 0d;
-        }
-
-        static int Direction(
-            (int X, int Y) a,
-            (int X, int Y) b)
-        {
-            var dx =
-                Math.Sign(
-                    b.X -
-                    a.X);
-            var dy =
-                Math.Sign(
-                    b.Y -
-                    a.Y);
-
-            return (dx, dy) switch
-            {
-                (1, 0) => 0,
-                (1, 1) => 1,
-                (0, 1) => 2,
-                (-1, 1) => 3,
-                (-1, 0) => 4,
-                (-1, -1) => 5,
-                (0, -1) => 6,
-                (1, -1) => 7,
-                _ => -1,
-            };
-        }
-
-        static (double[] Directions, double[] Transitions) Features(
-            IReadOnlyList<(int X, int Y)> path)
-        {
-            var directions =
-                new double[8];
-            var transitions =
-                new double[64];
-            var ordered =
-                new List<int>(
-                    Math.Max(
-                        0,
-                        path.Count - 1));
-
-            for (var index = 1;
-                 index < path.Count;
-                 index++)
-            {
-                var direction =
-                    Direction(
-                        path[index - 1],
-                        path[index]);
-
-                if (direction < 0)
-                    continue;
-
-                ordered.Add(
-                    direction);
-                directions[direction]++;
-            }
-
-            for (var index = 1;
-                 index < ordered.Count;
-                 index++)
-            {
-                transitions[
-                    ordered[index - 1] *
-                        8 +
-                    ordered[index]]++;
-            }
-
-            var directionTotal =
-                directions.Sum();
-            var transitionTotal =
-                transitions.Sum();
-
-            if (directionTotal > 0d)
-            {
-                for (var index = 0;
-                     index < directions.Length;
-                     index++)
-                {
-                    directions[index] /=
-                        directionTotal;
-                }
-            }
-
-            if (transitionTotal > 0d)
-            {
-                for (var index = 0;
-                     index < transitions.Length;
-                     index++)
-                {
-                    transitions[index] /=
-                        transitionTotal;
-                }
-            }
-
-            return
-                (
-                    directions,
-                    transitions
-                );
-        }
-
-        static double DistributionSimilarity(
-            IReadOnlyList<double> left,
-            IReadOnlyList<double> right)
-        {
-            var l1 = 0d;
-
-            for (var index = 0;
-                 index < left.Count;
-                 index++)
-            {
-                l1 +=
-                    Math.Abs(
-                        left[index] -
-                        right[index]);
-            }
-
-            return Math.Clamp(
-                1d -
-                l1 *
-                    0.5,
-                0d,
-                1d);
-        }
-
-        var actualFeatures =
-            Features(
-                actual);
-        var expectedFeatures =
-            Features(
-                expected);
-        var directionSimilarity =
-            DistributionSimilarity(
-                actualFeatures.Directions,
-                expectedFeatures.Directions);
-        var transitionSimilarity =
-            DistributionSimilarity(
-                actualFeatures.Transitions,
-                expectedFeatures.Transitions);
-
-        // Direction mix answers "where does the curve travel"; transition cadence answers "how
-        // does Pixel-Cord step through that travel". Give transition rhythm the larger weight.
-        return directionSimilarity *
-                   0.35 +
-               transitionSimilarity *
-                   0.65;
     }
 
     private static double SetF1(
@@ -1082,7 +929,7 @@ internal static class Program
                 new UTF8Encoding(false));
 
         writer.WriteLine(
-            "shape,sourceType,sourceRoundness,pixelCord,sourcePixels,accepted,predictedType,predictedRoundness,familyCorrect,roundnessError,rawScore,modelMargin,controlCount,targetExactF1,targetNearF1,fallbackTargetExactF1,fallbackTargetNearF1,targetNearGain,targetCadenceSimilarity,fallbackCadenceSimilarity,cadenceGain");
+            "shape,sourceType,sourceRoundness,pixelCord,sourcePixels,accepted,predictedType,predictedRoundness,familyCorrect,roundnessError,rawScore,modelMargin,controlCount,targetExactF1,targetNearF1,fallbackTargetExactF1,fallbackTargetNearF1,targetNearGain,targetCadenceSimilarity,fallbackCadenceSimilarity,cadenceGain,learnedGraphCadenceSimilarity");
 
         foreach (var row in rows)
         {
@@ -1109,7 +956,8 @@ internal static class Program
                     row.TargetNearGain.ToString("0.0000", CultureInfo.InvariantCulture),
                     row.TargetCadenceSimilarity.ToString("0.0000", CultureInfo.InvariantCulture),
                     row.FallbackCadenceSimilarity.ToString("0.0000", CultureInfo.InvariantCulture),
-                    row.CadenceGain.ToString("0.0000", CultureInfo.InvariantCulture)));
+                    row.CadenceGain.ToString("0.0000", CultureInfo.InvariantCulture),
+                    row.LearnedGraphCadenceSimilarity.ToString("0.0000", CultureInfo.InvariantCulture)));
         }
     }
 
@@ -1129,9 +977,9 @@ internal static class Program
         sb.AppendLine();
 
         sb.AppendLine(
-            "| Source family | Samples | Accepted | Family correct | Family accuracy | Mean raw | Model margin | Target exact F1 | Graph exact F1 | Exact gain | Target ±1px F1 | Graph ±1px F1 | Near gain | Curve cadence | Graph cadence | Cadence gain |");
+            "| Source family | Samples | Accepted | Family correct | Family accuracy | Mean raw | Model margin | Target exact F1 | Graph exact F1 | Exact gain | Target ±1px F1 | Graph ±1px F1 | Near gain | Curve cadence | Graph cadence | Cadence gain  Curve↔graph cadence |");
         sb.AppendLine(
-            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
 
         foreach (var group in rows
                      .GroupBy(row =>
@@ -1166,7 +1014,8 @@ internal static class Program
                 $"{group.Average(row => row.TargetNearGain):+0.0000;-0.0000;0.0000} | " +
                 $"{group.Average(row => row.TargetCadenceSimilarity):P2} | " +
                 $"{group.Average(row => row.FallbackCadenceSimilarity):P2} | " +
-                $"{group.Average(row => row.CadenceGain):+0.0000;-0.0000;0.0000} |");
+                $"{group.Average(row => row.CadenceGain):+0.0000;-0.0000;0.0000} | " +
+                $"{group.Average(row => row.LearnedGraphCadenceSimilarity):P2} |");
         }
 
         var throughRoundness =
@@ -2989,7 +2838,8 @@ internal static class Program
         double TargetNearGain,
         double TargetCadenceSimilarity,
         double FallbackCadenceSimilarity,
-        double CadenceGain);
+        double CadenceGain,
+        double LearnedGraphCadenceSimilarity);
 
     private sealed record ThinStructureStats(
         int AllComponents,
