@@ -53,6 +53,21 @@ internal static class CurveFillRibbonMainArcExtractor
     public static bool TryExtractMirrorFusedSweep(
         LeafPetalArcModel model,
         out LeafPetalArcModel extracted,
+        out RibbonMainArcExtractionDiagnostics diagnostics) =>
+        TryExtractOneSidedSweep(
+            model,
+            out extracted,
+            out diagnostics);
+
+    /// <summary>
+    /// Extracts one dominant low-frequency sweep from a path that may carry a terminal hook or
+    /// branch residue on only one side. Unlike <see cref="TryExtract"/>, trimming is intentionally
+    /// asymmetric. This is used by mirror-fused ribbons and by the separately gated sparse-taper
+    /// designer-sweep classifier; callers remain responsible for establishing that authority.
+    /// </summary>
+    public static bool TryExtractOneSidedSweep(
+        LeafPetalArcModel model,
+        out LeafPetalArcModel extracted,
         out RibbonMainArcExtractionDiagnostics diagnostics)
     {
         ArgumentNullException.ThrowIfNull(model);
