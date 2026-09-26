@@ -1147,6 +1147,9 @@ internal static class Program
                     $"altThrough={stage.AlternativeThroughSafe} r={stage.AlternativeThroughRoundness:0.000} " +
                     $"p95={stage.AlternativeThroughP95Deviation:0.000} max={stage.AlternativeThroughMaximumDeviation:0.000} " +
                     $"rough={stage.AlternativeThroughSmoothness:0.000000}, " +
+                    $"widthReg={stage.WidthRegularizerApplied} cv={stage.WidthSourceCoefficientVariation:0.000} " +
+                    $"terminal={stage.WidthTerminalRatio:0.000} dv={stage.WidthVariationBefore:0.000}->{stage.WidthVariationAfter:0.000} " +
+                    $"shift={stage.WidthMaximumShift:0.000}, " +
                     $"flips={stage.CurvatureSignFlips}, accepted={stage.Accepted}, status={stage.Status}");
             }
         }
@@ -1647,7 +1650,7 @@ internal static class Program
             new StringBuilder();
 
         sb.AppendLine(
-            "color,min_x,min_y,max_x,max_y,area,elongation,boundary_ratio,bounding_fill,broad_sparse_arch,prefilter,centerline,skeleton_pixels,endpoints,principal_path_pixels,path_coverage,designer_ribbon,symmetry_recovered,symmetry_axis,mirror_agreement,symmetry_mean_shift,symmetry_max_shift,mirror_source_recovered,mirror_source_reason,mirror_source_agreement,mirror_source_mean_shift,mirror_source_max_shift,main_arc_extracted,main_arc_reason,main_arc_start,main_arc_end,main_arc_kept_fraction,compound_attempted,compound_reason,compound_p95_deviation,compound_max_deviation,fit_kind,curve_family,roundness,fit_safe,max_deviation,curvature_flips,selected_smoothness,alt_through_safe,alt_through_smoothness,alt_through_max_deviation,alt_through_p95_deviation,alt_through_roundness,accepted,status");
+            "color,min_x,min_y,max_x,max_y,area,elongation,boundary_ratio,bounding_fill,broad_sparse_arch,prefilter,centerline,skeleton_pixels,endpoints,principal_path_pixels,path_coverage,designer_ribbon,symmetry_recovered,symmetry_axis,mirror_agreement,symmetry_mean_shift,symmetry_max_shift,mirror_source_recovered,mirror_source_reason,mirror_source_agreement,mirror_source_mean_shift,mirror_source_max_shift,main_arc_extracted,main_arc_reason,main_arc_start,main_arc_end,main_arc_kept_fraction,compound_attempted,compound_reason,compound_p95_deviation,compound_max_deviation,fit_kind,curve_family,roundness,fit_safe,max_deviation,curvature_flips,selected_smoothness,alt_through_safe,alt_through_smoothness,alt_through_max_deviation,alt_through_p95_deviation,alt_through_roundness,width_reg_applied,width_source_cv,width_terminal_ratio,width_variation_before,width_variation_after,width_max_shift,accepted,status");
 
         foreach (var stage in stages)
         {
@@ -1699,6 +1702,12 @@ internal static class Program
             sb.Append(stage.AlternativeThroughMaximumDeviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
             sb.Append(stage.AlternativeThroughP95Deviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
             sb.Append(stage.AlternativeThroughRoundness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.WidthRegularizerApplied ? 1 : 0).Append(',');
+            sb.Append(stage.WidthSourceCoefficientVariation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.WidthTerminalRatio.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.WidthVariationBefore.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.WidthVariationAfter.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.WidthMaximumShift.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
             sb.Append(stage.Accepted ? 1 : 0).Append(',');
             sb.Append(stage.Status).AppendLine();
         }
