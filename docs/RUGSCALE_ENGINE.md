@@ -1,11 +1,29 @@
 # RugScale — Indexed Carpet Design Resampling
 
 **Durum:** aktif geliştirme / üretim adayı  
-**Son güncelleme:** 23 Eylül 2026  
+**Son güncelleme:** 26 Eylül 2026  
 **Core:** `RugScaleEngine.cs` + `MotifShrinkEngine.cs` + `MotifMemory.cs` + `MotifRepairEngine.cs` + `MotifSourceCatalog.cs`  
 **Dispatcher:** `src/RugScale.Core/Drawing/DesignResizer.cs`  
 **Host:** UI bağımsız; manuel çalışma için `tools/RugScale.Cli`, entegrasyon için `RugScale.Core` API  
 **Testler:** `tests/RugScale.Core.Tests/DesignResizerTests.cs` + `MotifMemoryTests.cs`
+
+## Curve / oval eğitim devam durumu
+
+Curve-heavy enlargement eğitiminin ayrıntılı, deney-bazlı devam kaydı artık
+[`CURVE_OVAL_TRAINING_LOG.md`](CURVE_OVAL_TRAINING_LOG.md) içinde tutulur.
+
+Bu kayıt özellikle şu bilgileri kalıcı tutar:
+
+- hangi fitting/raster denemelerinin yapıldığı,
+- hangi denemelerin geri alındığı ve neden,
+- C069 problem bölgelerinin ölçümleri,
+- görsel kalite ile pixel-F1 arasındaki ayrım,
+- bir sonraki oturumun hangi problemden devam edeceği,
+- tekrar edilmemesi gereken başarısız yaklaşımlar.
+
+**Kural:** Curve/oval eğitiminde anlamlı her deneyden sonra CI/audit ve gerçek BMP sonucu bu loga
+işlenmeden bir sonraki hipoteze geçilmemelidir. Böylece yeni bir oturum aynı başarısız yaklaşımı
+yeniden denemez.
 
 ## Amaç
 
