@@ -23,7 +23,8 @@ internal static class CurveFillRibbonMirrorPairNormalizer
 
     public static RibbonMirrorPairNormalizationDiagnostics Normalize(
         IList<(LeafPetalArcModel Model, ElegantArcFit Fit)> accepted,
-        int sourceWidth)
+        int sourceWidth,
+        ISet<LeafPetalRegion>? mainArcScopedRegions = null)
     {
         ArgumentNullException.ThrowIfNull(accepted);
 
@@ -155,6 +156,18 @@ internal static class CurveFillRibbonMirrorPairNormalizer
                             mirroredDeviation,
                     }
                 );
+
+            // If the authoritative geometry is an extracted main sweep, the mirrored follower is
+            // now the same kind of partial-region redraw. Carry the edit scope with the geometry
+            // so the follower's decorative terminal hook stays on its categorical baseline too.
+            if (mainArcScopedRegions is not null &&
+                mainArcScopedRegions.Contains(
+                    authority.Model.Candidate.Region))
+            {
+                mainArcScopedRegions.Add(
+                    follower.Model.Candidate.Region);
+            }
+
             replacements++;
         }
 
