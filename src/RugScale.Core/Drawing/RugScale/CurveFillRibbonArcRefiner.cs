@@ -1224,7 +1224,87 @@ internal static class CurveFillRibbonArcRefiner
 
                         ElegantArcFit fit;
 
-                        if (compactSpiralSweep)
+                        if (taperedHookProbe)
+                        {
+                            // Diagnostic authority only. Force one common low-frequency family
+                            // across all repeated tapered hooks so the audit can prove whether a
+                            // single model explains every mirrored/translated copy consistently.
+                            compoundAttempted = true;
+
+                            if (CurveFillRibbonCompoundFitter.TryFit(
+                                    model,
+                                    out var hookCompoundFit,
+                                    out var hookCompoundDiagnostics))
+                            {
+                                fit =
+                                    hookCompoundFit;
+                                fitKind =
+                                    "tapered-hook-compound";
+                                curveFamily =
+                                    "CompoundSpline";
+                            }
+                            else if (CurveFillRibbonThroughPointsFitter.TryFit(
+                                         model,
+                                         out var hookThroughFit,
+                                         out var hookThroughDiagnostics))
+                            {
+                                fit =
+                                    hookThroughFit;
+                                fitKind =
+                                    "tapered-hook-through";
+                                curveFamily =
+                                    CurveType.SplineThroughPoints.ToString();
+                                roundness =
+                                    hookThroughDiagnostics.Roundness;
+                            }
+                            else
+                            {
+                                fit =
+                                    ElegantArcFitter.Fit(
+                                        model,
+                                        taperApex: false,
+                                        maximumAnchors: 8,
+                                        smoothingPasses: 2);
+                                fitKind =
+                                    "tapered-hook-macro-fallback";
+                                curveFamily =
+                                    CurveType.Spline.ToString();
+                            }
+
+                            compoundReason =
+                                hookCompoundDiagnostics.Reason;
+                            compoundP95Deviation =
+                                hookCompoundDiagnostics.Percentile95Deviation;
+                            compoundMaximumDeviation =
+                                hookCompoundDiagnostics.MaximumDeviation;
+                            compoundSelectedRoughness =
+                                hookCompoundDiagnostics.Roughness;
+                            compoundSelectedAnchors =
+                                hookCompoundDiagnostics.Anchors;
+                            compoundSelectedSmoothingPasses =
+                                hookCompoundDiagnostics.SmoothingPasses;
+                            compoundSmoothestSafeRoughness =
+                                hookCompoundDiagnostics.SmoothestSafeRoughness;
+                            compoundSmoothestSafeAnchors =
+                                hookCompoundDiagnostics.SmoothestSafeAnchors;
+                            compoundSmoothestSafeSmoothingPasses =
+                                hookCompoundDiagnostics.SmoothestSafeSmoothingPasses;
+                            compoundSmoothestSafeP95Deviation =
+                                hookCompoundDiagnostics.SmoothestSafeP95Deviation;
+                            compoundSmoothestSafeMaximumDeviation =
+                                hookCompoundDiagnostics.SmoothestSafeMaximumDeviation;
+                            compoundSmoothestCurvatureValidRoughness =
+                                hookCompoundDiagnostics.SmoothestCurvatureValidRoughness;
+                            compoundSmoothestCurvatureValidAnchors =
+                                hookCompoundDiagnostics.SmoothestCurvatureValidAnchors;
+                            compoundSmoothestCurvatureValidSmoothingPasses =
+                                hookCompoundDiagnostics.SmoothestCurvatureValidSmoothingPasses;
+                            compoundSmoothestCurvatureValidP95Deviation =
+                                hookCompoundDiagnostics.SmoothestCurvatureValidP95Deviation;
+                            compoundSmoothestCurvatureValidMaximumDeviation =
+                                hookCompoundDiagnostics.SmoothestCurvatureValidMaximumDeviation;
+                        }
+                        else if (compactSpiralSweep)
                         {
                             // Diagnostic routing only: compact spirals are multi-turn shapes, so a
                             // single cubic or generic 8-anchor macro spline is the wrong first
