@@ -225,17 +225,10 @@ internal static class CurveFillRibbonCenterlineBuilder
             return false;
         }
 
-        // Remove only sub-pixel staircase phase from the medial path before any macro fitter sees
-        // it. This is deliberately source-bounded: tight turns and endpoints are preserved, and no
-        // sample is allowed to move more than a fraction of one source cell. The goal is not to
-        // smooth the designer curve away; it is to stop 8-connected skeleton phase from becoming
-        // visible as a saw-tooth after enlargement.
-        samples =
-            StabilizeCenterlinePhase(
-                samples);
-
-        // A digital skeleton can also carry a one-pixel width wobble. Geometry and width are
-        // regularized independently so a cleaner centreline cannot accidentally thicken the band.
+        // Keep the recovered geometry source-faithful. Curve-tool inversion and the dedicated
+        // geometric fitters decide how much macro smoothing is safe; pre-smoothing the skeleton
+        // here can destroy the original pixel-step grammar. Width wobble is independent and may be
+        // regularized without moving the recovered centreline.
         samples =
             SmoothWidths(
                 samples);
@@ -682,135 +675,6 @@ internal static class CurveFillRibbonCenterlineBuilder
         }
 
         return result;
-    }
-
-    private static List<LeafPetalAxisSample> StabilizeCenterlinePhase(
-        IReadOnlyList<LeafPetalAxisSample> samples)
-    {
-        if (samples.Count < 7)
-            return samples.ToList();
-
-        const double MaximumSampleShift = 0.58;
-        const double MinimumTurnCosine = 0.20;
-
-        var source =
-            samples.ToArray();
-        var result =
-            source.ToArray();
-
-        // One binomial pass is enough to cancel alternating raster phase without rounding away
-        // intentional hooks. A five-sample stencil is more stable than a 3-point average on
-        // 45-degree staircases and remains local enough for carpet-scale curls.
-        for (var index = 2;
-             index <= source.Length - 3;
-             index++)
-        {
-            var current =
-                source[index];
-            var incomingX =
-                current.X -
-                source[index - 2].X;
-            var incomingY =
-                current.Y -
-                source[index - 2].Y;
-            var outgoingX =
-                source[index + 2].X -
-                current.X;
-            var outgoingY =
-                source[index + 2].Y -
-                current.Y;
-            var incomingLength =
-                Math.Sqrt(
-                    incomingX *
-                        incomingX +
-                    incomingY *
-                        incomingY);
-            var outgoingLength =
-                Math.Sqrt(
-                    outgoingX *
-                        outgoingX +
-                    outgoingY *
-                        outgoingY);
-
-            if (incomingLength <= 1e-9 ||
-                outgoingLength <= 1e-9)
-            {
-                continue;
-            }
-
-            var turnCosine =
-                (incomingX *
-                     outgoingX +
-                 incomingY *
-                     outgoingY) /
-                (incomingLength *
-                 outgoingLength);
-
-            // A real tight hook/cusp is designer geometry, not skeleton noise.
-            if (turnCosine <
-                MinimumTurnCosine)
-            {
-                continue;
-            }
-
-            var targetX =
-                (source[index - 2].X +
-                 4d *
-                    source[index - 1].X +
-                 6d *
-                    current.X +
-                 4d *
-                    source[index + 1].X +
-                 source[index + 2].X) /
-                16d;
-            var targetY =
-                (source[index - 2].Y +
-                 4d *
-                    source[index - 1].Y +
-                 6d *
-                    current.Y +
-                 4d *
-                    source[index + 1].Y +
-                 source[index + 2].Y) /
-                16d;
-            var shiftX =
-                targetX -
-                current.X;
-            var shiftY =
-                targetY -
-                current.Y;
-            var shift =
-                Math.Sqrt(
-                    shiftX *
-                        shiftX +
-                    shiftY *
-                        shiftY);
-
-            if (shift >
-                MaximumSampleShift)
-            {
-                var scale =
-                    MaximumSampleShift /
-                    shift;
-                shiftX *=
-                    scale;
-                shiftY *=
-                    scale;
-            }
-
-            result[index] =
-                current with
-                {
-                    X =
-                        current.X +
-                        shiftX,
-                    Y =
-                        current.Y +
-                        shiftY,
-                };
-        }
-
-        return result.ToList();
     }
 
     private static List<LeafPetalAxisSample> SmoothWidths(
