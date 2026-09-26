@@ -822,6 +822,22 @@ internal static class CurveFillRibbonArcRefiner
                 candidate.BoundaryRatio <=
                     MaximumBoundaryRatio;
 
+            // Diagnostic-only probe for compact spiral ribbons. These shapes can have low PCA
+            // elongation because the curve wraps around itself, even though the medial path is a
+            // genuine long designer sweep. Do NOT grant production redraw authority here yet;
+            // first collect width/terminal/bend/fitter evidence in the real C069 audit.
+            var compactSpiralProbe =
+                !prefilterAccepted &&
+                candidate.Elongation >=
+                    1.25 &&
+                boundingFillRatio <=
+                    0.58 &&
+                candidate.BoundaryRatio <=
+                    0.32;
+            var analysisEligible =
+                prefilterAccepted ||
+                compactSpiralProbe;
+
             var centerlineBuilt = false;
             var designerRibbon = false;
             var symmetryRecovered = false;
@@ -858,7 +874,9 @@ internal static class CurveFillRibbonArcRefiner
             var status =
                 prefilterAccepted
                     ? "centerline"
-                    : "prefilter";
+                    : compactSpiralProbe
+                        ? "compact-probe-centerline"
+                        : "prefilter";
             var roundness = 0d;
             var maximumDeviation = 0d;
             var curvatureFlips = 0;
@@ -885,7 +903,7 @@ internal static class CurveFillRibbonArcRefiner
             var ribbonMaximumBend = 0d;
             var ribbonRequiredBend = 0d;
 
-            if (prefilterAccepted)
+            if (analysisEligible)
             {
                 centerlineBuilt =
                     CurveFillRibbonCenterlineBuilder.TryBuild(
@@ -905,8 +923,11 @@ internal static class CurveFillRibbonArcRefiner
                 if (!centerlineBuilt)
                 {
                     status =
-                        "centerline-" +
-                        centerlineDiagnostics.Reason;
+                        compactSpiralProbe
+                            ? "compact-probe-centerline-" +
+                              centerlineDiagnostics.Reason
+                            : "centerline-" +
+                              centerlineDiagnostics.Reason;
                 }
                 else
                 {
@@ -935,7 +956,9 @@ internal static class CurveFillRibbonArcRefiner
                     if (!designerRibbon)
                     {
                         status =
-                            "ribbon-shape";
+                            compactSpiralProbe
+                                ? "compact-probe-ribbon-shape"
+                                : "ribbon-shape";
                     }
                     else
                     {
@@ -1258,7 +1281,8 @@ internal static class CurveFillRibbonArcRefiner
                             fit.CurvatureSignFlips <=
                                 maximumAllowedFlips;
                         accepted =
-                            fitSafe;
+                            fitSafe &&
+                            prefilterAccepted;
                         maximumDeviation =
                             fit.MaximumCenterlineDeviation;
                         curvatureFlips =
@@ -1310,7 +1334,12 @@ internal static class CurveFillRibbonArcRefiner
                         status =
                             accepted
                                 ? "accepted"
-                                : "fit-unsafe";
+                                : compactSpiralProbe &&
+                                  fitSafe
+                                    ? "compact-probe-safe"
+                                    : compactSpiralProbe
+                                        ? "compact-probe-fit-unsafe"
+                                        : "fit-unsafe";
                     }
                 }
             }
