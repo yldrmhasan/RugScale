@@ -24,10 +24,23 @@ internal static class CurveFillRibbonCompoundFitter
 
     private static readonly (int Anchors, int SmoothingPasses)[] CandidateSettings =
     [
+        // Low-frequency redraw candidates. These intentionally underfit one-pixel skeleton phase;
+        // they are still required to pass the exact same symmetric source-distance safety gates.
+        (5, 2),
+        (5, 3),
+        (6, 2),
+        (6, 3),
+        (6, 4),
+        (7, 2),
+        (7, 3),
         (8, 1),
         (8, 2),
+        (8, 3),
+        (8, 4),
         (10, 1),
         (10, 2),
+        (10, 3),
+        (10, 4),
         (12, 1),
         (12, 2),
         (12, 3),
