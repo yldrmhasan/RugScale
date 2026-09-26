@@ -603,7 +603,7 @@ internal static class CurveFillOutlinedRibbonRasterizer
         return false;
     }
 
-    private static bool TryFindNearestExteriorColor(
+    internal static bool TryFindNearestExteriorColor(
         DesignDocument source,
         double sourceX,
         double sourceY,
@@ -695,7 +695,7 @@ internal static class CurveFillOutlinedRibbonRasterizer
         return found;
     }
 
-    private static bool TryFindDominantOutlineColor(
+    internal static bool TryFindDominantOutlineColor(
         DesignDocument source,
         LeafPetalRegion region,
         IReadOnlySet<byte> protectedStrokeColors,
