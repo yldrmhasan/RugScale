@@ -22,25 +22,15 @@ internal static class CurveFillRibbonCompoundFitter
     private const double AnchorComplexityWeight = 0.025;
     private const double SmoothingPassComplexityWeight = 0.010;
 
-    private static readonly (int Anchors, int SmoothingPasses)[] CandidateSettings =
+    // Production selection set: keep this conservative until a lower-frequency candidate has
+    // been proven visually on the real-raster audits. These settings are allowed to become the
+    // actual output fit.
+    private static readonly (int Anchors, int SmoothingPasses)[] SelectionCandidateSettings =
     [
-        // Low-frequency redraw candidates. These intentionally underfit one-pixel skeleton phase;
-        // they are still required to pass the exact same symmetric source-distance safety gates.
-        (5, 2),
-        (5, 3),
-        (6, 2),
-        (6, 3),
-        (6, 4),
-        (7, 2),
-        (7, 3),
         (8, 1),
         (8, 2),
-        (8, 3),
-        (8, 4),
         (10, 1),
         (10, 2),
-        (10, 3),
-        (10, 4),
         (12, 1),
         (12, 2),
         (12, 3),
@@ -51,6 +41,24 @@ internal static class CurveFillRibbonCompoundFitter
         (18, 2),
         (20, 2),
         (20, 3),
+    ];
+
+    // Diagnostic-only low-frequency candidates. They deliberately underfit raster phase and are
+    // measured so training can see the aesthetic/source-deviation trade-off. They cannot alter
+    // production output until a later experiment grants a narrowly scoped authority.
+    private static readonly (int Anchors, int SmoothingPasses)[] DiagnosticCandidateSettings =
+    [
+        (5, 2),
+        (5, 3),
+        (6, 2),
+        (6, 3),
+        (6, 4),
+        (7, 2),
+        (7, 3),
+        (8, 3),
+        (8, 4),
+        (10, 3),
+        (10, 4),
     ];
 
     public static bool TryFit(
@@ -84,8 +92,19 @@ internal static class CurveFillRibbonCompoundFitter
         CompoundCandidate? smoothestSafe = null;
         CompoundCandidate? smoothestCurvatureValid = null;
 
-        foreach (var setting in CandidateSettings)
+        foreach (var candidateSetting in
+                 SelectionCandidateSettings
+                     .Select(setting =>
+                         (Setting: setting, SelectionEligible: true))
+                     .Concat(
+                         DiagnosticCandidateSettings
+                             .Select(setting =>
+                                 (Setting: setting, SelectionEligible: false))))
         {
+            var setting =
+                candidateSetting.Setting;
+            var selectionEligible =
+                candidateSetting.SelectionEligible;
             var candidateFit =
                 ElegantArcFitter.Fit(
                     model,
@@ -159,7 +178,8 @@ internal static class CurveFillRibbonCompoundFitter
                     candidate;
             }
 
-            if (candidate.Safe &&
+            if (selectionEligible &&
+                candidate.Safe &&
                 (smoothestSafe is null ||
                  candidate.Roughness <
                     smoothestSafe.Value.Roughness -
@@ -175,13 +195,14 @@ internal static class CurveFillRibbonCompoundFitter
                     candidate;
             }
 
-            if (best is null ||
-                candidate.Safe &&
-                !best.Value.Safe ||
-                candidate.Safe ==
-                    best.Value.Safe &&
-                candidate.Score <
-                    best.Value.Score)
+            if (selectionEligible &&
+                (best is null ||
+                 candidate.Safe &&
+                 !best.Value.Safe ||
+                 candidate.Safe ==
+                     best.Value.Safe &&
+                 candidate.Score <
+                     best.Value.Score))
             {
                 best =
                     candidate;
