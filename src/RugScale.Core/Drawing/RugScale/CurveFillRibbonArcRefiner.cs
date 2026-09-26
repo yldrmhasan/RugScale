@@ -30,6 +30,14 @@ internal static class CurveFillRibbonArcRefiner
     private const double MinimumSparseTaperElongation = 2.50;
     private const double MaximumSparseTaperBoundingFill = 0.20;
     private const double MinimumSparseTaperPathCoverage = 0.64;
+    private const double MinimumCompactSpiralTerminalWidthRatio = 0.44;
+    private const double MinimumCompactSpiralElongation = 1.35;
+    private const double MaximumCompactSpiralElongation = 1.80;
+    private const double MinimumCompactSpiralBoundingFill = 0.42;
+    private const double MaximumCompactSpiralBoundingFill = 0.56;
+    private const double MaximumCompactSpiralBoundaryRatio = 0.25;
+    private const double MinimumCompactSpiralPathCoverage = 0.84;
+    private const double MaximumCompactSpiralWidthCoefficientVariation = 0.54;
     private const double MinimumAbsoluteBend = 1.35;
     private const double MinimumRelativeBend = 0.035;
 
@@ -1548,6 +1556,29 @@ internal static class CurveFillRibbonArcRefiner
             model.SkeletonCoverage >=
                 MinimumSparseTaperPathCoverage;
 
+        // A compact spiral can look nearly square to PCA because the path wraps around itself.
+        // Admit a tiny terminal-ratio tolerance ONLY when every other source measurement says
+        // "stable compact ribbon": high principal-path coverage, low boundary ratio, stable width
+        // and a medium-density annular fill. Production prefilter still excludes this family until
+        // its fitter quality is validated by the diagnostic probe.
+        var compactSpiral =
+            terminalRatio >=
+                MinimumCompactSpiralTerminalWidthRatio &&
+            model.Candidate.Elongation >=
+                MinimumCompactSpiralElongation &&
+            model.Candidate.Elongation <=
+                MaximumCompactSpiralElongation &&
+            boundingFillRatio >=
+                MinimumCompactSpiralBoundingFill &&
+            boundingFillRatio <=
+                MaximumCompactSpiralBoundingFill &&
+            model.Candidate.BoundaryRatio <=
+                MaximumCompactSpiralBoundaryRatio &&
+            model.SkeletonCoverage >=
+                MinimumCompactSpiralPathCoverage &&
+            coefficientVariation <=
+                MaximumCompactSpiralWidthCoefficientVariation;
+
         var first =
             samples[0];
         var last =
@@ -1606,7 +1637,8 @@ internal static class CurveFillRibbonArcRefiner
         var terminalAccepted =
             terminalRatio >=
                 MinimumTerminalWidthRatio ||
-            sparseTaperSweep;
+            sparseTaperSweep ||
+            compactSpiral;
         var bendAccepted =
             maximumBend >=
             requiredBend;
@@ -1616,11 +1648,15 @@ internal static class CurveFillRibbonArcRefiner
 
         var reason =
             accepted
-                ? sparseTaperSweep &&
+                ? compactSpiral &&
                   terminalRatio <
                   MinimumTerminalWidthRatio
-                    ? "ok-sparse-taper"
-                    : "ok"
+                    ? "ok-compact-spiral"
+                    : sparseTaperSweep &&
+                      terminalRatio <
+                      MinimumTerminalWidthRatio
+                        ? "ok-sparse-taper"
+                        : "ok"
                 : !terminalAccepted
                     ? "terminal-width-ratio"
                     : "insufficient-bend";
