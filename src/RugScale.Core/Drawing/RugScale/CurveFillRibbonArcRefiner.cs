@@ -877,6 +877,11 @@ internal static class CurveFillRibbonArcRefiner
             var compoundSmoothestSafeSmoothingPasses = 0;
             var compoundSmoothestSafeP95Deviation = 0d;
             var compoundSmoothestSafeMaximumDeviation = 0d;
+            var compoundSmoothestCurvatureValidRoughness = 0d;
+            var compoundSmoothestCurvatureValidAnchors = 0;
+            var compoundSmoothestCurvatureValidSmoothingPasses = 0;
+            var compoundSmoothestCurvatureValidP95Deviation = 0d;
+            var compoundSmoothestCurvatureValidMaximumDeviation = 0d;
             var fitKind = "none";
             var curveFamily = "none";
             var status =
@@ -1178,6 +1183,16 @@ internal static class CurveFillRibbonArcRefiner
                                     compactCompoundDiagnostics.SmoothestSafeP95Deviation;
                                 compoundSmoothestSafeMaximumDeviation =
                                     compactCompoundDiagnostics.SmoothestSafeMaximumDeviation;
+                                compoundSmoothestCurvatureValidRoughness =
+                                    compactCompoundDiagnostics.SmoothestCurvatureValidRoughness;
+                                compoundSmoothestCurvatureValidAnchors =
+                                    compactCompoundDiagnostics.SmoothestCurvatureValidAnchors;
+                                compoundSmoothestCurvatureValidSmoothingPasses =
+                                    compactCompoundDiagnostics.SmoothestCurvatureValidSmoothingPasses;
+                                compoundSmoothestCurvatureValidP95Deviation =
+                                    compactCompoundDiagnostics.SmoothestCurvatureValidP95Deviation;
+                                compoundSmoothestCurvatureValidMaximumDeviation =
+                                    compactCompoundDiagnostics.SmoothestCurvatureValidMaximumDeviation;
                             }
                         }
                         else if (CurveFillRibbonToolFitter.TryFit(
@@ -1318,6 +1333,16 @@ internal static class CurveFillRibbonArcRefiner
                                     compoundDiagnostics.SmoothestSafeP95Deviation;
                                 compoundSmoothestSafeMaximumDeviation =
                                     compoundDiagnostics.SmoothestSafeMaximumDeviation;
+                                compoundSmoothestCurvatureValidRoughness =
+                                    compoundDiagnostics.SmoothestCurvatureValidRoughness;
+                                compoundSmoothestCurvatureValidAnchors =
+                                    compoundDiagnostics.SmoothestCurvatureValidAnchors;
+                                compoundSmoothestCurvatureValidSmoothingPasses =
+                                    compoundDiagnostics.SmoothestCurvatureValidSmoothingPasses;
+                                compoundSmoothestCurvatureValidP95Deviation =
+                                    compoundDiagnostics.SmoothestCurvatureValidP95Deviation;
+                                compoundSmoothestCurvatureValidMaximumDeviation =
+                                    compoundDiagnostics.SmoothestCurvatureValidMaximumDeviation;
                             }
                             else
                             {
@@ -1484,6 +1509,11 @@ internal static class CurveFillRibbonArcRefiner
                     compoundSmoothestSafeSmoothingPasses,
                     compoundSmoothestSafeP95Deviation,
                     compoundSmoothestSafeMaximumDeviation,
+                    compoundSmoothestCurvatureValidRoughness,
+                    compoundSmoothestCurvatureValidAnchors,
+                    compoundSmoothestCurvatureValidSmoothingPasses,
+                    compoundSmoothestCurvatureValidP95Deviation,
+                    compoundSmoothestCurvatureValidMaximumDeviation,
                     fitKind,
                     curveFamily,
                     roundness,
@@ -1814,6 +1844,11 @@ internal readonly record struct RibbonArcCandidateStage(
     int CompoundSmoothestSafeSmoothingPasses,
     double CompoundSmoothestSafeP95Deviation,
     double CompoundSmoothestSafeMaximumDeviation,
+    double CompoundSmoothestCurvatureValidRoughness,
+    int CompoundSmoothestCurvatureValidAnchors,
+    int CompoundSmoothestCurvatureValidSmoothingPasses,
+    double CompoundSmoothestCurvatureValidP95Deviation,
+    double CompoundSmoothestCurvatureValidMaximumDeviation,
     string FitKind,
     string CurveFamily,
     double Roundness,
