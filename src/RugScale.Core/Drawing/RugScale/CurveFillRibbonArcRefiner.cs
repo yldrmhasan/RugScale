@@ -817,6 +817,9 @@ internal static class CurveFillRibbonArcRefiner
             var compoundReason = "not-attempted";
             var compoundP95Deviation = 0d;
             var compoundMaximumDeviation = 0d;
+            var compoundSelectedRoughness = 0d;
+            var compoundSelectedAnchors = 0;
+            var compoundSelectedSmoothingPasses = 0;
             var fitKind = "none";
             var curveFamily = "none";
             var status =
@@ -1155,6 +1158,12 @@ internal static class CurveFillRibbonArcRefiner
                                     compoundDiagnostics.Percentile95Deviation;
                                 compoundMaximumDeviation =
                                     compoundDiagnostics.MaximumDeviation;
+                                compoundSelectedRoughness =
+                                    compoundDiagnostics.Roughness;
+                                compoundSelectedAnchors =
+                                    compoundDiagnostics.Anchors;
+                                compoundSelectedSmoothingPasses =
+                                    compoundDiagnostics.SmoothingPasses;
                             }
                             else
                             {
@@ -1307,6 +1316,9 @@ internal static class CurveFillRibbonArcRefiner
                     compoundReason,
                     compoundP95Deviation,
                     compoundMaximumDeviation,
+                    compoundSelectedRoughness,
+                    compoundSelectedAnchors,
+                    compoundSelectedSmoothingPasses,
                     fitKind,
                     curveFamily,
                     roundness,
@@ -1601,6 +1613,9 @@ internal readonly record struct RibbonArcCandidateStage(
     string CompoundReason,
     double CompoundP95Deviation,
     double CompoundMaximumDeviation,
+    double CompoundSelectedRoughness,
+    int CompoundSelectedAnchors,
+    int CompoundSelectedSmoothingPasses,
     string FitKind,
     string CurveFamily,
     double Roundness,
