@@ -467,6 +467,46 @@ creating any production `compact spiral ribbon` class.
 Do not convert this probe into a production gate until the C069 artifact proves the targeted spiral
 has coherent source evidence and four-design/B163A regressions remain protected.
 
+Probe result for the user-visible green spiral `99,219 - 148,298`:
+- centerline: built,
+- skeleton pixels: **204**,
+- endpoints: **4**,
+- principal path coverage: **0.877451**,
+- width CV: **0.528132**,
+- terminal ratio: **0.449972**,
+- normal terminal-ratio threshold: **0.450000**,
+- maximum bend: **38.082863**,
+- required bend: **2.810325**.
+
+The geometry is therefore rejected by only **0.000028** terminal-ratio difference while every other
+measurement strongly indicates a coherent curved ribbon. The right-side mirror gives the same
+result (terminal 0.449856, coverage 0.906863).
+
+### 4.15 Compact spiral classifier tolerance — CURRENT DIAGNOSTIC
+
+Commit:
+`9f1e4f419370e828bbdb18f9f105089daf8d68af`
+
+A separate `ok-compact-spiral` shape reason is now available when all of these are true:
+
+- terminal ratio >= **0.44**,
+- elongation **1.35 .. 1.80**,
+- bounding fill **0.42 .. 0.56**,
+- boundary ratio <= **0.25**,
+- skeleton/path coverage >= **0.84**,
+- width CV <= **0.54**.
+
+This does **not** change the production prefilter. It only lets the existing diagnostic compact
+probe continue past ribbon-shape rejection so the real fitter quality can be measured.
+
+Reason for this order:
+do not enable redraw merely because a threshold is close. First prove that Through-Points / Bezier /
+compound geometry can fit the complete compact spiral safely and aesthetically.
+
+Next decision after C069 audit:
+- if fitter is safe and smooth, create a separately gated production compact-spiral route;
+- if fitter is unsafe/high-deviation, improve spiral-specific fitting rather than loosening safety.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
