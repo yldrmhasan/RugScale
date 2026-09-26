@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** `40a311974c0daeaf7e140fb87bd39544d402e88e` — scope sparse-taper redraw to one dominant sweep; CI/audit pending at this exact documentation point.
+**Last documented experiment:** `f74a9c34ab5ae347b4877860a949625485fb785a` — sparse-taper-specific dominant-sweep acceptance; CI/audit queued at this exact documentation point.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -232,31 +232,68 @@ ownership.
 Decision: **ADJUST**. Keep the sparse-taper authority, but compound redraw must not operate on the
 whole multi-endpoint region.
 
-### 4.9 Dominant one-sided sweep scope for sparse taper — CURRENT EXPERIMENT
+### 4.9 Dominant one-sided sweep scope for sparse taper — KEEP SAFETY, NEED LOWER SPECIALIZED FRACTION
 
 Commits:
 - `7652987da10784038e124c5e4fce46a33c89c6ba` — expose generic one-sided sweep extraction,
 - `40a311974c0daeaf7e140fb87bd39544d402e88e` — require dominant sweep before sparse-taper compound redraw.
 
-Change:
-- mirror-fused one-sided main-arc extraction was generalized as
-  `TryExtractOneSidedSweep`,
-- an `ok-sparse-taper` region with more than two skeleton endpoints gets compound authority only
-  if a coherent dominant sweep is extracted,
-- successful extraction marks the region as main-arc-scoped so rasterization is restricted to the
-  fitted sweep,
-- if extraction fails, the multi-endpoint sparse taper is **not** allowed to use compound fallback.
+Result on C069 `83,146 - 175,348`:
+- one-sided extractor found candidate span `98-203`,
+- kept fraction: **0.409266**,
+- ordinary one-sided minimum: **0.48**,
+- extraction reason: `one-sided-kept-fraction`,
+- compound fallback was therefore **not attempted**,
+- candidate safely returned to the old unsafe macro-spline path and remained unmodified.
 
-Goal:
-retain the useful smooth long sweep while leaving hook/branch ownership outside that sweep untouched.
+Visual result:
+- the white cut/gap artefact from the unscoped compound experiment disappeared completely,
+- direct output was **pixel-identical to the pre-compound safe baseline** (0 changed pixels).
+
+Decision:
+the scoping rule is **KEEP**. Do not return to whole-region compound redraw.
+The remaining problem is only that the generic mirror-oriented 0.48 kept-fraction gate is too strict
+for this separately classified sparse-taper family.
+
+### 4.10 Sparse-taper-specific dominant-sweep fraction — CURRENT EXPERIMENT
+
+Commits:
+- `ef108fa8be7bbc5a3f7c2c7ec96bb61f3111a146` — add sparse-taper-specific extractor gate,
+- `f74a9c34ab5ae347b4877860a949625485fb785a` — route sparse taper through that gate.
+
+Change:
+- ordinary / mirror-fused one-sided extraction keeps the existing **0.48** minimum,
+- `ok-sparse-taper` gets a separate `TryExtractSparseTaperSweep` minimum of **0.38**,
+- maximum remains 0.95,
+- all existing source/classifier/raster-scope gates still apply.
+
+Why 0.38:
+the measured C069 coherent sweep is 0.409266. The specialized threshold is set below that measured
+evidence without weakening any other ribbon family.
+
+Expected result:
+the same span should be accepted and rasterization should stay restricted to that extracted sweep,
+avoiding the whole-region white-gap regression.
 
 Status:
-**CI / C069 / four-design audit pending at the time this entry was written.**
-The next update must record:
-- whether the C069 focus region still becomes accepted,
-- `main_arc_reason` and kept fraction,
-- whether the white gap artefact disappears in the actual BMP,
-- whether all validation workflows remain green.
+**CI / C069 / four-design audit queued at the time this entry was written.**
+
+### 4.11 Regression and visual-audit infrastructure — KEEP
+
+Commits:
+- `f7995b25c18110eaf21327d729f278a74b4fc4fa` — one-sided sweep extraction regression test,
+- `b64ab4b57e42370ba470afa41ef8a86b6eb382cc` — persistent C069 focus artifacts.
+
+The test protects dominant-arc extraction from accidentally keeping an opposite-curvature terminal
+hook.
+
+Every C069 audit now also emits:
+- `C069_focus_left_spiral_source.bmp`
+- `C069_focus_left_spiral_rugscale.bmp`
+- `C069_focus_left_spiral_nearest.bmp`
+
+These focus files are the preferred visual continuation artifacts for the user-reported left
+spiral/oval problem.
 
 ## 5. Do-not-repeat rules
 
