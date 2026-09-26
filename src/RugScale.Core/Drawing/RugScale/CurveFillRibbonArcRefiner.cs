@@ -791,6 +791,12 @@ internal static class CurveFillRibbonArcRefiner
             var alternativeThroughMaximumDeviation = 0d;
             var alternativeThroughP95Deviation = 0d;
             var alternativeThroughRoundness = 0d;
+            var widthRegularizerApplied = false;
+            var widthSourceCoefficientVariation = 0d;
+            var widthTerminalRatio = 0d;
+            var widthVariationBefore = 0d;
+            var widthVariationAfter = 0d;
+            var widthMaximumShift = 0d;
             var skeletonPixels = 0;
             var endpoints = 0;
             var principalPathPixels = 0;
@@ -1111,6 +1117,27 @@ internal static class CurveFillRibbonArcRefiner
                             CurveFillRibbonSmoothness.Measure(
                                 fit.Points);
 
+                        if (fitSafe)
+                        {
+                            _ =
+                                CurveFillRibbonWidthProfileRegularizer.Regularize(
+                                    model,
+                                    fit,
+                                    out var widthAuditDiagnostics);
+                            widthRegularizerApplied =
+                                widthAuditDiagnostics.Applied;
+                            widthSourceCoefficientVariation =
+                                widthAuditDiagnostics.SourceWidthCoefficientVariation;
+                            widthTerminalRatio =
+                                widthAuditDiagnostics.TerminalWidthRatio;
+                            widthVariationBefore =
+                                widthAuditDiagnostics.BeforeAdjacentVariation;
+                            widthVariationAfter =
+                                widthAuditDiagnostics.AfterAdjacentVariation;
+                            widthMaximumShift =
+                                widthAuditDiagnostics.MaximumHalfWidthShift;
+                        }
+
                         if (broadSparseArch &&
                             mainArcExtracted &&
                             CurveFillRibbonThroughPointsFitter.TryFit(
@@ -1188,6 +1215,12 @@ internal static class CurveFillRibbonArcRefiner
                     alternativeThroughMaximumDeviation,
                     alternativeThroughP95Deviation,
                     alternativeThroughRoundness,
+                    widthRegularizerApplied,
+                    widthSourceCoefficientVariation,
+                    widthTerminalRatio,
+                    widthVariationBefore,
+                    widthVariationAfter,
+                    widthMaximumShift,
                     accepted,
                     status));
         }
@@ -1376,6 +1409,12 @@ internal readonly record struct RibbonArcCandidateStage(
     double AlternativeThroughMaximumDeviation,
     double AlternativeThroughP95Deviation,
     double AlternativeThroughRoundness,
+    bool WidthRegularizerApplied,
+    double WidthSourceCoefficientVariation,
+    double WidthTerminalRatio,
+    double WidthVariationBefore,
+    double WidthVariationAfter,
+    double WidthMaximumShift,
     bool Accepted,
     string Status);
 
