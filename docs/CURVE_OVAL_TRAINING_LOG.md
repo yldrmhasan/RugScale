@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** `3ad0be4caa8f059b1360f86fc8892a52a580047d` — measured compound smoothness selector with regression tests; CI/C069 audit pending at this exact documentation point.
+**Last documented experiment:** `38cef5fbfe2f35815fd495392a44452a97e3bd78` — compact spiral production route + C069 regression gate; latest validation described below.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -564,6 +564,109 @@ Commit `0c12e76b9c3a45d093c7f34813e380ed5a146285` changes diagnostic fitter orde
 
 Production prefilter remains closed. The next C069 artifact decides whether either source-bounded
 fitter is good enough to justify a production compact-spiral path.
+
+### 4.18 Low-frequency compound candidate exploration — DIAGNOSTIC ONLY
+
+Commits:
+- `6d380745ccaea19eec30d4aa054dda81f4b6bd60` — temporarily added 5-10 anchor / extra-smoothing candidates,
+- `2096839db341d492eb8531598ee8d25df3a5a4e2` + `740c1ce5ce9c29a7c9a59b6468107d8dff6888e5` + `6778f1c5bb1da5552d8866153d1e453b1690b409` — report the smoothest curvature-valid candidate even when it fails the production source corridor,
+- `86790e629736e8b079c667d314e4e2a03b5a3fcd` — moved low-frequency candidates to diagnostic-only so they can no longer change production output.
+
+Result:
+- the main C069 green compound spiral `105,181 - 191,313` still selects the existing 18-anchor safe fit,
+- the long color-6 curve `105,566 - 156,812` has a much smoother 5-anchor candidate
+  (roughness about **0.099**) but it is catastrophically far from source
+  (p95 about **28.50 px**, max about **30.06 px**),
+- therefore the low-anchor model family is not a legitimate production replacement for that long
+  curve.
+
+Decision:
+**KEEP AS DIAGNOSTIC ONLY.** Do not re-enable these low-frequency settings as normal production
+candidates merely because they look smoother.
+
+### 4.19 Compact spiral compound proof — KEEP
+
+Expanded C069 audit proved the previously probe-only compact spiral is actually fit safely by the
+compound model.
+
+Left source region `99,219 - 148,298`:
+- path coverage: **0.877451**,
+- width CV: **0.528132**,
+- terminal ratio: **0.449972**,
+- fit kind: `compact-compound`,
+- p95 deviation: **0.827152 px**,
+- max deviation: **1.660419 px**,
+- curvature flips: **0**,
+- selected roughness: **0.210694**,
+- fit safe: **yes**.
+
+Right mirror `492,219 - 541,298`:
+- path coverage: **0.906863**,
+- compound max deviation: **1.782634 px**,
+- curvature flips: **0**,
+- fit safe: **yes**.
+
+These results are materially better than the earlier generic macro-spline attempt (>6 px max
+deviation). This is enough source evidence to justify a separately gated production route.
+
+### 4.20 Compact spiral production redraw — CURRENT GREEN C069 RESULT
+
+Commit:
+`61a07d1f9ff68c7b285a8b820578c0a83bd93e7d`
+
+Production changes:
+- the loose compact prefilter is used only as a doorway to build centerline evidence,
+- actual production authority requires the strict existing `ok-compact-spiral` classifier,
+- compact spirals use the compound fitter first,
+- if compound fitting is unsafe, the region is left on the categorical baseline; no generic macro
+  fallback is allowed,
+- accepted compact spirals receive authoritative true redraw even when max deviation is slightly
+  above the ordinary 1.75 px true-redraw threshold, because the compact classifier + compound
+  safety gates are the dedicated authority.
+
+C069 visual result:
+- persistent left focus crop changed about **2,022 target pixels** versus the previous true-redraw
+  baseline (**~1.65%** of the focus crop),
+- the previously blocky lower green/cream spiral is visibly more rounded and follows the fitted
+  spiral geometry,
+- no whole-region white-gap regression reappeared.
+
+C069 audit after enabling production:
+- round-trip exact: **92.86%**,
+- ±1 px: **99.45%**,
+- palette: **SAFE**,
+- direct stroke ratio: **0.789**.
+
+Validation at the documentation point:
+- RugScale CI: **success**,
+- Workbench: **success**,
+- C069 curve training: **success**,
+- B163A real-design validation: **success**,
+- B163A drawing self-training: **success**,
+- B163A motif audit: **success**,
+- four-design curve suite for this exact commit was still completing.
+
+Decision:
+**KEEP while four-design remains green.** This is the first production path specifically for the
+compact spiral class.
+
+### 4.21 Compact spiral audit/CI synchronization — CURRENT
+
+Commits:
+- `ec43e0ecc781a8b6921eba813d421829f6b1cd57` — `AnalyzeCandidateStages` now reports strict
+  compact-spiral production authority as accepted instead of the obsolete `compact-probe-safe`,
+- `38cef5fbfe2f35815fd495392a44452a97e3bd78` — C069 workflow regression gate.
+
+The C069 gate requires BOTH known mirrored compact-spiral fixtures to remain:
+- `ribbon_shape_reason = ok-compact-spiral`,
+- `fit_kind = compact-compound`,
+- `fit_safe = 1`,
+- `accepted = 1`,
+- curvature flips = **0**,
+- maximum centerline deviation <= **1.90 px**.
+
+This is a fixture-level regression assertion only. The production algorithm contains no C069
+coordinates or design-name hard coding.
 
 ## 5. Do-not-repeat rules
 
