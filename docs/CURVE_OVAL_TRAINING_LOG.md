@@ -830,6 +830,67 @@ Status:
 C069 real BMP + four-design/B163A validation running. Do not mark KEEP until the navy hook crop is
 visually inspected and no repeat/symmetry damage appears.
 
+### 4.27 Tapered-hook audit/CI synchronization — CURRENT GREEN C069
+
+Commits:
+- `8063ac5aab5136b60538926568819d707e749678` — audit now mirrors the production tapered-hook authority,
+- `090399eae13d43cc263c245ac9135eff4b61c272` — C069 specialist redraw gate.
+
+Audit now reports the production family as:
+- `ribbon_shape_reason = ok-tapered-hook`,
+- `fit_kind = tapered-hook-compound`,
+- `curve_family = CompoundSpline`,
+- `fit_safe = 1`,
+- `accepted = 1`,
+- `status = accepted-tapered-hook`.
+
+The C069 workflow permanently checks all four repeated/mirrored hook fixtures. It requires:
+- the exact tapered-hook family above,
+- no more than 1 curvature flip,
+- maximum source deviation <= **1.15 px**,
+- selected smoothness <= **0.095**.
+
+C069 CI gate: **success**.
+The whole production algorithm remains coordinate/design-name agnostic; coordinates exist only in
+this fixture-level regression workflow.
+
+### 4.28 Coherent variable-width sweep probe — CURRENT DIAGNOSTIC
+
+Commit:
+`55b7494c34612905b388c62aeb5751a28f860df3`
+
+Next user-visible focus issue:
+the large gold sweep around source bbox `83,128 - 178,331` has a nearly complete medial path but is
+rejected before fitting only because its width variation is much larger than an ordinary constant
+ribbon:
+
+- elongation: **3.806856**,
+- bounding fill: **0.107894**,
+- boundary ratio: **0.245149**,
+- skeleton endpoints: **3**,
+- principal path coverage: **0.985294**,
+- width CV: **0.708539**,
+- ordinary maximum width CV: **0.55**.
+
+No production threshold was changed.
+
+Audit-only `probe-variable-width-sweep` requires:
+- rejection specifically by `width-variation`,
+- 2..4 endpoints,
+- principal-path coverage >= 0.90,
+- elongation >= 3.0,
+- bounding fill <= 0.16,
+- boundary ratio <= 0.35,
+- mean half-width >= 1.5,
+- width CV > 0.55 and <= 0.80.
+
+The probe cannot be production-accepted. It only lets the existing symmetry/main-arc/fitter pipeline
+measure whether the designer sweep can be redrawn safely despite genuine low-frequency width change.
+
+Next decision:
+- safe fit + stable source-derived width profile -> define a separate variable-width sweep family,
+- unsafe fit -> keep baseline and improve model/extraction; do not raise the global width-CV limit.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
