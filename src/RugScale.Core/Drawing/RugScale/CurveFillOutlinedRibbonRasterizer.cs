@@ -222,12 +222,13 @@ internal static class CurveFillOutlinedRibbonRasterizer
                     // Expansion is legal ONLY into this region's own protected outline, and only
                     // when at least one outline cell remains immediately outside the new mask.
                     if (current != outlineColor ||
-                        !HasOutsideOutlineSupport(
+                        !HasPlannedOutsideOutlineSupport(
                             x,
                             y,
                             destination.Width,
                             destination.Height,
                             targetMask,
+                            compoundMask,
                             originalOutline))
                     {
                         continue;
@@ -801,12 +802,13 @@ internal static class CurveFillOutlinedRibbonRasterizer
         return true;
     }
 
-    private static bool HasOutsideOutlineSupport(
+    private static bool HasPlannedOutsideOutlineSupport(
         int x,
         int y,
         int width,
         int height,
         IReadOnlySet<int> targetMask,
+        IReadOnlySet<int> compoundMask,
         IReadOnlySet<int> originalOutline)
     {
         for (var dy = -1;
@@ -843,10 +845,27 @@ internal static class CurveFillOutlinedRibbonRasterizer
                     width +
                     nx;
 
-                if (!targetMask.Contains(
-                        key) &&
-                    originalOutline.Contains(
+                if (targetMask.Contains(
+                        key) ||
+                    !compoundMask.Contains(
                         key))
+                {
+                    continue;
+                }
+
+                // The new continuous geometry explicitly reserves this neighbour for the
+                // dedicated outline. It may be one raster phase outside the old white line, so
+                // accept either direct old-outline ownership or close old-outline evidence. Phase
+                // 2 will materialize the planned outline before any old exterior is released.
+                if (originalOutline.Contains(
+                        key) ||
+                    HasNearbyOriginalOutline(
+                        nx,
+                        ny,
+                        width,
+                        height,
+                        originalOutline,
+                        radius: 2))
                 {
                     return true;
                 }
