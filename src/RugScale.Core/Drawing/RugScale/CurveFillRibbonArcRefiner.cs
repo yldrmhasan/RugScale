@@ -109,6 +109,8 @@ internal static class CurveFillRibbonArcRefiner
         var maxSelfSymmetryDeviation = 0d;
         var accepted =
             new List<(LeafPetalArcModel Model, ElegantArcFit Fit)>();
+        var mainArcScopedRegions =
+            new HashSet<LeafPetalRegion>();
 
         foreach (var region in regions)
         {
@@ -527,6 +529,12 @@ internal static class CurveFillRibbonArcRefiner
 
             accepted.Add(
                 (model, fit));
+
+            if (mainArcExtractedForRegion)
+            {
+                mainArcScopedRegions.Add(
+                    model.Candidate.Region);
+            }
         }
 
         var mirrorPairDiagnostics =
@@ -549,7 +557,10 @@ internal static class CurveFillRibbonArcRefiner
                     item.Model,
                     item.Fit,
                     protectedStrokeColors,
-                    out var outlinedChanged))
+                    out var outlinedChanged,
+                    restrictToFittedSweep:
+                        mainArcScopedRegions.Contains(
+                            item.Model.Candidate.Region)))
             {
                 outlinedRefined++;
                 changed +=
@@ -563,7 +574,10 @@ internal static class CurveFillRibbonArcRefiner
                     destination,
                     item.Model,
                     item.Fit,
-                    protectedStrokeColors);
+                    protectedStrokeColors,
+                    restrictToFittedSweep:
+                        mainArcScopedRegions.Contains(
+                            item.Model.Candidate.Region));
         }
 
         return new RibbonArcRefinementDiagnostics(
