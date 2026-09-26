@@ -26,6 +26,10 @@ internal static class CurveFillRibbonArcRefiner
     private const double MaximumBoundaryRatio = 0.66;
     private const double MaximumWidthCoefficientVariation = 0.55;
     private const double MinimumTerminalWidthRatio = 0.45;
+    private const double MinimumSparseTaperTerminalWidthRatio = 0.25;
+    private const double MinimumSparseTaperElongation = 2.50;
+    private const double MaximumSparseTaperBoundingFill = 0.20;
+    private const double MinimumSparseTaperPathCoverage = 0.64;
     private const double MinimumAbsoluteBend = 1.35;
     private const double MinimumRelativeBend = 0.035;
 
@@ -1361,21 +1365,25 @@ internal static class CurveFillRibbonArcRefiner
                 firstWidth,
                 lastWidth);
 
-        // A leaf has a broad base and a narrow apex. A ribbon/oval border keeps comparable width
-        // at both ends, even if the raster quantizes one end by a pixel.
-        if (terminalRatio <
-            MinimumTerminalWidthRatio)
-        {
-            diagnostics =
-                new RibbonShapeDiagnostics(
-                    "terminal-width-ratio",
-                    meanWidth,
-                    coefficientVariation,
-                    terminalRatio,
-                    0d,
-                    0d);
-            return false;
-        }
+        var region =
+            model.Candidate.Region;
+        var boundingFillRatio =
+            region.Area /
+            (double)Math.Max(
+                1,
+                region.Width *
+                region.Height);
+        var sparseTaperSweep =
+            terminalRatio >=
+                MinimumSparseTaperTerminalWidthRatio &&
+            model.Candidate.Elongation >=
+                MinimumSparseTaperElongation &&
+            boundingFillRatio <=
+                MaximumSparseTaperBoundingFill &&
+            model.Candidate.BoundaryRatio <=
+                MaximumBroadArchBoundaryRatio &&
+            model.SkeletonCoverage >=
+                MinimumSparseTaperPathCoverage;
 
         var first =
             samples[0];
@@ -1432,15 +1440,31 @@ internal static class CurveFillRibbonArcRefiner
                 MinimumAbsoluteBend,
                 model.Candidate.MajorExtent *
                 MinimumRelativeBend);
-        var accepted =
+        var terminalAccepted =
+            terminalRatio >=
+                MinimumTerminalWidthRatio ||
+            sparseTaperSweep;
+        var bendAccepted =
             maximumBend >=
             requiredBend;
+        var accepted =
+            terminalAccepted &&
+            bendAccepted;
+
+        var reason =
+            accepted
+                ? sparseTaperSweep &&
+                  terminalRatio <
+                  MinimumTerminalWidthRatio
+                    ? "ok-sparse-taper"
+                    : "ok"
+                : !terminalAccepted
+                    ? "terminal-width-ratio"
+                    : "insufficient-bend";
 
         diagnostics =
             new RibbonShapeDiagnostics(
-                accepted
-                    ? "ok"
-                    : "insufficient-bend",
+                reason,
                 meanWidth,
                 coefficientVariation,
                 terminalRatio,
