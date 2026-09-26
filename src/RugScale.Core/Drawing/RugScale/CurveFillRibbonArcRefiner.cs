@@ -540,7 +540,8 @@ internal static class CurveFillRibbonArcRefiner
         var mirrorPairDiagnostics =
             CurveFillRibbonMirrorPairNormalizer.Normalize(
                 accepted,
-                source.Width);
+                source.Width,
+                mainArcScopedRegions);
 
         var changed = 0;
         var outlinedRefined = 0;
