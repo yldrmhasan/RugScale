@@ -28,6 +28,8 @@ internal static class ToolFaithfulCurveStyleLearner
     private const double MinimumModelGainOverPolyline = 0.003;
     private const double ComplexityPenaltyPerExtraControl = 0.003;
     private const double MaximumComplexityPenalty = 0.09;
+    private const double PixelCordCadenceWeight = 0.10;
+    private const double PlainCurveCadenceWeight = 0.04;
 
     private static readonly double[] SimplifyTolerances =
     [
@@ -127,12 +129,13 @@ internal static class ToolFaithfulCurveStyleLearner
                 continue;
 
             var polylineRaw =
-                Score(
+                ScoreCandidate(
+                    sourceChain,
                     sourceSet,
                     RenderPolyline(
-                            controls,
-                            pixelCord)
-                        .ToHashSet());
+                        controls,
+                        pixelCord),
+                    pixelCord);
 
             var polylineModel =
                 ModelScore(
@@ -152,6 +155,7 @@ internal static class ToolFaithfulCurveStyleLearner
                 CurveType.Spline,
                 SplineRoundness,
                 controls,
+                sourceChain,
                 sourceSet,
                 pixelCord,
                 tolerance,
@@ -696,13 +700,15 @@ internal static class ToolFaithfulCurveStyleLearner
                     sourceChain[index])
                 .ToArray();
 
-        return Score(
+        return ScoreCandidate(
+            sourceChain,
             sourceSet,
-            RenderCurve(
+            RenderCurveOrdered(
                 controls,
                 CurveType.SplineThroughPoints,
                 roundness,
-                pixelCord));
+                pixelCord),
+            pixelCord);
     }
 
     private static double ScaleConsistencyScore(
@@ -785,13 +791,15 @@ internal static class ToolFaithfulCurveStyleLearner
             controls.ToArray();
 
         double Evaluate() =>
-            Score(
+            ScoreCandidate(
+                sourceChain,
                 sourceSet,
-                RenderCurve(
+                RenderCurveOrdered(
                     mutable,
                     CurveType.Bezier,
                     1.0,
-                    pixelCord));
+                    pixelCord),
+                pixelCord);
 
         var rawScore =
             Evaluate();
@@ -1174,6 +1182,7 @@ internal static class ToolFaithfulCurveStyleLearner
         CurveType type,
         IReadOnlyList<double> roundnessValues,
         IReadOnlyList<(int X, int Y)> controls,
+        IReadOnlyList<(int X, int Y)> sourceChain,
         IReadOnlySet<(int X, int Y)> sourceSet,
         bool pixelCord,
         double simplifyTolerance,
@@ -1182,13 +1191,15 @@ internal static class ToolFaithfulCurveStyleLearner
         foreach (var roundness in roundnessValues)
         {
             var rawScore =
-                Score(
+                ScoreCandidate(
+                    sourceChain,
                     sourceSet,
-                    RenderCurve(
+                    RenderCurveOrdered(
                         controls,
                         type,
                         roundness,
-                        pixelCord));
+                        pixelCord),
+                    pixelCord);
 
             ConsiderFit(
                 type,
@@ -1257,7 +1268,7 @@ internal static class ToolFaithfulCurveStyleLearner
                penalty;
     }
 
-    private static HashSet<(int X, int Y)> RenderCurve(
+    private static IReadOnlyList<(int X, int Y)> RenderCurveOrdered(
         IReadOnlyList<(int X, int Y)> controls,
         CurveType type,
         double roundness,
@@ -1276,8 +1287,55 @@ internal static class ToolFaithfulCurveStyleLearner
                     rendered);
         }
 
-        return rendered
-            .ToHashSet();
+        // Preserve drawing order for the cadence metric while removing exact repeated emissions.
+        var result =
+            new List<(int X, int Y)>();
+
+        foreach (var point in rendered)
+        {
+            if (result.Count == 0 ||
+                result[^1] !=
+                point)
+            {
+                result.Add(
+                    point);
+            }
+        }
+
+        return result;
+    }
+
+    private static double ScoreCandidate(
+        IReadOnlyList<(int X, int Y)> sourceChain,
+        IReadOnlySet<(int X, int Y)> sourceSet,
+        IEnumerable<(int X, int Y)> candidate,
+        bool pixelCord)
+    {
+        var ordered =
+            candidate
+                .ToArray();
+
+        if (ordered.Length < 2)
+            return 0d;
+
+        var geometry =
+            Score(
+                sourceSet,
+                ordered.ToHashSet());
+        var cadence =
+            CurvePixelCadence.Measure(
+                ordered,
+                sourceChain);
+        var cadenceWeight =
+            pixelCord
+                ? PixelCordCadenceWeight
+                : PlainCurveCadenceWeight;
+
+        return geometry *
+                   (1d -
+                    cadenceWeight) +
+               cadence *
+                   cadenceWeight;
     }
 
     private static double Score(
