@@ -1,4 +1,5 @@
 using RugScale.Core.Drawing;
+using RugScale.Core.Models;
 using Xunit;
 
 namespace RugScale.Core.Tests;
@@ -332,6 +333,390 @@ public sealed class CurveOvalTrainingTests
             diagnostics.EndIndex <
             model.Samples.Count - 1,
             "The one-sided extractor should trim the terminal hook, not keep the complete path.");
+    }
+
+    [Fact]
+    public void TrueRibbonRasterizer_ReplacesNearestStaircaseWithFittedFillAndOutline()
+    {
+        var palette =
+            new Palette(
+                new[]
+                {
+                    new RugColor(218, 210, 184),
+                    new RugColor(255, 255, 255),
+                    new RugColor(88, 132, 92),
+                });
+        var source =
+            new DesignDocument(
+                42,
+                32,
+                palette);
+        var regionPixels =
+            new HashSet<int>();
+
+        for (var x = 5;
+             x <= 36;
+             x++)
+        {
+            var t =
+                (x - 5) /
+                31d;
+            var centerY =
+                16 +
+                (int)Math.Round(
+                    4d *
+                    Math.Sin(
+                        Math.PI *
+                        t));
+
+            for (var y = centerY - 2;
+                 y <= centerY + 2;
+                 y++)
+            {
+                source.SetPixel(
+                    x,
+                    y,
+                    2);
+                regionPixels.Add(
+                    y *
+                    source.Width +
+                    x);
+            }
+        }
+
+        var boundary =
+            regionPixels
+                .Where(key =>
+                {
+                    var x =
+                        key %
+                        source.Width;
+                    var y =
+                        key /
+                        source.Width;
+
+                    return
+                        x == 0 ||
+                        x + 1 >= source.Width ||
+                        y == 0 ||
+                        y + 1 >= source.Height ||
+                        !regionPixels.Contains(
+                            y *
+                                source.Width +
+                            x -
+                            1) ||
+                        !regionPixels.Contains(
+                            y *
+                                source.Width +
+                            x +
+                            1) ||
+                        !regionPixels.Contains(
+                            (y - 1) *
+                                source.Width +
+                            x) ||
+                        !regionPixels.Contains(
+                            (y + 1) *
+                                source.Width +
+                            x);
+                })
+                .ToArray();
+
+        // Paint a dedicated 1x1 white outline around the source region.
+        foreach (var key in boundary)
+        {
+            var x =
+                key %
+                source.Width;
+            var y =
+                key /
+                source.Width;
+
+            for (var dy = -1;
+                 dy <= 1;
+                 dy++)
+            {
+                for (var dx = -1;
+                     dx <= 1;
+                     dx++)
+                {
+                    if (dx == 0 &&
+                        dy == 0)
+                    {
+                        continue;
+                    }
+
+                    var nx =
+                        x +
+                        dx;
+                    var ny =
+                        y +
+                        dy;
+
+                    if (nx < 0 ||
+                        nx >= source.Width ||
+                        ny < 0 ||
+                        ny >= source.Height ||
+                        regionPixels.Contains(
+                            ny *
+                                source.Width +
+                            nx))
+                    {
+                        continue;
+                    }
+
+                    source.SetPixel(
+                        nx,
+                        ny,
+                        1);
+                }
+            }
+        }
+
+        var region =
+            new LeafPetalRegion(
+                2,
+                regionPixels.ToArray(),
+                boundary,
+                5,
+                10,
+                36,
+                22);
+        var candidate =
+            new LeafPetalArcCandidate(
+                region,
+                20.5,
+                16,
+                1,
+                0,
+                0,
+                1,
+                31,
+                12,
+                3.0,
+                0.30);
+        var sourceSamples =
+            Enumerable.Range(
+                    0,
+                    65)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        64d;
+
+                    return new LeafPetalAxisSample(
+                        5d +
+                        31d *
+                            t,
+                        16d +
+                        4d *
+                            Math.Sin(
+                                Math.PI *
+                                t),
+                        2.45,
+                        t);
+                })
+                .ToArray();
+        var model =
+            new LeafPetalArcModel(
+                candidate,
+                sourceSamples,
+                ReversedForApex: false,
+                BaseWidth: 2.45,
+                ApexWidth: 2.45,
+                SkeletonCoverage: 1d);
+        var fitPoints =
+            Enumerable.Range(
+                    0,
+                    193)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        192d;
+
+                    return new ElegantArcPoint(
+                        5d +
+                        31d *
+                            t,
+                        16d +
+                        4d *
+                            Math.Sin(
+                                Math.PI *
+                                t),
+                        2.45);
+                })
+                .ToArray();
+        var fit =
+            new ElegantArcFit(
+                fitPoints,
+                IsSafe: true,
+                IsMonotonic: true,
+                CurvatureSignFlips: 0,
+                MaximumCenterlineDeviation: 0.35);
+        var destination =
+            DesignResizer.Scale(
+                source,
+                84,
+                64,
+                ScaleMode.NearestNeighbor);
+
+        var beforeFill =
+            0;
+        var beforeOutline =
+            0;
+        var scaleX =
+            destination.Width /
+            (double)source.Width;
+        var scaleY =
+            destination.Height /
+            (double)source.Height;
+        var fillMask =
+            LeafPetalArcRasterizer.RasterizePolygon(
+                LeafPetalArcRasterizer.BuildTargetPolygon(
+                    fit.Points,
+                    scaleX,
+                    scaleY),
+                destination.Width,
+                destination.Height);
+        var outlinePoints =
+            fit.Points
+                .Select(point =>
+                    point with
+                    {
+                        HalfWidth =
+                            point.HalfWidth +
+                            1d,
+                    })
+                .ToArray();
+        var outerMask =
+            LeafPetalArcRasterizer.RasterizePolygon(
+                LeafPetalArcRasterizer.BuildTargetPolygon(
+                    outlinePoints,
+                    scaleX,
+                    scaleY),
+                destination.Width,
+                destination.Height);
+
+        foreach (var key in fillMask)
+        {
+            var x =
+                key %
+                destination.Width;
+            var y =
+                key /
+                destination.Width;
+
+            if (destination.GetPixel(
+                    x,
+                    y) !=
+                2)
+            {
+                beforeFill++;
+            }
+        }
+
+        foreach (var key in outerMask)
+        {
+            if (fillMask.Contains(
+                    key))
+            {
+                continue;
+            }
+
+            var x =
+                key %
+                destination.Width;
+            var y =
+                key /
+                destination.Width;
+
+            if (destination.GetPixel(
+                    x,
+                    y) !=
+                1)
+            {
+                beforeOutline++;
+            }
+        }
+
+        var applied =
+            CurveFillTrueRibbonRasterizer.TryApply(
+                source,
+                destination,
+                model,
+                fit,
+                new HashSet<byte>
+                {
+                    1,
+                },
+                out var changed);
+
+        Assert.True(
+            applied);
+        Assert.True(
+            changed > 0);
+        Assert.True(
+            beforeFill > 0 ||
+            beforeOutline > 0,
+            "The nearest-neighbour target must contain staircase phase for this regression to be meaningful.");
+
+        var correctedFill = 0;
+        var correctedOutline = 0;
+
+        foreach (var key in fillMask)
+        {
+            var x =
+                key %
+                destination.Width;
+            var y =
+                key /
+                destination.Width;
+
+            if (destination.GetPixel(
+                    x,
+                    y) ==
+                2)
+            {
+                correctedFill++;
+            }
+        }
+
+        foreach (var key in outerMask)
+        {
+            if (fillMask.Contains(
+                    key))
+            {
+                continue;
+            }
+
+            var x =
+                key %
+                destination.Width;
+            var y =
+                key /
+                destination.Width;
+
+            if (destination.GetPixel(
+                    x,
+                    y) ==
+                1)
+            {
+                correctedOutline++;
+            }
+        }
+
+        Assert.True(
+            correctedFill >
+            fillMask.Count *
+                0.90,
+            $"Expected the fitted fill mask to become authoritative, got {correctedFill}/{fillMask.Count}.");
+        Assert.True(
+            correctedOutline >
+            (outerMask.Count -
+             fillMask.Count) *
+                0.75,
+            $"Expected the fitted outline ring to be materially rebuilt, got {correctedOutline}/{outerMask.Count - fillMask.Count}.");
     }
 
     private static LeafPetalArcModel Model(
