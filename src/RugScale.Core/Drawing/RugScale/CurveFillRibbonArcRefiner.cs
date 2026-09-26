@@ -195,6 +195,7 @@ internal static class CurveFillRibbonArcRefiner
             }
 
             var mainArcExtractedForRegion = false;
+            var selfSymmetryRecoveredForRegion = false;
 
             if (broadSparseArch &&
                 centerlineDiagnostics.Endpoints > 2 &&
@@ -206,6 +207,7 @@ internal static class CurveFillRibbonArcRefiner
             {
                 model =
                     symmetricModel;
+                selfSymmetryRecoveredForRegion = true;
                 symmetryRecoveries++;
                 maxSymmetrySampleShift =
                     Math.Max(
@@ -331,6 +333,52 @@ internal static class CurveFillRibbonArcRefiner
                             geometricThroughRoundnessSum +=
                                 alternativeDiagnostics.Roundness;
                         }
+                    }
+                }
+
+                if (broadSparseArch &&
+                    mainArcExtractedForRegion &&
+                    selfSymmetryRecoveredForRegion &&
+                    CurveFillRibbonSymmetricThroughPointsFitter.TryFit(
+                        model,
+                        out var symmetricThroughFit,
+                        out var symmetricThroughDiagnostics))
+                {
+                    var currentRoughness =
+                        CurveFillRibbonSmoothness.Measure(
+                            fit.Points);
+                    var symmetricRoughness =
+                        CurveFillRibbonSmoothness.Measure(
+                            symmetricThroughFit.Points);
+
+                    if (CurveFillRibbonFitSelector.PreferGeometricThroughPoints(
+                            fit,
+                            currentRoughness,
+                            symmetricThroughFit,
+                            symmetricRoughness))
+                    {
+                        fit =
+                            symmetricThroughFit;
+
+                        if (selectedToolFit)
+                        {
+                            selectedToolFit = false;
+                            geometricThroughFits++;
+                        }
+
+                        geometricThroughRoundnessSum +=
+                            symmetricThroughDiagnostics.Roundness;
+                        lastGeometricThroughReason =
+                            "symmetric-" +
+                            symmetricThroughDiagnostics.Reason;
+                        maxGeometricThroughDeviation =
+                            Math.Max(
+                                maxGeometricThroughDeviation,
+                                symmetricThroughDiagnostics.MaximumDeviation);
+                        maxGeometricThroughP95Deviation =
+                            Math.Max(
+                                maxGeometricThroughP95Deviation,
+                                symmetricThroughDiagnostics.Percentile95Deviation);
                     }
                 }
 
