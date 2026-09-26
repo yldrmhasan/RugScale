@@ -157,6 +157,15 @@ internal static class CurveFillRibbonWidthProfileRegularizer
                 0.95) *
             1.06;
 
+        var minimumWidth =
+            Math.Max(
+                0.45,
+                lower);
+        var maximumWidth =
+            Math.Max(
+                lower,
+                upper);
+
         for (var index = 0;
              index < smoothed.Length;
              index++)
@@ -165,13 +174,35 @@ internal static class CurveFillRibbonWidthProfileRegularizer
                 Math.Clamp(
                     smoothed[index] *
                     scale,
-                    Math.Max(
-                        0.45,
-                        lower),
-                    Math.Max(
-                        lower,
-                        upper));
+                    minimumWidth,
+                    maximumWidth);
         }
+
+        // Lock the stable ribbon terminals to robust source averages, then bound local slope in
+        // both directions. This prevents the enlarged band from breathing in/out as the source
+        // skeleton alternates raster phase, while still allowing genuine low-frequency taper.
+        smoothed[0] =
+            Math.Clamp(
+                firstWidth,
+                minimumWidth,
+                maximumWidth);
+        smoothed[^1] =
+            Math.Clamp(
+                lastWidth,
+                minimumWidth,
+                maximumWidth);
+
+        var maximumAdjacentDelta =
+            Math.Max(
+                0.10,
+                mean *
+                    0.08);
+
+        LimitAdjacentSlope(
+            smoothed,
+            maximumAdjacentDelta,
+            minimumWidth,
+            maximumWidth);
 
         var beforeVariation =
             MeanAbsoluteAdjacentDelta(
@@ -280,6 +311,57 @@ internal static class CurveFillRibbonWidthProfileRegularizer
         }
 
         return result;
+    }
+
+    private static void LimitAdjacentSlope(
+        double[] values,
+        double maximumDelta,
+        double minimumWidth,
+        double maximumWidth)
+    {
+        if (values.Length < 2)
+            return;
+
+        // Forward pass protects the start terminal; backward pass protects the end terminal. Two
+        // iterations let the constraints meet in the middle without introducing a one-sided bias.
+        for (var pass = 0;
+             pass < 2;
+             pass++)
+        {
+            for (var index = 1;
+                 index < values.Length;
+                 index++)
+            {
+                values[index] =
+                    Math.Clamp(
+                        values[index],
+                        Math.Max(
+                            minimumWidth,
+                            values[index - 1] -
+                            maximumDelta),
+                        Math.Min(
+                            maximumWidth,
+                            values[index - 1] +
+                            maximumDelta));
+            }
+
+            for (var index = values.Length - 2;
+                 index >= 0;
+                 index--)
+            {
+                values[index] =
+                    Math.Clamp(
+                        values[index],
+                        Math.Max(
+                            minimumWidth,
+                            values[index + 1] -
+                            maximumDelta),
+                        Math.Min(
+                            maximumWidth,
+                            values[index + 1] +
+                            maximumDelta));
+            }
+        }
     }
 
     private static double Percentile(
