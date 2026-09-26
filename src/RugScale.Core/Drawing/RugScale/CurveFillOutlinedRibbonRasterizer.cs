@@ -27,7 +27,8 @@ internal static class CurveFillOutlinedRibbonRasterizer
         LeafPetalArcModel model,
         ElegantArcFit fit,
         IReadOnlySet<byte> protectedStrokeColors,
-        out int changed)
+        out int changed,
+        bool restrictToFittedSweep = false)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
@@ -191,6 +192,16 @@ internal static class CurveFillOutlinedRibbonRasterizer
                     continue;
                 }
 
+                if (restrictToFittedSweep &&
+                    !CurveFillRibbonRasterScope.Contains(
+                        fit,
+                        sourceX,
+                        sourceY,
+                        extraMargin: BoundaryBandRadius))
+                {
+                    continue;
+                }
+
                 var key =
                     y *
                     destination.Width +
@@ -284,6 +295,16 @@ internal static class CurveFillOutlinedRibbonRasterizer
                         sourceX,
                         sourceY,
                         CompoundBoundaryBandRadius))
+                {
+                    continue;
+                }
+
+                if (restrictToFittedSweep &&
+                    !CurveFillRibbonRasterScope.Contains(
+                        fit,
+                        sourceX,
+                        sourceY,
+                        extraMargin: CompoundBoundaryBandRadius))
                 {
                     continue;
                 }
