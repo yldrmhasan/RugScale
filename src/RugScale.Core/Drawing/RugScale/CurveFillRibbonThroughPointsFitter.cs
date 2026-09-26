@@ -13,7 +13,10 @@ namespace RugScale.Core.Drawing;
 internal static class CurveFillRibbonThroughPointsFitter
 {
     private const int ControlCount = 5;
-    private const int ContinuousSamples = 144;
+    private const int ScoringSamples = 144;
+    private const int MinimumFitSamples = 144;
+    private const int MaximumFitSamples = 512;
+    private const double FitSamplesPerControlPixel = 1.90;
     private const double MaximumP95Deviation = 2.80;
     private const double MaximumDeviation = 3.80;
 
@@ -467,7 +470,7 @@ internal static class CurveFillRibbonThroughPointsFitter
         double roundness)
     {
         var curve =
-            new (double X, double Y)[ContinuousSamples];
+            new (double X, double Y)[ScoringSamples];
 
         for (var index = 0;
              index < curve.Length;
@@ -659,22 +662,50 @@ internal static class CurveFillRibbonThroughPointsFitter
         double roundness,
         IReadOnlyList<LeafPetalAxisSample> source)
     {
+        var controlLength = 0d;
+
+        for (var index = 1;
+             index < controls.Count;
+             index++)
+        {
+            var dx =
+                controls[index].X -
+                controls[index - 1].X;
+            var dy =
+                controls[index].Y -
+                controls[index - 1].Y;
+
+            controlLength +=
+                Math.Sqrt(
+                    dx *
+                        dx +
+                    dy *
+                        dy);
+        }
+
+        var fitSamples =
+            Math.Clamp(
+                (int)Math.Ceiling(
+                    controlLength *
+                    FitSamplesPerControlPixel),
+                MinimumFitSamples,
+                MaximumFitSamples);
         var result =
             new List<ElegantArcPoint>(
-                ContinuousSamples);
+                fitSamples);
         var halfWidth =
             RobustRibbonHalfWidth(
                 source);
 
         for (var index = 0;
-             index < ContinuousSamples;
+             index < fitSamples;
              index++)
         {
             var t =
                 index /
                 (double)Math.Max(
                     1,
-                    ContinuousSamples - 1);
+                    fitSamples - 1);
             var point =
                 CurveRasterizer.Evaluate(
                     controls,
