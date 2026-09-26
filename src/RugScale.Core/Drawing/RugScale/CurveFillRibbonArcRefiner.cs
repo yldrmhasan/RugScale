@@ -839,6 +839,13 @@ internal static class CurveFillRibbonArcRefiner
             var alternativeThroughMaximumDeviation = 0d;
             var alternativeThroughP95Deviation = 0d;
             var alternativeThroughRoundness = 0d;
+            var symmetricThroughSafe = false;
+            var symmetricThroughAxis = "none";
+            var symmetricThroughMirrorError = 0d;
+            var symmetricThroughSmoothness = double.PositiveInfinity;
+            var symmetricThroughMaximumDeviation = 0d;
+            var symmetricThroughP95Deviation = 0d;
+            var symmetricThroughRoundness = 0d;
             var skeletonPixels = 0;
             var endpoints = 0;
             var principalPathPixels = 0;
@@ -1022,6 +1029,49 @@ internal static class CurveFillRibbonArcRefiner
                                         preferredThroughDiagnostics.Roundness;
                                 }
                             }
+
+                            if (broadSparseArch &&
+                                mainArcExtracted &&
+                                symmetryRecovered &&
+                                CurveFillRibbonSymmetricThroughPointsFitter.TryFit(
+                                    model,
+                                    out var symmetricPreferredFit,
+                                    out var symmetricPreferredDiagnostics))
+                            {
+                                symmetricThroughSafe = true;
+                                symmetricThroughAxis =
+                                    symmetricPreferredDiagnostics.Axis;
+                                symmetricThroughMirrorError =
+                                    symmetricPreferredDiagnostics.MeanMirrorError;
+                                symmetricThroughSmoothness =
+                                    symmetricPreferredDiagnostics.Smoothness;
+                                symmetricThroughMaximumDeviation =
+                                    symmetricPreferredDiagnostics.MaximumDeviation;
+                                symmetricThroughP95Deviation =
+                                    symmetricPreferredDiagnostics.Percentile95Deviation;
+                                symmetricThroughRoundness =
+                                    symmetricPreferredDiagnostics.Roundness;
+
+                                var selectedRoughness =
+                                    CurveFillRibbonSmoothness.Measure(
+                                        fit.Points);
+
+                                if (CurveFillRibbonFitSelector.PreferGeometricThroughPoints(
+                                        fit,
+                                        selectedRoughness,
+                                        symmetricPreferredFit,
+                                        symmetricPreferredDiagnostics.Smoothness))
+                                {
+                                    fit =
+                                        symmetricPreferredFit;
+                                    fitKind =
+                                        "through-symmetric-preferred";
+                                    curveFamily =
+                                        CurveType.SplineThroughPoints.ToString();
+                                    roundness =
+                                        symmetricPreferredDiagnostics.Roundness;
+                                }
+                            }
                         }
                         else if (broadSparseArch)
                         {
@@ -1178,6 +1228,29 @@ internal static class CurveFillRibbonArcRefiner
                                 alternativeThroughDiagnostics.Roundness;
                         }
 
+                        if (broadSparseArch &&
+                            mainArcExtracted &&
+                            symmetryRecovered &&
+                            CurveFillRibbonSymmetricThroughPointsFitter.TryFit(
+                                model,
+                                out var symmetricAlternativeFit,
+                                out var symmetricAlternativeDiagnostics))
+                        {
+                            symmetricThroughSafe = true;
+                            symmetricThroughAxis =
+                                symmetricAlternativeDiagnostics.Axis;
+                            symmetricThroughMirrorError =
+                                symmetricAlternativeDiagnostics.MeanMirrorError;
+                            symmetricThroughSmoothness =
+                                symmetricAlternativeDiagnostics.Smoothness;
+                            symmetricThroughMaximumDeviation =
+                                symmetricAlternativeDiagnostics.MaximumDeviation;
+                            symmetricThroughP95Deviation =
+                                symmetricAlternativeDiagnostics.Percentile95Deviation;
+                            symmetricThroughRoundness =
+                                symmetricAlternativeDiagnostics.Roundness;
+                        }
+
                         status =
                             accepted
                                 ? "accepted"
@@ -1236,6 +1309,13 @@ internal static class CurveFillRibbonArcRefiner
                     alternativeThroughMaximumDeviation,
                     alternativeThroughP95Deviation,
                     alternativeThroughRoundness,
+                    symmetricThroughSafe,
+                    symmetricThroughAxis,
+                    symmetricThroughMirrorError,
+                    symmetricThroughSmoothness,
+                    symmetricThroughMaximumDeviation,
+                    symmetricThroughP95Deviation,
+                    symmetricThroughRoundness,
                     accepted,
                     status));
         }
@@ -1424,6 +1504,13 @@ internal readonly record struct RibbonArcCandidateStage(
     double AlternativeThroughMaximumDeviation,
     double AlternativeThroughP95Deviation,
     double AlternativeThroughRoundness,
+    bool SymmetricThroughSafe,
+    string SymmetricThroughAxis,
+    double SymmetricThroughMirrorError,
+    double SymmetricThroughSmoothness,
+    double SymmetricThroughMaximumDeviation,
+    double SymmetricThroughP95Deviation,
+    double SymmetricThroughRoundness,
     bool Accepted,
     string Status);
 
