@@ -650,6 +650,36 @@ internal static class CurveFillRibbonArcRefiner
                          pair.Model.Candidate.Elongation)
                      .Take(MaximumRefinedRegions))
         {
+            var scopedMainArc =
+                mainArcScopedRegions.Contains(
+                    item.Model.Candidate.Region);
+
+            // This is the first genuinely authoritative redraw path in the ribbon pipeline.
+            // Ordinary safe fits receive it only when their centreline stays within a very tight
+            // source corridor and has no curvature reversal. Extracted main arcs are separately
+            // source-scoped, so they may use the same redraw even when a compound fit needs a
+            // wider deviation budget.
+            var trueRedrawAuthority =
+                scopedMainArc ||
+                item.Fit.CurvatureSignFlips == 0 &&
+                item.Fit.MaximumCenterlineDeviation <=
+                    1.75;
+
+            if (trueRedrawAuthority &&
+                CurveFillTrueRibbonRasterizer.TryApply(
+                    source,
+                    destination,
+                    item.Model,
+                    item.Fit,
+                    protectedStrokeColors,
+                    out var trueRedrawChanged))
+            {
+                outlinedRefined++;
+                changed +=
+                    trueRedrawChanged;
+                continue;
+            }
+
             if (CurveFillOutlinedRibbonRasterizer.TryApply(
                     source,
                     destination,
@@ -658,8 +688,7 @@ internal static class CurveFillRibbonArcRefiner
                     protectedStrokeColors,
                     out var outlinedChanged,
                     restrictToFittedSweep:
-                        mainArcScopedRegions.Contains(
-                            item.Model.Candidate.Region)))
+                        scopedMainArc))
             {
                 outlinedRefined++;
                 changed +=
@@ -675,8 +704,7 @@ internal static class CurveFillRibbonArcRefiner
                     item.Fit,
                     protectedStrokeColors,
                     restrictToFittedSweep:
-                        mainArcScopedRegions.Contains(
-                            item.Model.Candidate.Region));
+                        scopedMainArc);
         }
 
         return new RibbonArcRefinementDiagnostics(
