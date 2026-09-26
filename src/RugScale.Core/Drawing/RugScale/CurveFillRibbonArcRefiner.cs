@@ -194,10 +194,16 @@ internal static class CurveFillRibbonArcRefiner
 
             if (!LooksLikeDesignerRibbon(
                     model,
-                    out _))
+                    out var ribbonShapeDiagnostics))
             {
                 continue;
             }
+
+            var sparseTaperSweep =
+                string.Equals(
+                    ribbonShapeDiagnostics.Reason,
+                    "ok-sparse-taper",
+                    StringComparison.Ordinal);
 
             var mainArcExtractedForRegion = false;
 
@@ -400,8 +406,15 @@ internal static class CurveFillRibbonArcRefiner
                                 bezierFit;
                             cubicBezierFits++;
                         }
-                        else if (mirrorSourceFused)
+                        else if (mirrorSourceFused ||
+                                 sparseTaperSweep)
                         {
+                            // Mirror-fused source remains the strongest authority. A second,
+                            // deliberately narrow authority is the sparse-taper classifier:
+                            // elongated, low-fill, high-coverage sweeps whose only reason for not
+                            // looking like a constant-width ribbon is a designer taper. These are
+                            // exactly the C069 long ornamental curls that previously reached an
+                            // unsafe macro spline and were therefore left block-scaled.
                             compoundAttempts++;
 
                             if (CurveFillRibbonCompoundFitter.TryFit(
@@ -842,6 +855,11 @@ internal static class CurveFillRibbonArcRefiner
                         LooksLikeDesignerRibbon(
                             model,
                             out var ribbonShapeDiagnostics);
+                    var sparseTaperSweep =
+                        string.Equals(
+                            ribbonShapeDiagnostics.Reason,
+                            "ok-sparse-taper",
+                            StringComparison.Ordinal);
                     ribbonShapeReason =
                         ribbonShapeDiagnostics.Reason;
                     ribbonMeanWidth =
@@ -1045,7 +1063,8 @@ internal static class CurveFillRibbonArcRefiner
                                 curveFamily =
                                     CurveType.Bezier.ToString();
                             }
-                            else if (mirrorSourceFused)
+                            else if (mirrorSourceFused ||
+                                     sparseTaperSweep)
                             {
                                 compoundAttempted = true;
 
