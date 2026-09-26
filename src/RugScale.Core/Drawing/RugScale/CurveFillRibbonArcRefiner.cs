@@ -189,7 +189,8 @@ internal static class CurveFillRibbonArcRefiner
             axisBuilt++;
 
             if (!LooksLikeDesignerRibbon(
-                    model))
+                    model,
+                    out _))
             {
                 continue;
             }
@@ -801,6 +802,12 @@ internal static class CurveFillRibbonArcRefiner
             var endpoints = 0;
             var principalPathPixels = 0;
             var principalPathCoverage = 0d;
+            var ribbonShapeReason = "not-attempted";
+            var ribbonMeanWidth = 0d;
+            var ribbonWidthCoefficientVariation = 0d;
+            var ribbonTerminalRatio = 0d;
+            var ribbonMaximumBend = 0d;
+            var ribbonRequiredBend = 0d;
 
             if (prefilterAccepted)
             {
@@ -829,7 +836,20 @@ internal static class CurveFillRibbonArcRefiner
                 {
                     designerRibbon =
                         LooksLikeDesignerRibbon(
-                            model);
+                            model,
+                            out var ribbonShapeDiagnostics);
+                    ribbonShapeReason =
+                        ribbonShapeDiagnostics.Reason;
+                    ribbonMeanWidth =
+                        ribbonShapeDiagnostics.MeanWidth;
+                    ribbonWidthCoefficientVariation =
+                        ribbonShapeDiagnostics.WidthCoefficientVariation;
+                    ribbonTerminalRatio =
+                        ribbonShapeDiagnostics.TerminalRatio;
+                    ribbonMaximumBend =
+                        ribbonShapeDiagnostics.MaximumBend;
+                    ribbonRequiredBend =
+                        ribbonShapeDiagnostics.RequiredBend;
 
                     if (!designerRibbon)
                     {
@@ -1184,6 +1204,12 @@ internal static class CurveFillRibbonArcRefiner
                     principalPathPixels,
                     principalPathCoverage,
                     designerRibbon,
+                    ribbonShapeReason,
+                    ribbonMeanWidth,
+                    ribbonWidthCoefficientVariation,
+                    ribbonTerminalRatio,
+                    ribbonMaximumBend,
+                    ribbonRequiredBend,
                     symmetryRecovered,
                     symmetryAxis,
                     mirrorAgreement,
@@ -1234,13 +1260,30 @@ internal static class CurveFillRibbonArcRefiner
     }
 
     private static bool LooksLikeDesignerRibbon(
-        LeafPetalArcModel model)
+        LeafPetalArcModel model,
+        out RibbonShapeDiagnostics diagnostics)
     {
         var samples =
             model.Samples;
 
+        diagnostics =
+            new RibbonShapeDiagnostics(
+                "not-evaluated",
+                0d,
+                0d,
+                0d,
+                0d,
+                0d);
+
         if (samples.Count < 8)
+        {
+            diagnostics =
+                diagnostics with
+                {
+                    Reason = "too-few-samples",
+                };
             return false;
+        }
 
         var widths =
             samples
@@ -1253,7 +1296,17 @@ internal static class CurveFillRibbonArcRefiner
             widths.Average();
 
         if (meanWidth <= 0.60)
+        {
+            diagnostics =
+                new RibbonShapeDiagnostics(
+                    "mean-width",
+                    meanWidth,
+                    0d,
+                    0d,
+                    0d,
+                    0d);
             return false;
+        }
 
         var variance =
             widths.Average(width =>
@@ -1273,6 +1326,14 @@ internal static class CurveFillRibbonArcRefiner
         if (coefficientVariation >
             MaximumWidthCoefficientVariation)
         {
+            diagnostics =
+                new RibbonShapeDiagnostics(
+                    "width-variation",
+                    meanWidth,
+                    coefficientVariation,
+                    0d,
+                    0d,
+                    0d);
             return false;
         }
 
@@ -1305,6 +1366,14 @@ internal static class CurveFillRibbonArcRefiner
         if (terminalRatio <
             MinimumTerminalWidthRatio)
         {
+            diagnostics =
+                new RibbonShapeDiagnostics(
+                    "terminal-width-ratio",
+                    meanWidth,
+                    coefficientVariation,
+                    terminalRatio,
+                    0d,
+                    0d);
             return false;
         }
 
@@ -1321,12 +1390,22 @@ internal static class CurveFillRibbonArcRefiner
         var chordLength =
             Math.Sqrt(
                 chordX *
-                chordX +
+                    chordX +
                 chordY *
-                chordY);
+                    chordY);
 
         if (chordLength <= 1e-9)
+        {
+            diagnostics =
+                new RibbonShapeDiagnostics(
+                    "degenerate-chord",
+                    meanWidth,
+                    coefficientVariation,
+                    terminalRatio,
+                    0d,
+                    0d);
             return false;
+        }
 
         var maximumBend = 0d;
 
@@ -1353,12 +1432,33 @@ internal static class CurveFillRibbonArcRefiner
                 MinimumAbsoluteBend,
                 model.Candidate.MajorExtent *
                 MinimumRelativeBend);
+        var accepted =
+            maximumBend >=
+            requiredBend;
 
-        return maximumBend >=
-               requiredBend;
+        diagnostics =
+            new RibbonShapeDiagnostics(
+                accepted
+                    ? "ok"
+                    : "insufficient-bend",
+                meanWidth,
+                coefficientVariation,
+                terminalRatio,
+                maximumBend,
+                requiredBend);
+
+        return accepted;
     }
 }
 
+
+internal readonly record struct RibbonShapeDiagnostics(
+    string Reason,
+    double MeanWidth,
+    double WidthCoefficientVariation,
+    double TerminalRatio,
+    double MaximumBend,
+    double RequiredBend);
 
 internal readonly record struct RibbonArcCandidateStage(
     byte Color,
@@ -1378,6 +1478,12 @@ internal readonly record struct RibbonArcCandidateStage(
     int PrincipalPathPixels,
     double PrincipalPathCoverage,
     bool DesignerRibbon,
+    string RibbonShapeReason,
+    double RibbonMeanWidth,
+    double RibbonWidthCoefficientVariation,
+    double RibbonTerminalRatio,
+    double RibbonMaximumBend,
+    double RibbonRequiredBend,
     bool SymmetryRecovered,
     string SymmetryAxis,
     double MirrorAgreement,
