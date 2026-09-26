@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** `cdfbf289634933aae5667cfb87571c7ee5fd7992` — sparse-taper compound fallback; CI/audit result must be recorded below after completion.
+**Last documented experiment:** `40a311974c0daeaf7e140fb87bd39544d402e88e` — scope sparse-taper redraw to one dominant sweep; CI/audit pending at this exact documentation point.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -204,7 +204,7 @@ a separate `ok-sparse-taper` authority requires all of:
 
 Decision: **keep**.
 
-### 4.8 Sparse-taper compound fallback — CURRENT EXPERIMENT
+### 4.8 Sparse-taper compound fallback — ADJUST, DO NOT USE UNSCOPED
 
 Commit:
 `cdfbf289634933aae5667cfb87571c7ee5fd7992`
@@ -214,18 +214,49 @@ when a region is explicitly classified `ok-sparse-taper`, it may try the low-fre
 fitter even without successful mirror-source fusion. Ordinary ribbons do **not** receive this extra
 authority.
 
-Why:
-the C069 focus sweep now reaches geometric fitting, but its fallback macro-spline was unsafe
-(max deviation ~4.225, two curvature flips), so no specialist redraw was applied.
+C069 focus result for `83,146 - 175,348`:
+- compound attempted: yes,
+- compound reason: `ok`,
+- p95 deviation: **1.385463 px**,
+- maximum deviation: **3.453857 px**,
+- curvature flips: **0**,
+- selected smoothness: **0.158869**,
+- candidate became accepted.
+
+Visual result:
+the intended long tapered curve started receiving geometric redraw, but the source component has
+**5 skeleton endpoints**. Applying the compound fit to the whole region created visible white
+cut/gap artefacts around secondary structure. Numerical safety alone did not protect multi-endpoint
+ownership.
+
+Decision: **ADJUST**. Keep the sparse-taper authority, but compound redraw must not operate on the
+whole multi-endpoint region.
+
+### 4.9 Dominant one-sided sweep scope for sparse taper — CURRENT EXPERIMENT
+
+Commits:
+- `7652987da10784038e124c5e4fce46a33c89c6ba` — expose generic one-sided sweep extraction,
+- `40a311974c0daeaf7e140fb87bd39544d402e88e` — require dominant sweep before sparse-taper compound redraw.
+
+Change:
+- mirror-fused one-sided main-arc extraction was generalized as
+  `TryExtractOneSidedSweep`,
+- an `ok-sparse-taper` region with more than two skeleton endpoints gets compound authority only
+  if a coherent dominant sweep is extracted,
+- successful extraction marks the region as main-arc-scoped so rasterization is restricted to the
+  fitted sweep,
+- if extraction fails, the multi-endpoint sparse taper is **not** allowed to use compound fallback.
+
+Goal:
+retain the useful smooth long sweep while leaving hook/branch ownership outside that sweep untouched.
 
 Status:
-**pending C069/four-design audit at the time this entry was written.**
-After CI finishes, update this section with:
-- accepted/rejected result for `83,146 - 175,348`,
-- compound p95/max deviation,
-- selected smoothness,
-- actual BMP visual result,
-- decision KEEP / REVERT / ADJUST.
+**CI / C069 / four-design audit pending at the time this entry was written.**
+The next update must record:
+- whether the C069 focus region still becomes accepted,
+- `main_arc_reason` and kept fraction,
+- whether the white gap artefact disappears in the actual BMP,
+- whether all validation workflows remain green.
 
 ## 5. Do-not-repeat rules
 
