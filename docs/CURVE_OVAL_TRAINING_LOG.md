@@ -358,6 +358,63 @@ Status:
 **CI / C069 / four-design validation pending at the time this entry was written.**
 Actual BMP must be inspected before this selector is declared KEEP.
 
+### 4.12 Root-cause discovery: boundary smoothing is not true curve redraw — ARCHITECTURAL FINDING
+
+User validation of the latest BMP showed that curve geometry was still visibly nonsensical despite
+accepted fits and high pixel metrics.
+
+Code inspection exposed the underlying reason:
+
+- `LeafPetalArcRasterizer.Apply` only edits cells near the original source boundary
+  (`BoundaryBandRadius = 2.0` source pixels),
+- `CurveFillOutlinedRibbonRasterizer.TryApply` also limits both fill and outline edits to local
+  source-boundary corridors,
+- topology-anchor checks intentionally keep many old staircase pixels.
+
+Therefore even a mathematically good fitted centerline cannot become the authoritative target
+shape. The pipeline was still fundamentally **resizing first, then touching up the edge**.
+
+This explains the user's repeated observation that the result looks resized rather than redrawn.
+
+Decision:
+**do not continue trying to solve this only by fitter thresholds / smoothing parameters.**
+A separate authoritative raster path is required.
+
+### 4.13 Authoritative fitted-ribbon redraw — CURRENT EXPERIMENT
+
+Commits:
+- `f2e0b678909221ee4ecac47a41ff910babb56eff` — expose existing outlined-ribbon ownership helpers,
+- `85c92d1759a2da629fd025b83ff3518c25bc12b8` — add `CurveFillTrueRibbonRasterizer`,
+- `9e3f62ca9794839477e7f6b4a22624b5c56dc87b` — route high-confidence ribbons through true redraw.
+
+New behaviour:
+- build the complete fitted fill polygon from centerline + half-width,
+- build the dedicated outline polygon from the same geometry expanded by one source pixel,
+- inside the fitted sweep's source-bounded tube, the **fit mask is authoritative**:
+  - target fill mask -> region color,
+  - target outline ring -> dominant dedicated outline color,
+  - stale old block-scaled fill/outline outside the fit -> restore nearest source exterior color,
+- other protected stroke roles remain hard barriers,
+- if true-redraw authority is not available, the old conservative outlined/boundary rasterizers
+  remain fallback paths.
+
+Initial authority gate:
+- any extracted/scoped main arc, OR
+- zero curvature flips with maximum centerline deviation <= **1.75 source px**,
+- plus the existing requirement that the source region has one dominant protected outline role.
+
+Important:
+this is the first experiment that can genuinely replace the old enlarged staircase with the fitted
+curve instead of merely shaving it locally.
+
+Status:
+**CI / C069 / four-design audit running at the time this entry was written.**
+Before keeping this path:
+1. inspect the real C069 BMP and the persistent left-spiral focus crop,
+2. verify no protected third-color strokes are crossed,
+3. verify B163A and four-design regressions remain green,
+4. compare against the last safe BMP visually, not only by exact F1.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
