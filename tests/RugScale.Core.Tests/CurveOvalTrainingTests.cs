@@ -579,22 +579,13 @@ public sealed class CurveOvalTrainingTests
                     scaleY),
                 destination.Width,
                 destination.Height);
-        var outlinePoints =
-            fit.Points
-                .Select(point =>
-                    point with
-                    {
-                        HalfWidth =
-                            point.HalfWidth +
-                            1d,
-                    })
-                .ToArray();
         var outerMask =
             LeafPetalArcRasterizer.RasterizePolygon(
-                LeafPetalArcRasterizer.BuildTargetPolygon(
-                    outlinePoints,
+                LeafPetalArcRasterizer.BuildTargetExpandedPolygon(
+                    fit.Points,
                     scaleX,
-                    scaleY),
+                    scaleY,
+                    additionalTargetPixels: 1d),
                 destination.Width,
                 destination.Height);
 
@@ -717,6 +708,73 @@ public sealed class CurveOvalTrainingTests
              fillMask.Count) *
                 0.75,
             $"Expected the fitted outline ring to be materially rebuilt, got {correctedOutline}/{outerMask.Count - fillMask.Count}.");
+    }
+
+    [Fact]
+    public void TargetExpandedPolygon_KeepsDedicatedOutlineInTargetPixelUnits()
+    {
+        var points =
+            Enumerable.Range(
+                    0,
+                    81)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        80d;
+
+                    return new ElegantArcPoint(
+                        10d +
+                        40d *
+                            t,
+                        20d +
+                        6d *
+                            Math.Sin(
+                                Math.PI *
+                                t),
+                        3d);
+                })
+                .ToArray();
+
+        var fill =
+            LeafPetalArcRasterizer.BuildTargetPolygon(
+                points,
+                scaleX: 2d,
+                scaleY: 2d);
+        var expanded =
+            LeafPetalArcRasterizer.BuildTargetExpandedPolygon(
+                points,
+                scaleX: 2d,
+                scaleY: 2d,
+                additionalTargetPixels: 1d);
+
+        Assert.Equal(
+            fill.Count,
+            expanded.Count);
+
+        // At the middle of this nearly horizontal arch the left side is approximately the first
+        // half of the polygon and the extra outline must be one TARGET pixel, not two pixels
+        // merely because the design was enlarged 2x.
+        var mid =
+            points.Length /
+            2;
+        var dx =
+            expanded[mid].X -
+            fill[mid].X;
+        var dy =
+            expanded[mid].Y -
+            fill[mid].Y;
+        var distance =
+            Math.Sqrt(
+                dx *
+                    dx +
+                dy *
+                    dy);
+
+        Assert.InRange(
+            distance,
+            0.95,
+            1.05);
     }
 
     private static LeafPetalArcModel Model(
