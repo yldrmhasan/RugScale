@@ -114,6 +114,7 @@ internal static class ToolFaithfulPixelCordOverlay
         var corridorClippedPixels = 0;
         var learnedRoundnessSum = 0d;
         var styleFitCacheHits = 0;
+        var completePathRecoveries = 0;
 
         // Repeated carpet ornaments frequently contain the exact same 1x1 curve translated many
         // times. Learn its Curve family once and reuse the translation-invariant fit. This both
@@ -257,6 +258,37 @@ internal static class ToolFaithfulPixelCordOverlay
                     source.Width,
                     pixelCord);
 
+            // Pixel Cord inserts orthogonal bridge cells between diagonal Curve pixels. On a
+            // smooth oval those bridge cells can touch a nearby part of the same stroke and make
+            // the raw graph look artificially branched, causing TraceChains to split one designer
+            // curve into many fragments. For a small two-endpoint component, recover the COMPLETE
+            // endpoint-to-endpoint Pixel-Cord drawing order. True branched networks continue through
+            // the conservative multi-chain path below.
+            var recoveredSmoothOval =
+                false;
+
+            if (component.TrustedStrokeRole &&
+                pixelCord &&
+                TryTraceCompletePixelCordPath(
+                    component,
+                    source.Width,
+                    out var completePath) &&
+                LooksLikeSmoothOvalRecovery(
+                    completePath))
+            {
+                // Recover the original bridge-connected drawing order rather than taking a graph
+                // shortest path. The complete path must visit every component pixel exactly once,
+                // so false local contacts cannot cut across an oval shoulder.
+                chains =
+                new[]
+                {
+                    completePath,
+                };
+                completePathRecoveries++;
+                recoveredSmoothOval =
+                    true;
+            }
+
             if (component.TrustedStrokeRole)
             {
                 foreach (var chain in chains)
@@ -265,6 +297,7 @@ internal static class ToolFaithfulPixelCordOverlay
                         continue;
 
                     var hasSourceCusp =
+                        !recoveredSmoothOval &&
                         HasSourceCusp(
                             chain);
 
@@ -343,9 +376,19 @@ internal static class ToolFaithfulPixelCordOverlay
                                         pixelCord)
                                     .ToHashSet();
 
-                            if (IsLearnedCurveSafeAgainstSourceGraph(
-                                    learnedSet,
-                                    fallbackSet))
+                            var learnedCurveSafe =
+                                recoveredSmoothOval
+                                    ? IsLearnedCurveSafeAgainstSourceGraph(
+                                        learnedSet,
+                                        fallbackSet,
+                                        radius: 2,
+                                        minimumLearnedSupport: 0.96,
+                                        minimumGraphSupport: 0.86)
+                                    : IsLearnedCurveSafeAgainstSourceGraph(
+                                        learnedSet,
+                                        fallbackSet);
+
+                            if (learnedCurveSafe)
                             {
                                 rendered =
                                     learnedSet;
@@ -522,7 +565,9 @@ internal static class ToolFaithfulPixelCordOverlay
             learnedCurves == 0
                 ? 0d
                 : learnedRoundnessSum /
-                  learnedCurves);
+                  learnedCurves,
+            CompletePathRecoveries:
+                completePathRecoveries);
     }
 
     private static void ClearProjectedStrokeResidue(
@@ -1660,7 +1705,10 @@ internal static class ToolFaithfulPixelCordOverlay
 
     private static bool IsLearnedCurveSafeAgainstSourceGraph(
         IReadOnlySet<(int X, int Y)> learned,
-        IReadOnlySet<(int X, int Y)> sourceGraph)
+        IReadOnlySet<(int X, int Y)> sourceGraph,
+        int radius = 1,
+        double minimumLearnedSupport = 0.98,
+        double minimumGraphSupport = 0.90)
     {
         if (learned.Count == 0 ||
             sourceGraph.Count == 0)
@@ -1673,7 +1721,7 @@ internal static class ToolFaithfulPixelCordOverlay
                 HasPointNear(
                     sourceGraph,
                     point,
-                    radius: 1)) /
+                    radius)) /
             (double)learned.Count;
 
         var graphSupported =
@@ -1681,14 +1729,16 @@ internal static class ToolFaithfulPixelCordOverlay
                 HasPointNear(
                     learned,
                     point,
-                    radius: 1)) /
+                    radius)) /
             (double)sourceGraph.Count;
 
         // Almost every learned target pixel must be source-graph supported. Recall is slightly
         // looser because a smooth curve may legitimately skip a staircase shoulder while still
         // following exactly the same visual arc.
-        return learnedSupported >= 0.98 &&
-               graphSupported >= 0.90;
+        return learnedSupported >=
+               minimumLearnedSupport &&
+               graphSupported >=
+               minimumGraphSupport;
     }
 
     private static IReadOnlyList<(int X, int Y)> ConstrainToSourceStrokeCorridor(
@@ -1891,6 +1941,569 @@ internal static class ToolFaithfulPixelCordOverlay
 
             previous = current;
         }
+    }
+
+    private static bool TryTraceCompletePixelCordPath(
+        StrokeComponent component,
+        int sourceWidth,
+        out List<(int X, int Y)> path)
+    {
+        path =
+            new List<(int X, int Y)>();
+
+        const int MaximumSearchPixels = 512;
+        const int MaximumSearchStates = 250_000;
+        const int MaximumOvalSolutions = 48;
+
+        if (component.Pixels.Count <
+                MinimumPathPixels ||
+            component.Pixels.Count >
+                MaximumSearchPixels)
+        {
+            return false;
+        }
+
+        var set =
+            component.Pixels
+                .ToHashSet();
+        var adjacency =
+            new Dictionary<int, List<int>>(
+                set.Count);
+
+        foreach (var pixel in set)
+        {
+            var x =
+                pixel %
+                sourceWidth;
+            var y =
+                pixel /
+                sourceWidth;
+            var neighbors =
+                new List<int>(4);
+
+            foreach (var (dx, dy) in FourDirections)
+            {
+                var next =
+                    (y + dy) *
+                    sourceWidth +
+                    (x + dx);
+
+                if (set.Contains(next))
+                    neighbors.Add(next);
+            }
+
+            adjacency[pixel] =
+                neighbors;
+        }
+
+        var endpoints =
+            adjacency
+                .Where(pair =>
+                    pair.Value.Count == 1)
+                .Select(pair =>
+                    pair.Key)
+                .Order()
+                .ToArray();
+
+        if (endpoints.Length != 2)
+            return false;
+
+        static int PixelCordDirectionScore(
+            IReadOnlyList<int> orderedPixels,
+            int width)
+        {
+            var score = 0;
+
+            for (var index = 1;
+                 index + 1 <
+                 orderedPixels.Count;
+                 index++)
+            {
+                var previous =
+                    orderedPixels[index - 1];
+                var bridge =
+                    orderedPixels[index];
+                var next =
+                    orderedPixels[index + 1];
+
+                var previousX =
+                    previous %
+                    width;
+                var previousY =
+                    previous /
+                    width;
+                var bridgeX =
+                    bridge %
+                    width;
+                var bridgeY =
+                    bridge /
+                    width;
+                var nextX =
+                    next %
+                    width;
+                var nextY =
+                    next /
+                    width;
+
+                if (Math.Abs(
+                        nextX -
+                        previousX) != 1 ||
+                    Math.Abs(
+                        nextY -
+                        previousY) != 1)
+                {
+                    continue;
+                }
+
+                // Rasterizer.ConnectDiagonalSteps emits (newX, oldY) before the diagonal target.
+                if (bridgeX == nextX &&
+                    bridgeY == previousY)
+                {
+                    score += 2;
+                }
+                else if (bridgeX == previousX &&
+                         bridgeY == nextY)
+                {
+                    score -= 2;
+                }
+            }
+
+            return score;
+        }
+
+        var minX =
+            component.MinX;
+        var maxX =
+            component.MaxX;
+        var minY =
+            component.MinY;
+        var maxY =
+            component.MaxY;
+        var boxWidth =
+            maxX -
+            minX;
+        var boxHeight =
+            maxY -
+            minY;
+        var endpoint0X =
+            endpoints[0] %
+            sourceWidth;
+        var endpoint0Y =
+            endpoints[0] /
+            sourceWidth;
+        var endpoint1X =
+            endpoints[1] %
+            sourceWidth;
+        var endpoint1Y =
+            endpoints[1] /
+            sourceWidth;
+        var dominantAxisIsXForShape =
+            boxWidth >=
+            boxHeight;
+        var shapeExtent =
+            dominantAxisIsXForShape
+                ? boxWidth
+                : boxHeight;
+        var endpointSpan =
+            dominantAxisIsXForShape
+                ? Math.Abs(
+                    endpoint1X -
+                    endpoint0X)
+                : Math.Abs(
+                    endpoint1Y -
+                    endpoint0Y);
+
+        // Only broad two-endpoint arcs need ambiguity resolution. Ordinary lines / small strokes
+        // keep the old first-solution behaviour.
+        var resolveOvalAmbiguity =
+            component.Pixels.Count >= 20 &&
+            shapeExtent >= 8 &&
+            endpointSpan >=
+            shapeExtent * 0.70;
+
+        List<int>? bestOrder = null;
+        var bestFitScore =
+            double.NegativeInfinity;
+        var bestModelScore =
+            double.NegativeInfinity;
+        var bestDirectionScore =
+            int.MinValue;
+        var solutionCount = 0;
+        var perfectFitFound = false;
+
+        void ConsiderSolution(
+            IReadOnlyList<int> orderedPixels)
+        {
+            solutionCount++;
+
+            var directionScore =
+                PixelCordDirectionScore(
+                    orderedPixels,
+                    sourceWidth);
+
+            if (!resolveOvalAmbiguity)
+            {
+                bestOrder =
+                    orderedPixels.ToList();
+                perfectFitFound = true;
+                return;
+            }
+
+            var points =
+                orderedPixels
+                    .Select(pixel =>
+                        (
+                            X: pixel %
+                               sourceWidth,
+                            Y: pixel /
+                               sourceWidth))
+                    .ToArray();
+
+            if (!LooksLikeSmoothOvalRecovery(
+                    points))
+            {
+                return;
+            }
+
+            var fit =
+                ToolFaithfulCurveStyleLearner.Fit(
+                    points,
+                    pixelCord: true);
+
+            var fitScore =
+                fit?.Score ??
+                double.NegativeInfinity;
+            var modelScore =
+                fit?.ModelScore ??
+                double.NegativeInfinity;
+
+            var better =
+                bestOrder is null ||
+                fitScore >
+                bestFitScore +
+                1e-9 ||
+                (
+                    Math.Abs(
+                        fitScore -
+                        bestFitScore) <=
+                    1e-9 &&
+                    modelScore >
+                    bestModelScore +
+                    1e-9) ||
+                (
+                    Math.Abs(
+                        fitScore -
+                        bestFitScore) <=
+                    1e-9 &&
+                    Math.Abs(
+                        modelScore -
+                        bestModelScore) <=
+                    1e-9 &&
+                    directionScore >
+                    bestDirectionScore);
+
+            if (!better)
+                return;
+
+            bestOrder =
+                orderedPixels.ToList();
+            bestFitScore =
+                fitScore;
+            bestModelScore =
+                modelScore;
+            bestDirectionScore =
+                directionScore;
+
+            // A near-perfect compact source explanation is the original drawing language for all
+            // practical purposes; do not spend the remaining DFS budget looking for another
+            // pixel-order permutation with the same raster.
+            if (fit is { } learned &&
+                learned.Score >= 0.995 &&
+                learned.Controls.Count <= 5)
+            {
+                perfectFitFound = true;
+            }
+        }
+
+        void SearchDirection(
+            int startPixel,
+            int goalPixel)
+        {
+            if (perfectFitFound)
+                return;
+
+            var startX =
+                startPixel %
+                sourceWidth;
+            var startY =
+                startPixel /
+                sourceWidth;
+            var goalX =
+                goalPixel %
+                sourceWidth;
+            var goalY =
+                goalPixel /
+                sourceWidth;
+            var dominantAxisIsX =
+                Math.Abs(
+                    goalX -
+                    startX) >=
+                Math.Abs(
+                    goalY -
+                    startY);
+            var dominantDirection =
+                Math.Sign(
+                    dominantAxisIsX
+                        ? goalX - startX
+                        : goalY - startY);
+
+            int AxisCoordinate(
+                int pixel) =>
+                dominantAxisIsX
+                    ? pixel %
+                      sourceWidth
+                    : pixel /
+                      sourceWidth;
+
+            int BacktrackPenalty(
+                int current,
+                int next)
+            {
+                if (dominantDirection == 0)
+                    return 0;
+
+                var delta =
+                    AxisCoordinate(next) -
+                    AxisCoordinate(current);
+
+                return delta *
+                       dominantDirection <
+                       0
+                    ? 1
+                    : 0;
+            }
+
+            var visited =
+                new HashSet<int>
+                {
+                    startPixel,
+                };
+            var ordered =
+                new List<int>(
+                    set.Count)
+                {
+                    startPixel,
+                };
+            var states = 0;
+
+            int RemainingDegree(
+                int pixel) =>
+                adjacency[pixel].Count(next =>
+                    !visited.Contains(next));
+
+            void Search(
+                int current)
+            {
+                if (perfectFitFound ||
+                    states >=
+                    MaximumSearchStates ||
+                    (
+                        resolveOvalAmbiguity &&
+                        solutionCount >=
+                        MaximumOvalSolutions))
+                {
+                    return;
+                }
+
+                states++;
+
+                if (ordered.Count ==
+                    set.Count)
+                {
+                    if (current ==
+                        goalPixel)
+                    {
+                        ConsiderSolution(
+                            ordered);
+                    }
+
+                    return;
+                }
+
+                if (current ==
+                    goalPixel)
+                    return;
+
+                var candidates =
+                    adjacency[current]
+                        .Where(next =>
+                            !visited.Contains(next))
+                        .OrderBy(next =>
+                            next == goalPixel
+                                ? int.MaxValue
+                                : RemainingDegree(next))
+                        .ThenBy(next =>
+                            BacktrackPenalty(
+                                current,
+                                next))
+                        .ThenByDescending(next =>
+                            dominantDirection *
+                            (
+                                AxisCoordinate(next) -
+                                AxisCoordinate(current)))
+                        .ThenBy(next =>
+                            next)
+                        .ToArray();
+
+                foreach (var next in candidates)
+                {
+                    if (perfectFitFound ||
+                        (
+                            resolveOvalAmbiguity &&
+                            solutionCount >=
+                            MaximumOvalSolutions))
+                    {
+                        return;
+                    }
+
+                    // The goal is the final endpoint. Entering it early would strand remaining
+                    // Pixel-Cord cells.
+                    if (next == goalPixel &&
+                        ordered.Count + 1 <
+                        set.Count)
+                    {
+                        continue;
+                    }
+
+                    visited.Add(next);
+                    ordered.Add(next);
+
+                    var stranded = false;
+
+                    foreach (var pixel in set)
+                    {
+                        if (visited.Contains(pixel) ||
+                            pixel == goalPixel)
+                        {
+                            continue;
+                        }
+
+                        if (adjacency[pixel].Any(candidate =>
+                                !visited.Contains(candidate) ||
+                                candidate == next))
+                        {
+                            continue;
+                        }
+
+                        stranded = true;
+                        break;
+                    }
+
+                    if (!stranded)
+                    {
+                        Search(next);
+                    }
+
+                    ordered.RemoveAt(
+                        ordered.Count - 1);
+                    visited.Remove(next);
+                }
+            }
+
+            Search(
+                startPixel);
+        }
+
+        SearchDirection(
+            endpoints[0],
+            endpoints[1]);
+
+        if (!perfectFitFound &&
+            (
+                !resolveOvalAmbiguity ||
+                solutionCount <
+                MaximumOvalSolutions))
+        {
+            SearchDirection(
+                endpoints[1],
+                endpoints[0]);
+        }
+
+        if (bestOrder is null)
+            return false;
+
+        path =
+            bestOrder
+                .Select(pixel =>
+                    (
+                        X: pixel %
+                           sourceWidth,
+                        Y: pixel /
+                           sourceWidth))
+                .ToList();
+
+        return path.Count ==
+               component.Pixels.Count;
+    }
+
+    private static bool LooksLikeSmoothOvalRecovery(
+        IReadOnlyList<(int X, int Y)> path)
+    {
+        if (path.Count < 20)
+            return false;
+
+        var simplified =
+            Simplify(
+                path,
+                tolerance: 0.80);
+
+        // A literal L/V corner collapses to roughly three RDP vertices. A broad oval/arch keeps
+        // several gradual direction changes, even when high roundness creates a short shoulder
+        // reversal in the raster. Require that richer curve evidence before bypassing cusp logic.
+        if (simplified.Count < 5)
+            return false;
+
+        var minX =
+            path.Min(point =>
+                point.X);
+        var maxX =
+            path.Max(point =>
+                point.X);
+        var minY =
+            path.Min(point =>
+                point.Y);
+        var maxY =
+            path.Max(point =>
+                point.Y);
+        var width =
+            maxX -
+            minX;
+        var height =
+            maxY -
+            minY;
+        var first =
+            path[0];
+        var last =
+            path[^1];
+        var useX =
+            width >=
+            height;
+        var extent =
+            useX
+                ? width
+                : height;
+        var endpointSpan =
+            useX
+                ? Math.Abs(
+                    last.X -
+                    first.X)
+                : Math.Abs(
+                    last.Y -
+                    first.Y);
+
+        return extent >= 8 &&
+               endpointSpan >=
+               extent * 0.75;
     }
 
     private static IReadOnlyList<List<(int X, int Y)>> TraceChains(
@@ -2544,4 +3157,35 @@ internal readonly record struct ToolFaithfulOverlayReport(
     int CorridorClippedPixels,
     double MeanLearnedRoundness,
     int RegionOwnershipCorrections = 0,
-    int BarrierCrossingCorrections = 0);
+    int BarrierCrossingCorrections = 0,
+    int CompletePathRecoveries = 0,
+    int RibbonArcCandidates = 0,
+    int RibbonArcRefined = 0,
+    int RibbonArcPixelsChanged = 0,
+    int RibbonArcCurveToolFits = 0,
+    int RibbonArcCurveToolThroughPointsFits = 0,
+    int RibbonArcCurveToolSplineFits = 0,
+    int RibbonArcCurveToolBezierFits = 0,
+    double RibbonArcCurveToolMeanRoundness = 0d,
+    int RibbonArcGeometricThroughFits = 0,
+    int RibbonArcGeometricThroughAttempts = 0,
+    double RibbonArcGeometricThroughMeanRoundness = 0d,
+    double RibbonArcGeometricThroughMaxP95Deviation = 0d,
+    int RibbonArcBroadOvalFits = 0,
+    int RibbonArcBroadOvalAttempts = 0,
+    int RibbonArcCubicBezierFits = 0,
+    int RibbonArcOutlinedRefined = 0,
+    int RibbonArcMirrorPairs = 0,
+    int RibbonArcMirrorPairReplacements = 0,
+    double RibbonArcBestMirrorPairAgreement = 0d,
+    double RibbonArcMaxMirrorPairDeviation = 0d,
+    int RibbonArcMirrorSourceFusions = 0,
+    double RibbonArcBestMirrorSourceAgreement = 0d,
+    double RibbonArcMaxMirrorSourceFusionShift = 0d,
+    int RibbonArcCompoundFits = 0,
+    int RibbonArcCompoundAttempts = 0,
+    double RibbonArcCompoundMaxP95Deviation = 0d,
+    double RibbonArcCompoundMaxDeviation = 0d,
+    int RibbonArcWidthRegularized = 0,
+    double RibbonArcMaxWidthRegularizationShift = 0d,
+    double RibbonArcMaxWidthVariationReduction = 0d);

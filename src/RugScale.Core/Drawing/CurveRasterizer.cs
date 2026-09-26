@@ -45,7 +45,7 @@ public static class CurveRasterizer
             previous = current;
         }
     }
-    private static (double X, double Y) Evaluate(IReadOnlyList<(int X, int Y)> p, CurveType type, double r, double t)
+    internal static (double X, double Y) Evaluate(IReadOnlyList<(int X, int Y)> p, CurveType type, double r, double t)
     {
         if (t >= 1) return p[^1];
         if (type == CurveType.SplineThroughPoints)

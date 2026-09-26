@@ -1,0 +1,109 @@
+name: RugScale C069 curve training
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "src/RugScale.Core/**"
+      - "tools/RugScale.CurveScaleAudit/**"
+      - "tests/fixtures/rugscale-curves/C069A_CREAM_N69.bmp.xz.b64/**"
+      - ".github/workflows/rugscale-c069-curve-training.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  c069-curve-training:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'chatgpt/curve-oval-training-2026-09-24'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore focused audit
+        run: dotnet restore ./tools/RugScale.CurveScaleAudit/RugScale.CurveScaleAudit.csproj
+
+      - name: Decode C069 training fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/rugscale-curves"
+          cat ./tests/fixtures/rugscale-curves/C069A_CREAM_N69.bmp.xz.b64/part*.txt | base64 -d > "$RUNNER_TEMP/rugscale-curves/C069A_CREAM_N69.bmp.xz"
+          xz -t "$RUNNER_TEMP/rugscale-curves/C069A_CREAM_N69.bmp.xz"
+          xz -dc "$RUNNER_TEMP/rugscale-curves/C069A_CREAM_N69.bmp.xz" > "$RUNNER_TEMP/rugscale-curves/C069A_CREAM_N69.bmp"
+          echo "d22e56ba9a5d9cf43c8ff0e7dea599246490b6ff394be00dfade39ea5930c456  $RUNNER_TEMP/rugscale-curves/C069A_CREAM_N69.bmp" | sha256sum -c -
+
+      - name: Run focused C069 curve audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ./artifacts/rugscale-c069
+          dotnet run \
+            --project ./tools/RugScale.CurveScaleAudit/RugScale.CurveScaleAudit.csproj \
+            -c Release --no-restore -- \
+            --input-dir "$RUNNER_TEMP/rugscale-curves" \
+            --output "$GITHUB_WORKSPACE/artifacts/rugscale-c069" \
+            --fixture C069A_CREAM_N69
+
+      - name: Enforce compact spiral redraw gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+
+          path = Path("artifacts/rugscale-c069/C069A_CREAM_N69_ribbon_candidates.csv")
+          rows = list(csv.DictReader(path.open(newline="", encoding="utf-8")))
+          targets = {
+              (99, 219, 148, 298),
+              (492, 219, 541, 298),
+          }
+
+          found = {}
+          for row in rows:
+              key = tuple(int(row[name]) for name in ("min_x", "min_y", "max_x", "max_y"))
+              if key in targets:
+                  found[key] = row
+
+          missing = targets - found.keys()
+          if missing:
+              raise SystemExit(f"Missing compact spiral audit rows: {sorted(missing)}")
+
+          for key, row in found.items():
+              if row["ribbon_shape_reason"] != "ok-compact-spiral":
+                  raise SystemExit(f"{key}: unexpected shape reason {row['ribbon_shape_reason']}")
+              if row["fit_kind"] != "compact-compound":
+                  raise SystemExit(f"{key}: expected compact-compound, got {row['fit_kind']}")
+              if row["fit_safe"] != "1" or row["accepted"] != "1":
+                  raise SystemExit(f"{key}: compact spiral is no longer production-accepted")
+              if int(row["curvature_flips"]) != 0:
+                  raise SystemExit(f"{key}: compact spiral gained curvature flips")
+              if float(row["max_deviation"]) > 1.90:
+                  raise SystemExit(
+                      f"{key}: compact spiral source deviation regressed to {row['max_deviation']} px"
+                  )
+          PY
+
+      - name: Publish C069 summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f ./artifacts/rugscale-c069/curve-suite-report.md ]; then
+            cat ./artifacts/rugscale-c069/curve-suite-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload C069 curve outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rugscale-c069-curve-training
+          path: ./artifacts/rugscale-c069
+          if-no-files-found: warn
+          retention-days: 7

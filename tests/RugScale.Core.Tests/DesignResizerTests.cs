@@ -546,6 +546,303 @@ public class DesignResizerTests
     }
 
     [Fact]
+    public void Scale_CurveFill_WideOvalArc_PreservesOvalGeometryAtTargetScale()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(214, 205, 182),
+            new RugColor(255, 255, 255),
+        });
+        var source = new DesignDocument(68, 48, palette);
+        var controls = new (int X, int Y)[]
+        {
+            (4, 34),
+            (10, 16),
+            (29, 7),
+            (50, 15),
+            (60, 34),
+        };
+
+        foreach (var point in Rasterizer.ConnectDiagonalSteps(
+                     CurveRasterizer.Draw(
+                         controls,
+                         CurveType.SplineThroughPoints,
+                         0.85)))
+        {
+            source.SetPixel(
+                point.X,
+                point.Y,
+                1);
+        }
+
+        var result =
+            new DesignDocument(
+                109,
+                77,
+                palette);
+        var diagnostics =
+            CurveFillScaleEngine.ResizeWithDiagnostics(
+                source,
+                result,
+                40,
+                50,
+                40,
+                50);
+
+        var mappedControls =
+            controls
+                .Select(point =>
+                    (
+                        X: (int)Math.Round(
+                            (point.X + 0.5) *
+                            result.Width /
+                            source.Width -
+                            0.5),
+                        Y: (int)Math.Round(
+                            (point.Y + 0.5) *
+                            result.Height /
+                            source.Height -
+                            0.5)))
+                .ToArray();
+
+        var expected =
+            Rasterizer.ConnectDiagonalSteps(
+                    CurveRasterizer.Draw(
+                        mappedControls,
+                        CurveType.SplineThroughPoints,
+                        0.85))
+                .ToHashSet();
+        var actual =
+            GetColorPixels(
+                result,
+                1);
+
+        Assert.True(
+            PixelNearF1(
+                actual,
+                expected,
+                radius: 1) >= 0.98,
+            "Wide oval redraw lost the source Curve-tool shoulders.");
+        var exactScore =
+            PixelF1(
+                actual,
+                expected);
+
+        Assert.True(
+            exactScore >= 0.80,
+            $"Wide oval redraw drifted too far from the target Curve-tool raster: exact={exactScore:P2}, " +
+            $"learned={diagnostics.LearnedCurves}, fallback={diagnostics.GraphFallbacks}, " +
+            $"safetyFallback={diagnostics.CurveSafetyFallbacks}, clipped={diagnostics.CorridorClippedPixels}, " +
+            $"accepted={diagnostics.AcceptedComponents}, pixelCord={diagnostics.PixelCordComponents}, " +
+            $"completePath={diagnostics.CompletePathRecoveries}.");
+        Assert.True(
+            diagnostics.CompletePathRecoveries >= 1,
+            "The Pixel-Cord oval should be recovered as one complete source drawing path.");
+        Assert.True(
+            diagnostics.LearnedCurves >= 1,
+            "The recovered oval path should reach the Curve inverse learner.");
+
+        Assert.Equal(
+            1,
+            CountFourConnectedComponents(
+                result,
+                1));
+    }
+
+    [Fact]
+    public void Scale_CurveFill_TallSideOval_PreservesOvalGeometryAtTargetScale()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(214, 205, 182),
+            new RugColor(255, 255, 255),
+        });
+        var source = new DesignDocument(52, 66, palette);
+        var controls = new (int X, int Y)[]
+        {
+            (42, 5),
+            (22, 8),
+            (8, 24),
+            (15, 46),
+            (38, 59),
+        };
+
+        foreach (var point in Rasterizer.ConnectDiagonalSteps(
+                     CurveRasterizer.Draw(
+                         controls,
+                         CurveType.SplineThroughPoints,
+                         0.85)))
+        {
+            source.SetPixel(point.X, point.Y, 1);
+        }
+
+        var result =
+            new DesignDocument(
+                83,
+                106,
+                palette);
+        var diagnostics =
+            CurveFillScaleEngine.ResizeWithDiagnostics(
+                source,
+                result,
+                40,
+                50,
+                40,
+                50);
+
+        var mappedControls =
+            controls
+                .Select(point =>
+                    (
+                        X: (int)Math.Round(
+                            (point.X + 0.5) *
+                            result.Width /
+                            source.Width -
+                            0.5),
+                        Y: (int)Math.Round(
+                            (point.Y + 0.5) *
+                            result.Height /
+                            source.Height -
+                            0.5)))
+                .ToArray();
+
+        var expected =
+            Rasterizer.ConnectDiagonalSteps(
+                    CurveRasterizer.Draw(
+                        mappedControls,
+                        CurveType.SplineThroughPoints,
+                        0.85))
+                .ToHashSet();
+        var actual =
+            GetColorPixels(
+                result,
+                1);
+
+        Assert.True(
+            PixelNearF1(
+                actual,
+                expected,
+                radius: 1) >= 0.98,
+            "Tall side oval lost its smooth target geometry.");
+        Assert.True(
+            PixelF1(
+                actual,
+                expected) >= 0.80,
+            "Tall side oval drifted too far from the target Curve-tool raster.");
+        Assert.True(
+            diagnostics.CompletePathRecoveries >= 1,
+            "Tall Pixel-Cord oval should be recovered as one complete source drawing path.");
+        Assert.True(
+            diagnostics.LearnedCurves >= 1,
+            "Tall recovered oval should reach the Curve inverse learner.");
+        Assert.Equal(
+            1,
+            CountFourConnectedComponents(
+                result,
+                1));
+    }
+
+    [Fact]
+    public void Scale_CurveFill_SoftOval_PreservesOvalGeometryAtTargetScale()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(214, 205, 182),
+            new RugColor(255, 255, 255),
+        });
+        var source = new DesignDocument(68, 50, palette);
+        var controls = new (int X, int Y)[]
+        {
+            (6, 39),
+            (13, 17),
+            (28, 8),
+            (46, 12),
+            (59, 32),
+        };
+
+        foreach (var point in Rasterizer.ConnectDiagonalSteps(
+                     CurveRasterizer.Draw(
+                         controls,
+                         CurveType.SplineThroughPoints,
+                         0.85)))
+        {
+            source.SetPixel(point.X, point.Y, 1);
+        }
+
+        var result =
+            new DesignDocument(
+                109,
+                80,
+                palette);
+        var diagnostics =
+            CurveFillScaleEngine.ResizeWithDiagnostics(
+                source,
+                result,
+                40,
+                50,
+                40,
+                50);
+
+        var mappedControls =
+            controls
+                .Select(point =>
+                    (
+                        X: (int)Math.Round(
+                            (point.X + 0.5) *
+                            result.Width /
+                            source.Width -
+                            0.5),
+                        Y: (int)Math.Round(
+                            (point.Y + 0.5) *
+                            result.Height /
+                            source.Height -
+                            0.5)))
+                .ToArray();
+
+        var expected =
+            Rasterizer.ConnectDiagonalSteps(
+                    CurveRasterizer.Draw(
+                        mappedControls,
+                        CurveType.SplineThroughPoints,
+                        0.85))
+                .ToHashSet();
+        var actual =
+            GetColorPixels(
+                result,
+                1);
+
+        Assert.True(
+            PixelNearF1(
+                actual,
+                expected,
+                radius: 1) >= 0.98,
+            "Soft oval lost its smooth target geometry.");
+        var exactScore =
+            PixelF1(
+                actual,
+                expected);
+
+        Assert.True(
+            exactScore >= 0.80,
+            $"Soft oval drifted too far from the target Curve-tool raster: exact={exactScore:P2}, " +
+            $"learned={diagnostics.LearnedCurves}, through={diagnostics.LearnedThroughPoints}, " +
+            $"fallback={diagnostics.GraphFallbacks}, safetyFallback={diagnostics.CurveSafetyFallbacks}, " +
+            $"completePath={diagnostics.CompletePathRecoveries}, clipped={diagnostics.CorridorClippedPixels}, " +
+            $"roundness={diagnostics.MeanLearnedRoundness:0.000}.");
+        Assert.True(
+            diagnostics.CompletePathRecoveries >= 1,
+            "Soft Pixel-Cord oval should be recovered as one complete source drawing path.");
+        Assert.True(
+            diagnostics.LearnedCurves >= 1,
+            "Soft recovered oval should reach the Curve inverse learner.");
+        Assert.Equal(
+            1,
+            CountFourConnectedComponents(
+                result,
+                1));
+    }
+
+    [Fact]
     public void Scale_CurveFill_LearnsBezierCharacterInsteadOfForcingThroughPoints()
     {
         var palette = new Palette(new[]
@@ -766,6 +1063,1153 @@ public class DesignResizerTests
             targetArea / (double)sourceArea,
             3.4,
             4.6);
+    }
+
+    [Fact]
+    public void CurveFillRibbonArcRefiner_RebuildsStableWidthOvalRibbonFromGeometry()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(218, 210, 184),
+            new RugColor(134, 162, 125),
+        });
+        // Match the real C069 top-centre green ornament: one long half-oval ribbon rather than a
+        // complete U-shaped arch. This is the filled geometry that motivated the regression.
+        var source = new DesignDocument(56, 92, palette);
+        var controls = new (int X, int Y)[]
+        {
+            (45, 6),
+            (33, 12),
+            (19, 30),
+            (12, 54),
+            (11, 82),
+        };
+
+        var sourceCenterline =
+            CurveRasterizer.Draw(
+                    controls,
+                    CurveType.SplineThroughPoints,
+                    0.85)
+                .ToArray();
+
+        foreach (var point in Rasterizer.Dilate(
+                     sourceCenterline,
+                     5,
+                     5))
+        {
+            if (point.X >= 0 &&
+                point.X < source.Width &&
+                point.Y >= 0 &&
+                point.Y < source.Height)
+            {
+                source.SetPixel(
+                    point.X,
+                    point.Y,
+                    1);
+            }
+        }
+
+        var targetWidth = 90;
+        var targetHeight = 147;
+        var nearest =
+            DesignResizer.Scale(
+                source,
+                targetWidth,
+                targetHeight,
+                ScaleMode.NearestNeighbor,
+                40,
+                60,
+                40,
+                60);
+
+        // Judge the redraw against the CONTINUOUS source Curve geometry, not against a
+        // block-expanded source raster. This is the visual target for carpet design: the source
+        // staircase is evidence for an underlying curve, not geometry that should be magnified.
+        var idealSourceArc =
+            Enumerable.Range(
+                    0,
+                    161)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        160d;
+                    var point =
+                        CurveRasterizer.Evaluate(
+                            controls,
+                            CurveType.SplineThroughPoints,
+                            0.85,
+                            t);
+
+                    return new ElegantArcPoint(
+                        point.X,
+                        point.Y,
+                        2.5);
+                })
+                .ToArray();
+        var idealPolygon =
+            LeafPetalArcRasterizer.BuildTargetPolygon(
+                idealSourceArc,
+                targetWidth /
+                    (double)source.Width,
+                targetHeight /
+                    (double)source.Height);
+        var expected =
+            LeafPetalArcRasterizer.RasterizePolygon(
+                    idealPolygon,
+                    targetWidth,
+                    targetHeight)
+                .Select(key =>
+                    (
+                        X: key %
+                           targetWidth,
+                        Y: key /
+                           targetWidth))
+                .ToHashSet();
+
+        var before =
+            GetColorPixels(
+                nearest,
+                1);
+        var beforeScore =
+            PixelF1(
+                before,
+                expected);
+
+        var ribbonDiagnostics =
+            CurveFillRibbonArcRefiner.ApplyWithDiagnostics(
+                source,
+                nearest);
+        var changed =
+            ribbonDiagnostics.BoundaryPixelsChanged;
+        var after =
+            GetColorPixels(
+                nearest,
+                1);
+        var afterScore =
+            PixelF1(
+                after,
+                expected);
+
+        Assert.True(
+            changed > 0,
+            $"A stable-width, strongly curved filled ribbon should be geometrically refined. " +
+            $"regions={ribbonDiagnostics.Regions}, classified={ribbonDiagnostics.Classified}, " +
+            $"axis={ribbonDiagnostics.AxisBuilt}, skeleton={ribbonDiagnostics.MaxSkeletonPixels}, " +
+            $"endpoints={ribbonDiagnostics.MaxEndpoints}, path={ribbonDiagnostics.MaxPrincipalPathPixels}, " +
+            $"coverage={ribbonDiagnostics.MaxPrincipalPathCoverage:0.000}, reason={ribbonDiagnostics.LastCenterlineReason}, " +
+            $"ribbon={ribbonDiagnostics.RibbonGeometryAccepted}, fitSafe={ribbonDiagnostics.FitSafe}, " +
+            $"toolFit={ribbonDiagnostics.CurveToolFits}, fitDev={ribbonDiagnostics.MaxFitDeviation:0.000}, " +
+            $"flips={ribbonDiagnostics.MaxFitCurvatureFlips}, " +
+            $"refined={ribbonDiagnostics.Refined}.");
+        Assert.True(
+            afterScore >= beforeScore + 0.005,
+            $"Ribbon refiner did not improve exact target oval geometry: before={beforeScore:P2}, after={afterScore:P2}; " +
+            $"toolFit={ribbonDiagnostics.CurveToolFits}, fitDev={ribbonDiagnostics.MaxFitDeviation:0.000}, " +
+            $"flips={ribbonDiagnostics.MaxFitCurvatureFlips}, changed={ribbonDiagnostics.BoundaryPixelsChanged}.");
+        Assert.Equal(
+            1,
+            CountComponents(
+                nearest,
+                1));
+    }
+
+    [Fact]
+    public void CurveFillRibbonArcRefiner_RebuildsBroadSparseOvalArchDespiteLowPcaElongation()
+    {
+        var palette = new Palette(new[]
+        {
+            new RugColor(218, 210, 184),
+            new RugColor(216, 185, 124),
+        });
+        var source = new DesignDocument(96, 64, palette);
+        var controls = new (int X, int Y)[]
+        {
+            (9, 54),
+            (18, 19),
+            (48, 8),
+            (78, 19),
+            (87, 54),
+        };
+
+        var sourceCenterline =
+            CurveRasterizer.Draw(
+                    controls,
+                    CurveType.SplineThroughPoints,
+                    0.85)
+                .ToArray();
+
+        foreach (var point in Rasterizer.Dilate(
+                     sourceCenterline,
+                     5,
+                     5))
+        {
+            if (point.X >= 0 &&
+                point.X < source.Width &&
+                point.Y >= 0 &&
+                point.Y < source.Height)
+            {
+                source.SetPixel(
+                    point.X,
+                    point.Y,
+                    1);
+            }
+        }
+
+        var regions =
+            LeafPetalRegionExtractor.Extract(
+                source);
+        var ribbonRegion =
+            Assert.Single(
+                regions.Where(region =>
+                    region.Color == 1));
+
+        Assert.True(
+            LeafPetalArcClassifier.TryClassify(
+                ribbonRegion,
+                source.Width,
+                out var candidate),
+            "The broad synthetic arch should reach ribbon candidate analysis.");
+        Assert.InRange(
+            candidate.Elongation,
+            1.25,
+            1.99);
+
+        const int targetWidth = 154;
+        const int targetHeight = 103;
+        var nearest =
+            DesignResizer.Scale(
+                source,
+                targetWidth,
+                targetHeight,
+                ScaleMode.NearestNeighbor,
+                40,
+                60,
+                40,
+                60);
+
+        var idealSourceArc =
+            Enumerable.Range(
+                    0,
+                    193)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        192d;
+                    var point =
+                        CurveRasterizer.Evaluate(
+                            controls,
+                            CurveType.SplineThroughPoints,
+                            0.85,
+                            t);
+
+                    return new ElegantArcPoint(
+                        point.X,
+                        point.Y,
+                        2.5);
+                })
+                .ToArray();
+        var idealPolygon =
+            LeafPetalArcRasterizer.BuildTargetPolygon(
+                idealSourceArc,
+                targetWidth /
+                    (double)source.Width,
+                targetHeight /
+                    (double)source.Height);
+        var expected =
+            LeafPetalArcRasterizer.RasterizePolygon(
+                    idealPolygon,
+                    targetWidth,
+                    targetHeight)
+                .Select(key =>
+                    (
+                        X: key %
+                           targetWidth,
+                        Y: key /
+                           targetWidth))
+                .ToHashSet();
+
+        var beforeScore =
+            PixelF1(
+                GetColorPixels(
+                    nearest,
+                    1),
+                expected);
+        var diagnostics =
+            CurveFillRibbonArcRefiner.ApplyWithDiagnostics(
+                source,
+                nearest);
+        var after =
+            GetColorPixels(
+                nearest,
+                1);
+        var afterScore =
+            PixelF1(
+                after,
+                expected);
+
+        Assert.True(
+            diagnostics.RibbonGeometryAccepted >= 1,
+            $"Broad sparse oval arch was rejected before geometric fitting: " +
+            $"classified={diagnostics.Classified}, axis={diagnostics.AxisBuilt}, " +
+            $"coverage={diagnostics.MaxPrincipalPathCoverage:0.000}, reason={diagnostics.LastCenterlineReason}.");
+        var throughPointsRecoveries =
+            diagnostics.CurveToolThroughPointsFits +
+            diagnostics.GeometricThroughFits;
+        var recoveredRoundness =
+            diagnostics.CurveToolThroughPointsFits > 0
+                ? diagnostics.MeanCurveToolRoundness
+                : diagnostics.MeanGeometricThroughRoundness;
+
+        Assert.True(
+            throughPointsRecoveries >= 1,
+            $"The synthetic broad arch was drawn with Through Points and must be recovered as " +
+            $"that family, whether the standard Curve-tool inverse fit or the broad geometric " +
+            $"fallback wins. toolTP={diagnostics.CurveToolThroughPointsFits}, " +
+            $"toolS={diagnostics.CurveToolSplineFits}, toolB={diagnostics.CurveToolBezierFits}, " +
+            $"toolRound={diagnostics.MeanCurveToolRoundness:0.000}, " +
+            $"throughGeo={diagnostics.GeometricThroughFits}/{diagnostics.GeometricThroughAttempts}, " +
+            $"throughReason={diagnostics.LastGeometricThroughReason}, " +
+            $"throughP95={diagnostics.MaxGeometricThroughP95Deviation:0.000}, " +
+            $"throughMax={diagnostics.MaxGeometricThroughDeviation:0.000}, " +
+            $"throughRound={diagnostics.MeanGeometricThroughRoundness:0.000}.");
+        Assert.InRange(
+            recoveredRoundness,
+            0.50,
+            1.00);
+
+        Assert.True(
+            diagnostics.Refined >= 1 &&
+            diagnostics.BoundaryPixelsChanged > 0,
+            $"Broad sparse oval arch was not redrawn: refined={diagnostics.Refined}, " +
+            $"changed={diagnostics.BoundaryPixelsChanged}, tool={diagnostics.CurveToolFits}, " +
+            $"throughGeo={diagnostics.GeometricThroughFits}/{diagnostics.GeometricThroughAttempts}, " +
+            $"throughReason={diagnostics.LastGeometricThroughReason}, " +
+            $"throughP95={diagnostics.MaxGeometricThroughP95Deviation:0.000}, " +
+            $"throughMax={diagnostics.MaxGeometricThroughDeviation:0.000}, " +
+            $"throughRound={diagnostics.MeanGeometricThroughRoundness:0.000}, " +
+            $"oval={diagnostics.BroadOvalFits}/{diagnostics.BroadOvalAttempts}, " +
+            $"ovalReason={diagnostics.LastBroadOvalReason}, ovalP95={diagnostics.MaxBroadOvalP95Deviation:0.000}, " +
+            $"ovalMax={diagnostics.MaxBroadOvalDeviation:0.000}, " +
+            $"cubic={diagnostics.CubicBezierFits}/{diagnostics.CubicAttempts}, " +
+            $"cubicReason={diagnostics.LastCubicReason}, cubicP95={diagnostics.MaxCubicP95Deviation:0.000}, " +
+            $"cubicMax={diagnostics.MaxCubicDeviation:0.000}, handle={diagnostics.MaxCubicHandleRatio:0.000}, " +
+            $"dev={diagnostics.MaxFitDeviation:0.000}, flips={diagnostics.MaxFitCurvatureFlips}.");
+        Assert.True(
+            afterScore >=
+                beforeScore +
+                0.003,
+            $"Broad arch did not move toward continuous target geometry: " +
+            $"before={beforeScore:P2}, after={afterScore:P2}, " +
+            $"tool={diagnostics.CurveToolFits}, throughGeo={diagnostics.GeometricThroughFits}, " +
+            $"oval={diagnostics.BroadOvalFits}, cubic={diagnostics.CubicBezierFits}.");
+        Assert.Equal(
+            1,
+            CountComponents(
+                nearest,
+                1));
+    }
+
+    [Fact]
+    public void CurveFillOutlinedRibbonRasterizer_RedrawsOuterOutlineAsParallelCurve()
+    {
+        var palette =
+            new Palette(
+                new[]
+                {
+                    new RugColor(218, 210, 184),
+                    new RugColor(255, 255, 255),
+                    new RugColor(216, 185, 124),
+                });
+        var source =
+            new DesignDocument(
+                72,
+                54,
+                palette);
+        var controls =
+            new (int X, int Y)[]
+            {
+                (7, 45),
+                (14, 20),
+                (36, 7),
+                (58, 20),
+                (65, 45),
+            };
+        var sourceCenterline =
+            CurveRasterizer.Draw(
+                    controls,
+                    CurveType.SplineThroughPoints,
+                    0.85)
+                .ToArray();
+
+        // Dedicated one-pixel outline outside a 5px designer ribbon.
+        foreach (var point in Rasterizer.Dilate(
+                     sourceCenterline,
+                     7,
+                     7))
+        {
+            if (point.X >= 0 &&
+                point.X < source.Width &&
+                point.Y >= 0 &&
+                point.Y < source.Height)
+            {
+                source.SetPixel(
+                    point.X,
+                    point.Y,
+                    1);
+            }
+        }
+
+        foreach (var point in Rasterizer.Dilate(
+                     sourceCenterline,
+                     5,
+                     5))
+        {
+            if (point.X >= 0 &&
+                point.X < source.Width &&
+                point.Y >= 0 &&
+                point.Y < source.Height)
+            {
+                source.SetPixel(
+                    point.X,
+                    point.Y,
+                    2);
+            }
+        }
+
+        const int targetWidth = 119;
+        const int targetHeight = 89;
+        var target =
+            DesignResizer.Scale(
+                source,
+                targetWidth,
+                targetHeight,
+                ScaleMode.NearestNeighbor,
+                40,
+                60,
+                40,
+                60);
+
+        static HashSet<(int X, int Y)> CompoundPixels(
+            DesignDocument document)
+        {
+            var result =
+                new HashSet<(int X, int Y)>();
+
+            for (var y = 0;
+                 y < document.Height;
+                 y++)
+            {
+                for (var x = 0;
+                     x < document.Width;
+                     x++)
+                {
+                    var color =
+                        document.GetPixel(
+                            x,
+                            y);
+
+                    if (color is 1 or 2)
+                    {
+                        result.Add(
+                            (x, y));
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        var idealCompoundArc =
+            Enumerable.Range(
+                    0,
+                    193)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        192d;
+                    var point =
+                        CurveRasterizer.Evaluate(
+                            controls,
+                            CurveType.SplineThroughPoints,
+                            0.85,
+                            t);
+
+                    return new ElegantArcPoint(
+                        point.X,
+                        point.Y,
+                        3.5);
+                })
+                .ToArray();
+        var idealCompoundPolygon =
+            LeafPetalArcRasterizer.BuildTargetPolygon(
+                idealCompoundArc,
+                targetWidth /
+                    (double)source.Width,
+                targetHeight /
+                    (double)source.Height);
+        var expectedCompound =
+            LeafPetalArcRasterizer.RasterizePolygon(
+                    idealCompoundPolygon,
+                    targetWidth,
+                    targetHeight)
+                .Select(key =>
+                    (
+                        X:
+                            key %
+                            targetWidth,
+                        Y:
+                            key /
+                            targetWidth
+                    ))
+                .ToHashSet();
+
+        var before =
+            CompoundPixels(
+                target);
+        var beforeScore =
+            PixelF1(
+                before,
+                expectedCompound);
+
+        var diagnostics =
+            CurveFillRibbonArcRefiner.ApplyWithDiagnostics(
+                source,
+                target);
+
+        var after =
+            CompoundPixels(
+                target);
+        var afterScore =
+            PixelF1(
+                after,
+                expectedCompound);
+
+        Assert.True(
+            diagnostics.OutlinedRefined >= 1,
+            $"Expected the dedicated white outline path. outlined={diagnostics.OutlinedRefined}, " +
+            $"refined={diagnostics.Refined}, changed={diagnostics.BoundaryPixelsChanged}.");
+        Assert.True(
+            diagnostics.BoundaryPixelsChanged > 0,
+            "Compound ribbon geometry should move at least one categorical boundary pixel.");
+        Assert.True(
+            afterScore >=
+                beforeScore +
+                0.002,
+            $"Outer outlined silhouette did not improve toward continuous geometry: " +
+            $"before={beforeScore:P2}, after={afterScore:P2}, changed={diagnostics.BoundaryPixelsChanged}.");
+        Assert.Equal(
+            1,
+            CountComponents(
+                target,
+                2));
+        Assert.True(
+            CountColor(
+                target,
+                1) >
+            0,
+            "Dedicated outline disappeared while smoothing the compound ribbon.");
+    }
+
+    [Fact]
+    public void CurveFillRibbonWidthProfileRegularizer_RemovesPixelWidthWobbleButKeepsSlowTaper()
+    {
+        const int sourceWidth = 120;
+        var samples =
+            Enumerable.Range(
+                    0,
+                    61)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        60d;
+                    var slowTrend =
+                        3.0 +
+                        0.55 *
+                        t;
+                    var sourceWobble =
+                        index % 2 == 0
+                            ? 0.32
+                            : -0.32;
+
+                    return new LeafPetalAxisSample(
+                        12 +
+                        76 *
+                        t,
+                        46 -
+                        24 *
+                        Math.Sin(
+                            t *
+                            Math.PI),
+                        slowTrend +
+                        sourceWobble,
+                        t);
+                })
+                .ToArray();
+        var pixels =
+            samples
+                .Select(sample =>
+                    (int)Math.Round(
+                        sample.Y) *
+                        sourceWidth +
+                    (int)Math.Round(
+                        sample.X))
+                .Distinct()
+                .ToArray();
+        var region =
+            new LeafPetalRegion(
+                1,
+                pixels,
+                pixels,
+                pixels.Min(pixel =>
+                    pixel %
+                    sourceWidth),
+                pixels.Min(pixel =>
+                    pixel /
+                    sourceWidth),
+                pixels.Max(pixel =>
+                    pixel %
+                    sourceWidth),
+                pixels.Max(pixel =>
+                    pixel /
+                    sourceWidth));
+        var candidate =
+            new LeafPetalArcCandidate(
+                region,
+                50,
+                30,
+                1,
+                0,
+                0,
+                1,
+                76,
+                8,
+                9.5,
+                0.2);
+        var model =
+            new LeafPetalArcModel(
+                candidate,
+                samples,
+                false,
+                samples[0].HalfWidth,
+                samples[^1].HalfWidth,
+                1.0);
+        var fitPoints =
+            Enumerable.Range(
+                    0,
+                    121)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        120d;
+                    var slowTrend =
+                        3.0 +
+                        0.55 *
+                        t;
+                    var wobble =
+                        index % 2 == 0
+                            ? 0.40
+                            : -0.40;
+
+                    return new ElegantArcPoint(
+                        12 +
+                        76 *
+                        t,
+                        46 -
+                        24 *
+                        Math.Sin(
+                            t *
+                            Math.PI),
+                        slowTrend +
+                        wobble);
+                })
+                .ToArray();
+        var fit =
+            new ElegantArcFit(
+                fitPoints,
+                true,
+                true,
+                0,
+                0.5);
+
+        var regularized =
+            CurveFillRibbonWidthProfileRegularizer.Regularize(
+                model,
+                fit,
+                out var diagnostics);
+
+        Assert.True(
+            diagnostics.Applied,
+            $"Expected width regularization. cv={diagnostics.SourceWidthCoefficientVariation:0.000}, " +
+            $"terminal={diagnostics.TerminalWidthRatio:0.000}, " +
+            $"before={diagnostics.BeforeAdjacentVariation:0.000}, " +
+            $"after={diagnostics.AfterAdjacentVariation:0.000}.");
+        Assert.True(
+            diagnostics.AfterAdjacentVariation <
+            diagnostics.BeforeAdjacentVariation *
+            0.45,
+            $"High-frequency width wobble was not sufficiently suppressed: " +
+            $"before={diagnostics.BeforeAdjacentVariation:0.000}, " +
+            $"after={diagnostics.AfterAdjacentVariation:0.000}.");
+        Assert.InRange(
+            regularized.Points[^1].HalfWidth -
+            regularized.Points[0].HalfWidth,
+            0.25,
+            0.80);
+
+        for (var index = 0;
+             index < fit.Points.Count;
+             index++)
+        {
+            Assert.Equal(
+                fit.Points[index].X,
+                regularized.Points[index].X,
+                8);
+            Assert.Equal(
+                fit.Points[index].Y,
+                regularized.Points[index].Y,
+                8);
+        }
+    }
+
+    [Fact]
+    public void CurveFillRibbonSelfSymmetryNormalizer_LocksCenteredArchToExactSharedGeometry()
+    {
+        const int sourceWidth = 100;
+        const double mirrorConstant = 99d;
+
+        var centerline =
+            Enumerable.Range(
+                    0,
+                    21)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        20d;
+
+                    return
+                        (
+                            X:
+                                18d +
+                                63d *
+                                t,
+                            Y:
+                                42d -
+                                22d *
+                                Math.Sin(
+                                    t *
+                                    Math.PI)
+                        );
+                })
+                .ToArray();
+        var samples =
+            centerline
+                .Select((point, index) =>
+                    new LeafPetalAxisSample(
+                        point.X,
+                        point.Y,
+                        3.0,
+                        index /
+                        20d))
+                .ToArray();
+
+        var regionPixels =
+            new HashSet<int>();
+
+        foreach (var sample in samples)
+        {
+            var x =
+                (int)Math.Round(
+                    sample.X);
+            var y =
+                (int)Math.Round(
+                    sample.Y);
+            var mirrorX =
+                (int)Math.Round(
+                    mirrorConstant -
+                    x);
+
+            regionPixels.Add(
+                y *
+                    sourceWidth +
+                x);
+            regionPixels.Add(
+                y *
+                    sourceWidth +
+                mirrorX);
+        }
+
+        var pixels =
+            regionPixels.ToArray();
+        var region =
+            new LeafPetalRegion(
+                1,
+                pixels,
+                pixels,
+                pixels.Min(pixel =>
+                    pixel %
+                    sourceWidth),
+                pixels.Min(pixel =>
+                    pixel /
+                    sourceWidth),
+                pixels.Max(pixel =>
+                    pixel %
+                    sourceWidth),
+                pixels.Max(pixel =>
+                    pixel /
+                    sourceWidth));
+        var candidate =
+            new LeafPetalArcCandidate(
+                region,
+                mirrorConstant *
+                    0.5,
+                30,
+                1,
+                0,
+                0,
+                1,
+                63,
+                10,
+                6.3,
+                0.2);
+        var model =
+            new LeafPetalArcModel(
+                candidate,
+                samples,
+                false,
+                3,
+                3,
+                1.0);
+
+        var fitPoints =
+            Enumerable.Range(
+                    0,
+                    41)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        40d;
+                    var baseX =
+                        18d +
+                        63d *
+                        t;
+                    var baseY =
+                        42d -
+                        22d *
+                        Math.Sin(
+                            t *
+                            Math.PI);
+
+                    // Deliberately give the right half a small independent inverse-fit phase.
+                    var rightHalf =
+                        t >
+                        0.5;
+
+                    return new ElegantArcPoint(
+                        baseX +
+                        (rightHalf
+                            ? 0.35
+                            : -0.10),
+                        baseY +
+                        (rightHalf
+                            ? 0.22
+                            : -0.08),
+                        3.0 +
+                        (rightHalf
+                            ? 0.18
+                            : -0.06));
+                })
+                .ToArray();
+        var fit =
+            new ElegantArcFit(
+                fitPoints,
+                true,
+                true,
+                0,
+                0.8);
+
+        var applied =
+            CurveFillRibbonSelfSymmetryNormalizer.TryNormalize(
+                model,
+                fit,
+                sourceWidth,
+                out var normalized,
+                out var diagnostics);
+
+        Assert.True(
+            applied,
+            $"Expected exact source symmetry to normalize the fit. " +
+            $"agreement={diagnostics.SourceMirrorAgreement:0.000}, " +
+            $"dev={diagnostics.MaximumDeviation:0.000}, allowed={diagnostics.AllowedDeviation:0.000}.");
+        Assert.Equal(
+            1.0,
+            diagnostics.SourceMirrorAgreement,
+            3);
+
+        for (var leftIndex = 0;
+             leftIndex < normalized.Points.Count / 2;
+             leftIndex++)
+        {
+            var rightIndex =
+                normalized.Points.Count -
+                1 -
+                leftIndex;
+            var left =
+                normalized.Points[leftIndex];
+            var right =
+                normalized.Points[rightIndex];
+
+            Assert.Equal(
+                mirrorConstant,
+                left.X +
+                right.X,
+                8);
+            Assert.Equal(
+                left.Y,
+                right.Y,
+                8);
+            Assert.Equal(
+                left.HalfWidth,
+                right.HalfWidth,
+                8);
+        }
+    }
+
+    [Fact]
+    public void CurveFillRibbonMirrorPairNormalizer_SharesOneGeometryAcrossExactMirrorPartners()
+    {
+        const int sourceWidth = 100;
+        const double mirrorConstant = 99d;
+
+        static LeafPetalRegion Region(
+            byte color,
+            IReadOnlyList<(int X, int Y)> points,
+            int sourceWidth)
+        {
+            var pixels =
+                points
+                    .Select(point =>
+                        point.Y *
+                            sourceWidth +
+                        point.X)
+                    .ToArray();
+
+            return new LeafPetalRegion(
+                color,
+                pixels,
+                pixels,
+                points.Min(point => point.X),
+                points.Min(point => point.Y),
+                points.Max(point => point.X),
+                points.Max(point => point.Y));
+        }
+
+        var leftPixels =
+            Enumerable.Range(
+                    0,
+                    21)
+                .SelectMany(index =>
+                {
+                    var y =
+                        10 +
+                        index;
+                    var centerX =
+                        18 -
+                        (int)Math.Round(
+                            5d *
+                            Math.Sin(
+                                index /
+                                20d *
+                                Math.PI));
+
+                    return Enumerable.Range(
+                            centerX -
+                            2,
+                            5)
+                        .Select(x =>
+                            (X: x, Y: y));
+                })
+                .ToArray();
+        var rightPixels =
+            leftPixels
+                .Select(point =>
+                    (
+                        X:
+                            (int)Math.Round(
+                                mirrorConstant -
+                                point.X),
+                        point.Y
+                    ))
+                .ToArray();
+
+        var leftRegion =
+            Region(
+                1,
+                leftPixels,
+                sourceWidth);
+        var rightRegion =
+            Region(
+                1,
+                rightPixels,
+                sourceWidth);
+
+        static LeafPetalArcModel Model(
+            LeafPetalRegion region,
+            IReadOnlyList<LeafPetalAxisSample> samples) =>
+            new(
+                new LeafPetalArcCandidate(
+                    region,
+                    0d,
+                    0d,
+                    0d,
+                    1d,
+                    1d,
+                    0d,
+                    20d,
+                    4d,
+                    5d,
+                    0.30),
+                samples,
+                ReversedForApex: false,
+                BaseWidth: 2.5,
+                ApexWidth: 2.5,
+                SkeletonCoverage: 1d);
+
+        var leftSamples =
+            Enumerable.Range(
+                    0,
+                    21)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        20d;
+                    var x =
+                        18d -
+                        5d *
+                        Math.Sin(
+                            t *
+                            Math.PI);
+
+                    return new LeafPetalAxisSample(
+                        x,
+                        10d +
+                        index,
+                        2.5,
+                        t);
+                })
+                .ToArray();
+        var rightSamples =
+            leftSamples
+                .Select(sample =>
+                    sample with
+                    {
+                        X =
+                            mirrorConstant -
+                            sample.X,
+                    })
+                .ToArray();
+
+        var leftFitPoints =
+            leftSamples
+                .Select(sample =>
+                    new ElegantArcPoint(
+                        sample.X,
+                        sample.Y,
+                        sample.HalfWidth))
+                .ToArray();
+        var rightNoisyFitPoints =
+            rightSamples
+                .Select((sample, index) =>
+                    new ElegantArcPoint(
+                        sample.X +
+                        (index % 3 == 0
+                            ? 0.55
+                            : -0.25),
+                        sample.Y,
+                        sample.HalfWidth))
+                .ToArray();
+
+        var accepted =
+            new List<(LeafPetalArcModel Model, ElegantArcFit Fit)>
+            {
+                (
+                    Model(
+                        leftRegion,
+                        leftSamples),
+                    new ElegantArcFit(
+                        leftFitPoints,
+                        true,
+                        true,
+                        0,
+                        0.25)
+                ),
+                (
+                    Model(
+                        rightRegion,
+                        rightSamples),
+                    new ElegantArcFit(
+                        rightNoisyFitPoints,
+                        true,
+                        true,
+                        0,
+                        0.90)
+                ),
+            };
+
+        var diagnostics =
+            CurveFillRibbonMirrorPairNormalizer.Normalize(
+                accepted,
+                sourceWidth);
+
+        Assert.Equal(
+            1,
+            diagnostics.Pairs);
+        Assert.Equal(
+            1,
+            diagnostics.Replacements);
+        Assert.InRange(
+            diagnostics.BestMirrorAgreement,
+            0.999,
+            1.001);
+
+        var normalizedRight =
+            accepted[1].Fit.Points;
+
+        Assert.Equal(
+            leftFitPoints.Length,
+            normalizedRight.Count);
+
+        for (var index = 0;
+             index < leftFitPoints.Length;
+             index++)
+        {
+            Assert.InRange(
+                Math.Abs(
+                    normalizedRight[index].X -
+                    (mirrorConstant -
+                     leftFitPoints[index].X)),
+                0d,
+                1e-9);
+            Assert.InRange(
+                Math.Abs(
+                    normalizedRight[index].Y -
+                    leftFitPoints[index].Y),
+                0d,
+                1e-9);
+            Assert.InRange(
+                Math.Abs(
+                    normalizedRight[index].HalfWidth -
+                    leftFitPoints[index].HalfWidth),
+                0d,
+                1e-9);
+        }
     }
 
     [Fact]

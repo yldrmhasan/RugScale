@@ -12,7 +12,8 @@ internal static class LeafPetalArcRasterizer
         DesignDocument destination,
         LeafPetalArcModel model,
         ElegantArcFit fit,
-        IReadOnlySet<byte> protectedStrokeColors)
+        IReadOnlySet<byte> protectedStrokeColors,
+        bool restrictToFittedSweep = false)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
@@ -112,6 +113,16 @@ internal static class LeafPetalArcRasterizer
                     continue;
                 }
 
+                if (restrictToFittedSweep &&
+                    !CurveFillRibbonRasterScope.Contains(
+                        fit,
+                        sourceX,
+                        sourceY,
+                        extraMargin: BoundaryBandRadius))
+                {
+                    continue;
+                }
+
                 var targetKey =
                     y *
                     destination.Width +
@@ -189,6 +200,18 @@ internal static class LeafPetalArcRasterizer
                 if (current != region.Color)
                     continue;
 
+                // Geometric smoothing may shave a staircase protrusion, but it must never turn
+                // one continuous designer ribbon/leaf into disconnected islands. Treat pixels
+                // whose removal would split the local 8-neighbour ring as topology anchors.
+                if (WouldDisconnectRegion(
+                        destination,
+                        x,
+                        y,
+                        region.Color))
+                {
+                    continue;
+                }
+
                 // Never shave a specialist region into a protected separator role merely to make
                 // the outline look smoother; RugScale's tool replay owns those pixels.
                 if (protectedStrokeColors.Contains(sourceOwner))
@@ -240,7 +263,7 @@ internal static class LeafPetalArcRasterizer
         return changed;
     }
 
-    private static List<(double X, double Y)> BuildTargetPolygon(
+    internal static List<(double X, double Y)> BuildTargetPolygon(
         IReadOnlyList<ElegantArcPoint> points,
         double scaleX,
         double scaleY)
@@ -316,6 +339,155 @@ internal static class LeafPetalArcRasterizer
         return left;
     }
 
+    /// <summary>
+    /// Builds the scaled ribbon polygon and then expands each side by a fixed number of TARGET
+    /// pixels. This is different from increasing source HalfWidth before scaling: a dedicated 1x1
+    /// Pixel-Cord outline must stay one target-grid pixel thick when physical design size changes
+    /// at the same warp/weft quality.
+    /// </summary>
+    internal static List<(double X, double Y)> BuildTargetExpandedPolygon(
+        IReadOnlyList<ElegantArcPoint> points,
+        double scaleX,
+        double scaleY,
+        double additionalTargetPixels)
+    {
+        var left =
+            new List<(double X, double Y)>(
+                points.Count);
+        var right =
+            new List<(double X, double Y)>(
+                points.Count);
+
+        additionalTargetPixels =
+            Math.Max(
+                0d,
+                additionalTargetPixels);
+
+        for (var i = 0;
+             i < points.Count;
+             i++)
+        {
+            var previous =
+                points[Math.Max(
+                    0,
+                    i - 1)];
+            var next =
+                points[Math.Min(
+                    points.Count - 1,
+                    i + 1)];
+            var sourceTangentX =
+                next.X -
+                previous.X;
+            var sourceTangentY =
+                next.Y -
+                previous.Y;
+            var sourceLength =
+                Math.Sqrt(
+                    sourceTangentX *
+                        sourceTangentX +
+                    sourceTangentY *
+                        sourceTangentY);
+
+            if (sourceLength <=
+                1e-9)
+            {
+                continue;
+            }
+
+            var sourceNormalX =
+                -sourceTangentY /
+                sourceLength;
+            var sourceNormalY =
+                sourceTangentX /
+                sourceLength;
+            var point =
+                points[i];
+
+            var leftBase =
+                Map(
+                    point.X +
+                    sourceNormalX *
+                        point.HalfWidth,
+                    point.Y +
+                    sourceNormalY *
+                        point.HalfWidth,
+                    scaleX,
+                    scaleY);
+            var rightBase =
+                Map(
+                    point.X -
+                    sourceNormalX *
+                        point.HalfWidth,
+                    point.Y -
+                    sourceNormalY *
+                        point.HalfWidth,
+                    scaleX,
+                    scaleY);
+
+            var previousTarget =
+                Map(
+                    previous.X,
+                    previous.Y,
+                    scaleX,
+                    scaleY);
+            var nextTarget =
+                Map(
+                    next.X,
+                    next.Y,
+                    scaleX,
+                    scaleY);
+            var targetTangentX =
+                nextTarget.X -
+                previousTarget.X;
+            var targetTangentY =
+                nextTarget.Y -
+                previousTarget.Y;
+            var targetLength =
+                Math.Sqrt(
+                    targetTangentX *
+                        targetTangentX +
+                    targetTangentY *
+                        targetTangentY);
+
+            if (targetLength <=
+                1e-9)
+            {
+                continue;
+            }
+
+            var targetNormalX =
+                -targetTangentY /
+                targetLength;
+            var targetNormalY =
+                targetTangentX /
+                targetLength;
+
+            left.Add(
+                (
+                    leftBase.X +
+                    targetNormalX *
+                        additionalTargetPixels,
+                    leftBase.Y +
+                    targetNormalY *
+                        additionalTargetPixels
+                ));
+            right.Add(
+                (
+                    rightBase.X -
+                    targetNormalX *
+                        additionalTargetPixels,
+                    rightBase.Y -
+                    targetNormalY *
+                        additionalTargetPixels
+                ));
+        }
+
+        right.Reverse();
+        left.AddRange(
+            right);
+        return left;
+    }
+
     private static (double X, double Y) Map(
         double x,
         double y,
@@ -329,7 +501,7 @@ internal static class LeafPetalArcRasterizer
             scaleY -
             0.5);
 
-    private static HashSet<int> RasterizePolygon(
+    internal static HashSet<int> RasterizePolygon(
         IReadOnlyList<(double X, double Y)> polygon,
         int width,
         int height)
@@ -498,6 +670,62 @@ internal static class LeafPetalArcRasterizer
         }
 
         return false;
+    }
+
+    private static bool WouldDisconnectRegion(
+        DesignDocument document,
+        int x,
+        int y,
+        byte color)
+    {
+        Span<bool> ring =
+        [
+            y > 0 &&
+            document.GetPixel(x, y - 1) == color,
+            x + 1 < document.Width &&
+            y > 0 &&
+            document.GetPixel(x + 1, y - 1) == color,
+            x + 1 < document.Width &&
+            document.GetPixel(x + 1, y) == color,
+            x + 1 < document.Width &&
+            y + 1 < document.Height &&
+            document.GetPixel(x + 1, y + 1) == color,
+            y + 1 < document.Height &&
+            document.GetPixel(x, y + 1) == color,
+            x > 0 &&
+            y + 1 < document.Height &&
+            document.GetPixel(x - 1, y + 1) == color,
+            x > 0 &&
+            document.GetPixel(x - 1, y) == color,
+            x > 0 &&
+            y > 0 &&
+            document.GetPixel(x - 1, y - 1) == color,
+        ];
+
+        var neighbours = 0;
+        var groups = 0;
+
+        for (var index = 0;
+             index < ring.Length;
+             index++)
+        {
+            if (!ring[index])
+                continue;
+
+            neighbours++;
+
+            if (!ring[
+                    (index +
+                     ring.Length -
+                     1) %
+                    ring.Length])
+            {
+                groups++;
+            }
+        }
+
+        return neighbours >= 2 &&
+               groups >= 2;
     }
 
     private static bool CanShiftIntoRegion(
