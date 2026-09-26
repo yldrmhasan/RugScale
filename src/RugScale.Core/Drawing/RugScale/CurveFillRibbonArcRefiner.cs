@@ -125,6 +125,8 @@ internal static class CurveFillRibbonArcRefiner
             new HashSet<LeafPetalRegion>();
         var compactSpiralRegions =
             new HashSet<LeafPetalRegion>();
+        var taperedHookRegions =
+            new HashSet<LeafPetalRegion>();
 
         foreach (var region in regions)
         {
@@ -210,9 +212,41 @@ internal static class CurveFillRibbonArcRefiner
 
             axisBuilt++;
 
-            if (!LooksLikeDesignerRibbon(
+            var designerRibbon =
+                LooksLikeDesignerRibbon(
                     model,
-                    out var ribbonShapeDiagnostics))
+                    out var ribbonShapeDiagnostics);
+            var taperedHookSweep =
+                !designerRibbon &&
+                string.Equals(
+                    ribbonShapeDiagnostics.Reason,
+                    "terminal-width-ratio",
+                    StringComparison.Ordinal) &&
+                centerlineDiagnostics.Endpoints == 2 &&
+                centerlineDiagnostics.PrincipalPathCoverage >=
+                    0.95 &&
+                candidate.Elongation >=
+                    1.75 &&
+                candidate.Elongation <=
+                    2.40 &&
+                boundingFillRatio >=
+                    0.15 &&
+                boundingFillRatio <=
+                    0.32 &&
+                candidate.BoundaryRatio <=
+                    0.46 &&
+                ribbonShapeDiagnostics.WidthCoefficientVariation <=
+                    0.55 &&
+                ribbonShapeDiagnostics.TerminalRatio >=
+                    0.10 &&
+                ribbonShapeDiagnostics.TerminalRatio <=
+                    0.25 &&
+                ribbonShapeDiagnostics.MaximumBend >=
+                    ribbonShapeDiagnostics.RequiredBend *
+                    2.0;
+
+            if (!designerRibbon &&
+                !taperedHookSweep)
             {
                 continue;
             }
@@ -341,7 +375,47 @@ internal static class CurveFillRibbonArcRefiner
             ElegantArcFit fit;
             var compoundFitSelected = false;
 
-            if (compactSpiralSweep)
+            if (taperedHookSweep)
+            {
+                // The four real C069 repeats are all explained by the same compact compound family
+                // inside a ~1 source-pixel maximum corridor. Keep this authority all-or-nothing:
+                // if the compound fit fails its normal safety gates, leave the baseline untouched.
+                compoundAttempts++;
+
+                if (!CurveFillRibbonCompoundFitter.TryFit(
+                        model,
+                        out var taperedHookCompoundFit,
+                        out var taperedHookCompoundDiagnostics))
+                {
+                    lastCompoundReason =
+                        taperedHookCompoundDiagnostics.Reason;
+                    maxCompoundDeviation =
+                        Math.Max(
+                            maxCompoundDeviation,
+                            taperedHookCompoundDiagnostics.MaximumDeviation);
+                    maxCompoundP95Deviation =
+                        Math.Max(
+                            maxCompoundP95Deviation,
+                            taperedHookCompoundDiagnostics.Percentile95Deviation);
+                    continue;
+                }
+
+                fit =
+                    taperedHookCompoundFit;
+                compoundFitSelected = true;
+                compoundFits++;
+                lastCompoundReason =
+                    taperedHookCompoundDiagnostics.Reason;
+                maxCompoundDeviation =
+                    Math.Max(
+                        maxCompoundDeviation,
+                        taperedHookCompoundDiagnostics.MaximumDeviation);
+                maxCompoundP95Deviation =
+                    Math.Max(
+                        maxCompoundP95Deviation,
+                        taperedHookCompoundDiagnostics.Percentile95Deviation);
+            }
+            else if (compactSpiralSweep)
             {
                 // Compact spirals are complete multi-turn ribbons. The real-raster probe proved
                 // generic macro splines unsafe, while the low-frequency compound fitter stayed
@@ -709,6 +783,12 @@ internal static class CurveFillRibbonArcRefiner
                     model.Candidate.Region);
             }
 
+            if (taperedHookSweep)
+            {
+                taperedHookRegions.Add(
+                    model.Candidate.Region);
+            }
+
             if (mainArcExtractedForRegion)
             {
                 mainArcScopedRegions.Add(
@@ -743,6 +823,8 @@ internal static class CurveFillRibbonArcRefiner
             var trueRedrawAuthority =
                 scopedMainArc ||
                 compactSpiralRegions.Contains(
+                    item.Model.Candidate.Region) ||
+                taperedHookRegions.Contains(
                     item.Model.Candidate.Region) ||
                 item.Fit.CurvatureSignFlips == 0 &&
                 item.Fit.MaximumCenterlineDeviation <=
