@@ -728,6 +728,12 @@ internal static class CurveFillRibbonArcRefiner
             var roundness = 0d;
             var maximumDeviation = 0d;
             var curvatureFlips = 0;
+            var selectedSmoothness = double.PositiveInfinity;
+            var alternativeThroughSafe = false;
+            var alternativeThroughSmoothness = double.PositiveInfinity;
+            var alternativeThroughMaximumDeviation = 0d;
+            var alternativeThroughP95Deviation = 0d;
+            var alternativeThroughRoundness = 0d;
             var skeletonPixels = 0;
             var endpoints = 0;
             var principalPathPixels = 0;
@@ -1013,6 +1019,29 @@ internal static class CurveFillRibbonArcRefiner
                             fit.MaximumCenterlineDeviation;
                         curvatureFlips =
                             fit.CurvatureSignFlips;
+                        selectedSmoothness =
+                            CurveFillRibbonSmoothness.Measure(
+                                fit.Points);
+
+                        if (broadSparseArch &&
+                            mainArcExtracted &&
+                            CurveFillRibbonThroughPointsFitter.TryFit(
+                                model,
+                                out var alternativeThroughFit,
+                                out var alternativeThroughDiagnostics))
+                        {
+                            alternativeThroughSafe = true;
+                            alternativeThroughSmoothness =
+                                CurveFillRibbonSmoothness.Measure(
+                                    alternativeThroughFit.Points);
+                            alternativeThroughMaximumDeviation =
+                                alternativeThroughDiagnostics.MaximumDeviation;
+                            alternativeThroughP95Deviation =
+                                alternativeThroughDiagnostics.Percentile95Deviation;
+                            alternativeThroughRoundness =
+                                alternativeThroughDiagnostics.Roundness;
+                        }
+
                         status =
                             accepted
                                 ? "accepted"
@@ -1065,6 +1094,12 @@ internal static class CurveFillRibbonArcRefiner
                     fitSafe,
                     maximumDeviation,
                     curvatureFlips,
+                    selectedSmoothness,
+                    alternativeThroughSafe,
+                    alternativeThroughSmoothness,
+                    alternativeThroughMaximumDeviation,
+                    alternativeThroughP95Deviation,
+                    alternativeThroughRoundness,
                     accepted,
                     status));
         }
@@ -1247,6 +1282,12 @@ internal readonly record struct RibbonArcCandidateStage(
     bool FitSafe,
     double MaximumDeviation,
     int CurvatureSignFlips,
+    double SelectedSmoothness,
+    bool AlternativeThroughSafe,
+    double AlternativeThroughSmoothness,
+    double AlternativeThroughMaximumDeviation,
+    double AlternativeThroughP95Deviation,
+    double AlternativeThroughRoundness,
     bool Accepted,
     string Status);
 
