@@ -16,6 +16,7 @@ internal static class CurveFillRibbonMainArcExtractor
     private const double MinimumKeptFraction = 0.42;
     private const double MaximumKeptFraction = 0.82;
     private const double MinimumOneSidedKeptFraction = 0.48;
+    private const double MinimumSparseTaperKeptFraction = 0.38;
     private const double MaximumOneSidedKeptFraction = 0.95;
     private const double MinimumOneSidedTrimFraction = 0.05;
     private const int MinimumSamples = 24;
@@ -68,6 +69,36 @@ internal static class CurveFillRibbonMainArcExtractor
     public static bool TryExtractOneSidedSweep(
         LeafPetalArcModel model,
         out LeafPetalArcModel extracted,
+        out RibbonMainArcExtractionDiagnostics diagnostics) =>
+        TryExtractOneSidedSweepCore(
+            model,
+            MinimumOneSidedKeptFraction,
+            MaximumOneSidedKeptFraction,
+            out extracted,
+            out diagnostics);
+
+    /// <summary>
+    /// Sparse tapered ornaments can contain a long useful designer sweep plus more branch/hook
+    /// material than a mirror-fused ribbon. Their classifier is much stricter, and rasterization
+    /// is scoped to the extracted sweep, so a smaller coherent fraction is acceptable here without
+    /// weakening the ordinary one-sided extractor.
+    /// </summary>
+    public static bool TryExtractSparseTaperSweep(
+        LeafPetalArcModel model,
+        out LeafPetalArcModel extracted,
+        out RibbonMainArcExtractionDiagnostics diagnostics) =>
+        TryExtractOneSidedSweepCore(
+            model,
+            MinimumSparseTaperKeptFraction,
+            MaximumOneSidedKeptFraction,
+            out extracted,
+            out diagnostics);
+
+    private static bool TryExtractOneSidedSweepCore(
+        LeafPetalArcModel model,
+        double minimumKeptFraction,
+        double maximumKeptFraction,
+        out LeafPetalArcModel extracted,
         out RibbonMainArcExtractionDiagnostics diagnostics)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -102,14 +133,20 @@ internal static class CurveFillRibbonMainArcExtractor
                     symmetricTrim: false,
                     radiusOverride: radius,
                     out extracted,
-                    out diagnostics))
+                    out diagnostics,
+                    minimumKeptFractionOverride:
+                        minimumKeptFraction,
+                    maximumKeptFractionOverride:
+                        maximumKeptFraction))
             {
                 return true;
             }
 
             var distance =
                 DistanceToOneSidedAcceptance(
-                    diagnostics);
+                    diagnostics,
+                    minimumKeptFraction,
+                    maximumKeptFraction);
 
             if (bestFailure is null ||
                 distance <
@@ -169,7 +206,9 @@ internal static class CurveFillRibbonMainArcExtractor
     }
 
     private static double DistanceToOneSidedAcceptance(
-        RibbonMainArcExtractionDiagnostics diagnostics)
+        RibbonMainArcExtractionDiagnostics diagnostics,
+        double minimumKeptFraction,
+        double maximumKeptFraction)
     {
         if (diagnostics.Reason ==
             "no-coherent-run")
@@ -178,19 +217,19 @@ internal static class CurveFillRibbonMainArcExtractor
         }
 
         if (diagnostics.KeptFraction <
-            MinimumOneSidedKeptFraction)
+            minimumKeptFraction)
         {
             return
-                MinimumOneSidedKeptFraction -
+                minimumKeptFraction -
                 diagnostics.KeptFraction;
         }
 
         if (diagnostics.KeptFraction >
-            MaximumOneSidedKeptFraction)
+            maximumKeptFraction)
         {
             return
                 diagnostics.KeptFraction -
-                MaximumOneSidedKeptFraction;
+                maximumKeptFraction;
         }
 
         return 0d;
@@ -201,7 +240,9 @@ internal static class CurveFillRibbonMainArcExtractor
         bool symmetricTrim,
         int? radiusOverride,
         out LeafPetalArcModel extracted,
-        out RibbonMainArcExtractionDiagnostics diagnostics)
+        out RibbonMainArcExtractionDiagnostics diagnostics,
+        double? minimumKeptFractionOverride = null,
+        double? maximumKeptFractionOverride = null)
     {
         ArgumentNullException.ThrowIfNull(model);
 
@@ -342,6 +383,18 @@ internal static class CurveFillRibbonMainArcExtractor
                 MinimumOneSidedKeptFraction;
             maximumKeptFraction =
                 MaximumOneSidedKeptFraction;
+        }
+
+        if (minimumKeptFractionOverride.HasValue)
+        {
+            minimumKeptFraction =
+                minimumKeptFractionOverride.Value;
+        }
+
+        if (maximumKeptFractionOverride.HasValue)
+        {
+            maximumKeptFraction =
+                maximumKeptFractionOverride.Value;
         }
 
         var kept =
