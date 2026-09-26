@@ -1134,6 +1134,9 @@ internal static class Program
                     $"area={stage.Area}, elong={stage.Elongation:0.000}, fill={stage.BoundingFillRatio:0.000}, " +
                     $"broad={stage.BroadSparseArch}, centerline={stage.CenterlineBuilt}, " +
                     $"coverage={stage.PrincipalPathCoverage:0.000}, ribbon={stage.DesignerRibbon}, " +
+                    $"shape={stage.RibbonShapeReason} width={stage.RibbonMeanWidth:0.000} " +
+                    $"cv={stage.RibbonWidthCoefficientVariation:0.000} terminal={stage.RibbonTerminalRatio:0.000} " +
+                    $"bend={stage.RibbonMaximumBend:0.000}/{stage.RibbonRequiredBend:0.000}, " +
                     $"sym={stage.SymmetryRecovered}/{stage.SymmetryAxis} " +
                     $"match={stage.MirrorAgreement:0.000} shift={stage.SymmetryMeanShift:0.000}/{stage.SymmetryMaxShift:0.000}, " +
                     $"sourceMirror={stage.MirrorSourceRecovered}/{stage.MirrorSourceReason} " +
@@ -1650,7 +1653,7 @@ internal static class Program
             new StringBuilder();
 
         sb.AppendLine(
-            "color,min_x,min_y,max_x,max_y,area,elongation,boundary_ratio,bounding_fill,broad_sparse_arch,prefilter,centerline,skeleton_pixels,endpoints,principal_path_pixels,path_coverage,designer_ribbon,symmetry_recovered,symmetry_axis,mirror_agreement,symmetry_mean_shift,symmetry_max_shift,mirror_source_recovered,mirror_source_reason,mirror_source_agreement,mirror_source_mean_shift,mirror_source_max_shift,main_arc_extracted,main_arc_reason,main_arc_start,main_arc_end,main_arc_kept_fraction,compound_attempted,compound_reason,compound_p95_deviation,compound_max_deviation,fit_kind,curve_family,roundness,fit_safe,max_deviation,curvature_flips,selected_smoothness,alt_through_safe,alt_through_smoothness,alt_through_max_deviation,alt_through_p95_deviation,alt_through_roundness,width_reg_applied,width_source_cv,width_terminal_ratio,width_variation_before,width_variation_after,width_max_shift,accepted,status");
+            "color,min_x,min_y,max_x,max_y,area,elongation,boundary_ratio,bounding_fill,broad_sparse_arch,prefilter,centerline,skeleton_pixels,endpoints,principal_path_pixels,path_coverage,designer_ribbon,ribbon_shape_reason,ribbon_mean_width,ribbon_width_cv,ribbon_terminal_ratio,ribbon_max_bend,ribbon_required_bend,symmetry_recovered,symmetry_axis,mirror_agreement,symmetry_mean_shift,symmetry_max_shift,mirror_source_recovered,mirror_source_reason,mirror_source_agreement,mirror_source_mean_shift,mirror_source_max_shift,main_arc_extracted,main_arc_reason,main_arc_start,main_arc_end,main_arc_kept_fraction,compound_attempted,compound_reason,compound_p95_deviation,compound_max_deviation,fit_kind,curve_family,roundness,fit_safe,max_deviation,curvature_flips,selected_smoothness,alt_through_safe,alt_through_smoothness,alt_through_max_deviation,alt_through_p95_deviation,alt_through_roundness,width_reg_applied,width_source_cv,width_terminal_ratio,width_variation_before,width_variation_after,width_max_shift,accepted,status");
 
         foreach (var stage in stages)
         {
@@ -1671,6 +1674,12 @@ internal static class Program
             sb.Append(stage.PrincipalPathPixels).Append(',');
             sb.Append(stage.PrincipalPathCoverage.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
             sb.Append(stage.DesignerRibbon ? 1 : 0).Append(',');
+            sb.Append(stage.RibbonShapeReason).Append(',');
+            sb.Append(stage.RibbonMeanWidth.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.RibbonWidthCoefficientVariation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.RibbonTerminalRatio.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.RibbonMaximumBend.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.RibbonRequiredBend.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
             sb.Append(stage.SymmetryRecovered ? 1 : 0).Append(',');
             sb.Append(stage.SymmetryAxis).Append(',');
             sb.Append(stage.MirrorAgreement.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
