@@ -1040,6 +1040,14 @@ internal static class CurveFillRibbonArcRefiner
             var widthVariationBefore = 0d;
             var widthVariationAfter = 0d;
             var widthMaximumShift = 0d;
+            var variableWidthProfileApplied = false;
+            var variableWidthSourceCoefficientVariation = 0d;
+            var variableWidthMappedCoefficientVariation = 0d;
+            var variableWidthSourceMinimum = 0d;
+            var variableWidthSourceMaximum = 0d;
+            var variableWidthMappedMinimum = 0d;
+            var variableWidthMappedMaximum = 0d;
+            var variableWidthMaximumAdjacentVariation = 0d;
             var skeletonPixels = 0;
             var endpoints = 0;
             var principalPathPixels = 0;
@@ -1691,6 +1699,32 @@ internal static class CurveFillRibbonArcRefiner
                                 widthAuditDiagnostics.MaximumHalfWidthShift;
                         }
 
+                        if (fitSafe &&
+                            variableWidthSweepProbe)
+                        {
+                            _ =
+                                CurveFillVariableWidthProfileMapper.Apply(
+                                    model,
+                                    fit,
+                                    out var variableWidthDiagnostics);
+                            variableWidthProfileApplied =
+                                variableWidthDiagnostics.Applied;
+                            variableWidthSourceCoefficientVariation =
+                                variableWidthDiagnostics.SourceCoefficientVariation;
+                            variableWidthMappedCoefficientVariation =
+                                variableWidthDiagnostics.MappedCoefficientVariation;
+                            variableWidthSourceMinimum =
+                                variableWidthDiagnostics.SourceMinimum;
+                            variableWidthSourceMaximum =
+                                variableWidthDiagnostics.SourceMaximum;
+                            variableWidthMappedMinimum =
+                                variableWidthDiagnostics.MappedMinimum;
+                            variableWidthMappedMaximum =
+                                variableWidthDiagnostics.MappedMaximum;
+                            variableWidthMaximumAdjacentVariation =
+                                variableWidthDiagnostics.MaximumAdjacentVariation;
+                        }
+
                         if (broadSparseArch &&
                             mainArcExtracted &&
                             CurveFillRibbonThroughPointsFitter.TryFit(
@@ -1810,6 +1844,14 @@ internal static class CurveFillRibbonArcRefiner
                     widthVariationBefore,
                     widthVariationAfter,
                     widthMaximumShift,
+                    variableWidthProfileApplied,
+                    variableWidthSourceCoefficientVariation,
+                    variableWidthMappedCoefficientVariation,
+                    variableWidthSourceMinimum,
+                    variableWidthSourceMaximum,
+                    variableWidthMappedMinimum,
+                    variableWidthMappedMaximum,
+                    variableWidthMaximumAdjacentVariation,
                     accepted,
                     status));
         }
@@ -2190,6 +2232,14 @@ internal readonly record struct RibbonArcCandidateStage(
     double WidthVariationBefore,
     double WidthVariationAfter,
     double WidthMaximumShift,
+    bool VariableWidthProfileApplied,
+    double VariableWidthSourceCoefficientVariation,
+    double VariableWidthMappedCoefficientVariation,
+    double VariableWidthSourceMinimum,
+    double VariableWidthSourceMaximum,
+    double VariableWidthMappedMinimum,
+    double VariableWidthMappedMaximum,
+    double VariableWidthMaximumAdjacentVariation,
     bool Accepted,
     string Status);
 
