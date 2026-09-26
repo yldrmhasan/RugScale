@@ -795,6 +795,41 @@ Goal:
 measure whether one repeat-consistent model can explain all four hooks inside the source safety
 corridor. Only after that can a separately gated true-redraw production class be considered.
 
+### 4.26 Strict tapered-hook production redraw — CURRENT EXPERIMENT
+
+Commit:
+`d1ce1d12fb2c656a7cffe9ed31544745abcad346`
+
+Evidence:
+the common-model diagnostic proved all four repeated C069 navy hooks fit the same
+`CompoundSpline` family safely:
+
+- upper pair: p95 **0.386953**, max **1.027677**, roughness **0.080480**, 12 anchors / 1 smoothing pass,
+- lower pair: p95 **0.483801**, max **0.919268**, roughness **0.079647**, 12 anchors / 3 smoothing passes.
+
+Production authority is intentionally separate from ordinary ribbons and uses the exact narrow
+source-evidence gate measured by the diagnostic probe:
+- terminal-ratio rejection from the ordinary ribbon classifier,
+- 2 endpoints,
+- path coverage >= 0.95,
+- elongation 1.75 .. 2.40,
+- bounding fill 0.15 .. 0.32,
+- boundary ratio <= 0.46,
+- width CV <= 0.55,
+- terminal ratio 0.10 .. 0.25,
+- bend >= 2x required bend.
+
+Runtime behaviour:
+- tapered hooks try the compound fitter only,
+- if compound safety fails, the categorical baseline is left untouched,
+- there is no generic spline / Bezier fallback,
+- an accepted hook receives authoritative true redraw,
+- other ribbon classes and thresholds are unchanged.
+
+Status:
+C069 real BMP + four-design/B163A validation running. Do not mark KEEP until the navy hook crop is
+visually inspected and no repeat/symmetry damage appears.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
