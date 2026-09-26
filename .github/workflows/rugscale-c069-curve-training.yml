@@ -51,7 +51,7 @@ jobs:
             --output "$GITHUB_WORKSPACE/artifacts/rugscale-c069" \
             --fixture C069A_CREAM_N69
 
-      - name: Enforce compact spiral redraw gate
+      - name: Enforce C069 specialist redraw gates
         shell: bash
         run: |
           set -euo pipefail
@@ -88,6 +88,42 @@ jobs:
               if float(row["max_deviation"]) > 1.90:
                   raise SystemExit(
                       f"{key}: compact spiral source deviation regressed to {row['max_deviation']} px"
+                  )
+
+          hook_targets = {
+              (99, 212, 139, 239),
+              (501, 212, 541, 239),
+              (99, 1139, 139, 1166),
+              (501, 1139, 541, 1166),
+          }
+          hooks = {}
+          for row in rows:
+              key = tuple(int(row[name]) for name in ("min_x", "min_y", "max_x", "max_y"))
+              if key in hook_targets:
+                  hooks[key] = row
+
+          missing_hooks = hook_targets - hooks.keys()
+          if missing_hooks:
+              raise SystemExit(f"Missing tapered-hook audit rows: {sorted(missing_hooks)}")
+
+          for key, row in hooks.items():
+              if row["ribbon_shape_reason"] != "ok-tapered-hook":
+                  raise SystemExit(f"{key}: unexpected tapered-hook reason {row['ribbon_shape_reason']}")
+              if row["fit_kind"] != "tapered-hook-compound":
+                  raise SystemExit(f"{key}: expected tapered-hook-compound, got {row['fit_kind']}")
+              if row["curve_family"] != "CompoundSpline":
+                  raise SystemExit(f"{key}: tapered-hook family changed to {row['curve_family']}")
+              if row["fit_safe"] != "1" or row["accepted"] != "1":
+                  raise SystemExit(f"{key}: tapered hook is no longer production-accepted")
+              if int(row["curvature_flips"]) > 1:
+                  raise SystemExit(f"{key}: tapered hook gained too many curvature flips")
+              if float(row["max_deviation"]) > 1.15:
+                  raise SystemExit(
+                      f"{key}: tapered-hook source deviation regressed to {row['max_deviation']} px"
+                  )
+              if float(row["selected_smoothness"]) > 0.095:
+                  raise SystemExit(
+                      f"{key}: tapered-hook roughness regressed to {row['selected_smoothness']}"
                   )
           PY
 
