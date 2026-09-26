@@ -1114,15 +1114,43 @@ internal static class CurveFillRibbonArcRefiner
                             model,
                             centerlineDiagnostics,
                             ribbonShapeDiagnostics);
+                    var variableWidthSweepProbe =
+                        !designerRibbon &&
+                        string.Equals(
+                            ribbonShapeDiagnostics.Reason,
+                            "width-variation",
+                            StringComparison.Ordinal) &&
+                        centerlineDiagnostics.Endpoints >= 2 &&
+                        centerlineDiagnostics.Endpoints <= 4 &&
+                        centerlineDiagnostics.PrincipalPathCoverage >=
+                            0.90 &&
+                        candidate.Elongation >=
+                            3.0 &&
+                        boundingFillRatio <=
+                            0.16 &&
+                        candidate.BoundaryRatio <=
+                            0.35 &&
+                        ribbonShapeDiagnostics.MeanWidth >=
+                            1.5 &&
+                        ribbonShapeDiagnostics.WidthCoefficientVariation >
+                            MaximumWidthCoefficientVariation &&
+                        ribbonShapeDiagnostics.WidthCoefficientVariation <=
+                            0.80;
 
                     if (taperedHookSweep)
                     {
                         ribbonShapeReason =
                             "ok-tapered-hook";
                     }
+                    else if (variableWidthSweepProbe)
+                    {
+                        ribbonShapeReason =
+                            "probe-variable-width-sweep";
+                    }
 
                     if (!designerRibbon &&
-                        !taperedHookSweep)
+                        !taperedHookSweep &&
+                        !variableWidthSweepProbe)
                     {
                         status =
                             compactSpiralProbe
@@ -1599,6 +1627,7 @@ internal static class CurveFillRibbonArcRefiner
                                 maximumAllowedFlips;
                         accepted =
                             fitSafe &&
+                            !variableWidthSweepProbe &&
                             (prefilterAccepted ||
                              compactSpiralSweep ||
                              taperedHookSweep);
@@ -1658,9 +1687,14 @@ internal static class CurveFillRibbonArcRefiner
                                       !prefilterAccepted
                                         ? "accepted-compact-spiral"
                                         : "accepted"
-                                : taperedHookSweep
-                                    ? "tapered-hook-fit-unsafe"
-                                    : compactSpiralProbe &&
+                                : variableWidthSweepProbe &&
+                                  fitSafe
+                                    ? "variable-width-probe-safe"
+                                    : variableWidthSweepProbe
+                                        ? "variable-width-probe-fit-unsafe"
+                                        : taperedHookSweep
+                                            ? "tapered-hook-fit-unsafe"
+                                            : compactSpiralProbe &&
                                           fitSafe
                                             ? "compact-probe-safe"
                                             : compactSpiralProbe
