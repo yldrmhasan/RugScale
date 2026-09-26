@@ -218,32 +218,10 @@ internal static class CurveFillRibbonArcRefiner
                     out var ribbonShapeDiagnostics);
             var taperedHookSweep =
                 !designerRibbon &&
-                string.Equals(
-                    ribbonShapeDiagnostics.Reason,
-                    "terminal-width-ratio",
-                    StringComparison.Ordinal) &&
-                centerlineDiagnostics.Endpoints == 2 &&
-                centerlineDiagnostics.PrincipalPathCoverage >=
-                    0.95 &&
-                candidate.Elongation >=
-                    1.75 &&
-                candidate.Elongation <=
-                    2.40 &&
-                boundingFillRatio >=
-                    0.15 &&
-                boundingFillRatio <=
-                    0.32 &&
-                candidate.BoundaryRatio <=
-                    0.46 &&
-                ribbonShapeDiagnostics.WidthCoefficientVariation <=
-                    0.55 &&
-                ribbonShapeDiagnostics.TerminalRatio >=
-                    0.10 &&
-                ribbonShapeDiagnostics.TerminalRatio <=
-                    0.25 &&
-                ribbonShapeDiagnostics.MaximumBend >=
-                    ribbonShapeDiagnostics.RequiredBend *
-                    2.0;
+                LooksLikeTaperedHook(
+                    model,
+                    centerlineDiagnostics,
+                    ribbonShapeDiagnostics);
 
             if (!designerRibbon &&
                 !taperedHookSweep)
@@ -1133,32 +1111,10 @@ internal static class CurveFillRibbonArcRefiner
                     // with the existing fitters before granting any production redraw authority.
                     var taperedHookProbe =
                         !designerRibbon &&
-                        string.Equals(
-                            ribbonShapeDiagnostics.Reason,
-                            "terminal-width-ratio",
-                            StringComparison.Ordinal) &&
-                        centerlineDiagnostics.Endpoints == 2 &&
-                        centerlineDiagnostics.PrincipalPathCoverage >=
-                            0.95 &&
-                        candidate.Elongation >=
-                            1.75 &&
-                        candidate.Elongation <=
-                            2.40 &&
-                        boundingFillRatio >=
-                            0.15 &&
-                        boundingFillRatio <=
-                            0.32 &&
-                        candidate.BoundaryRatio <=
-                            0.46 &&
-                        ribbonShapeDiagnostics.WidthCoefficientVariation <=
-                            0.55 &&
-                        ribbonShapeDiagnostics.TerminalRatio >=
-                            0.10 &&
-                        ribbonShapeDiagnostics.TerminalRatio <=
-                            0.25 &&
-                        ribbonShapeDiagnostics.MaximumBend >=
-                            ribbonShapeDiagnostics.RequiredBend *
-                            2.0;
+                        LooksLikeTaperedHook(
+                            model,
+                            centerlineDiagnostics,
+                            ribbonShapeDiagnostics);
 
                     if (taperedHookProbe)
                     {
@@ -1828,6 +1784,51 @@ internal static class CurveFillRibbonArcRefiner
             .ThenBy(stage =>
                 stage.MinX)
             .ToArray();
+    }
+
+    private static bool LooksLikeTaperedHook(
+        LeafPetalArcModel model,
+        RibbonCenterlineBuildDiagnostics centerline,
+        RibbonShapeDiagnostics shape)
+    {
+        var candidate =
+            model.Candidate;
+        var region =
+            candidate.Region;
+        var boundingFillRatio =
+            region.Area /
+            (double)Math.Max(
+                1,
+                region.Width *
+                region.Height);
+
+        return
+            string.Equals(
+                shape.Reason,
+                "terminal-width-ratio",
+                StringComparison.Ordinal) &&
+            centerline.Endpoints == 2 &&
+            centerline.PrincipalPathCoverage >=
+                0.95 &&
+            candidate.Elongation >=
+                1.75 &&
+            candidate.Elongation <=
+                2.40 &&
+            boundingFillRatio >=
+                0.15 &&
+            boundingFillRatio <=
+                0.32 &&
+            candidate.BoundaryRatio <=
+                0.46 &&
+            shape.WidthCoefficientVariation <=
+                0.55 &&
+            shape.TerminalRatio >=
+                0.10 &&
+            shape.TerminalRatio <=
+                0.25 &&
+            shape.MaximumBend >=
+                shape.RequiredBend *
+                2.0;
     }
 
     private static bool LooksLikeDesignerRibbon(
