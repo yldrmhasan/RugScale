@@ -51,6 +51,46 @@ jobs:
             --output "$GITHUB_WORKSPACE/artifacts/rugscale-c069" \
             --fixture C069A_CREAM_N69
 
+      - name: Enforce compact spiral redraw gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import csv
+          from pathlib import Path
+
+          path = Path("artifacts/rugscale-c069/C069A_CREAM_N69_ribbon_candidates.csv")
+          rows = list(csv.DictReader(path.open(newline="", encoding="utf-8")))
+          targets = {
+              (99, 219, 148, 298),
+              (492, 219, 541, 298),
+          }
+
+          found = {}
+          for row in rows:
+              key = tuple(int(row[name]) for name in ("min_x", "min_y", "max_x", "max_y"))
+              if key in targets:
+                  found[key] = row
+
+          missing = targets - found.keys()
+          if missing:
+              raise SystemExit(f"Missing compact spiral audit rows: {sorted(missing)}")
+
+          for key, row in found.items():
+              if row["ribbon_shape_reason"] != "ok-compact-spiral":
+                  raise SystemExit(f"{key}: unexpected shape reason {row['ribbon_shape_reason']}")
+              if row["fit_kind"] != "compact-compound":
+                  raise SystemExit(f"{key}: expected compact-compound, got {row['fit_kind']}")
+              if row["fit_safe"] != "1" or row["accepted"] != "1":
+                  raise SystemExit(f"{key}: compact spiral is no longer production-accepted")
+              if int(row["curvature_flips"]) != 0:
+                  raise SystemExit(f"{key}: compact spiral gained curvature flips")
+              if float(row["max_deviation"]) > 1.90:
+                  raise SystemExit(
+                      f"{key}: compact spiral source deviation regressed to {row['max_deviation']} px"
+                  )
+          PY
+
       - name: Publish C069 summary
         if: always()
         shell: bash
