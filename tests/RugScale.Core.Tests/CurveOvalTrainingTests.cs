@@ -862,6 +862,115 @@ public sealed class CurveOvalTrainingTests
             $"Expected ordered Pixel-Cord cadence to matter: faithful={faithfulScore:0.000}, wrong={wrongScore:0.000}.");
     }
 
+    [Fact]
+    public void VariableWidthProfileMapper_PreservesTaperWithoutRasterBreathing()
+    {
+        var samples =
+            Enumerable.Range(
+                    0,
+                    81)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        80d;
+                    var designerWidth =
+                        2.0 +
+                        4.5 *
+                        t +
+                        0.6 *
+                        Math.Sin(
+                            Math.PI *
+                            t);
+                    var rasterPhase =
+                        index %
+                        2 == 0
+                            ? 0.32
+                            : -0.32;
+
+                    return new LeafPetalAxisSample(
+                        8d +
+                        70d *
+                            t,
+                        30d +
+                        9d *
+                            Math.Sin(
+                                Math.PI *
+                                t),
+                        designerWidth +
+                        rasterPhase,
+                        t);
+                })
+                .ToArray();
+        var model =
+            Model(
+                samples,
+                width: 90,
+                height: 55);
+        var points =
+            Enumerable.Range(
+                    0,
+                    241)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        240d;
+
+                    return new ElegantArcPoint(
+                        8d +
+                        70d *
+                            t,
+                        30d +
+                        9d *
+                            Math.Sin(
+                                Math.PI *
+                                t),
+                        4.0);
+                })
+                .ToArray();
+        var fit =
+            new ElegantArcFit(
+                points,
+                IsSafe: true,
+                IsMonotonic: true,
+                CurvatureSignFlips: 0,
+                MaximumCenterlineDeviation: 0.5);
+
+        var mapped =
+            CurveFillVariableWidthProfileMapper.Apply(
+                model,
+                fit,
+                out var diagnostics);
+
+        Assert.True(
+            diagnostics.Applied);
+        Assert.True(
+            diagnostics.SourceCoefficientVariation >
+            0.30);
+        Assert.True(
+            diagnostics.MappedCoefficientVariation >
+            0.25,
+            "A real designer taper must not collapse to the constant robust ribbon width.");
+        Assert.True(
+            mapped.Points[^1].HalfWidth -
+            mapped.Points[0].HalfWidth >
+            3.0,
+            "The low-frequency source taper must survive target geometry mapping.");
+        Assert.True(
+            diagnostics.MaximumAdjacentVariation <
+            0.12,
+            $"Raster phase should be removed from the mapped profile, got adjacent variation {diagnostics.MaximumAdjacentVariation:0.000}.");
+        Assert.InRange(
+            diagnostics.MappedMinimum,
+            1.7,
+            2.6);
+        Assert.InRange(
+            diagnostics.MappedMaximum,
+            6.0,
+            7.0);
+    }
+
     private static LeafPetalArcModel Model(
         IReadOnlyList<LeafPetalAxisSample> samples,
         int width,
