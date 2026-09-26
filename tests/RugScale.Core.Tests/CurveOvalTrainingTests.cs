@@ -876,7 +876,7 @@ public sealed class CurveOvalTrainingTests
                         80d;
                     var designerWidth =
                         2.0 +
-                        4.5 *
+                        4.8 *
                         t +
                         0.6 *
                         Math.Sin(
