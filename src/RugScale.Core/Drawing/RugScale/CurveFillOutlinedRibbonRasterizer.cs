@@ -16,7 +16,7 @@ internal static class CurveFillOutlinedRibbonRasterizer
 {
     private const double BoundaryBandRadius = 2.15;
     private const double CompoundBoundaryBandRadius = 3.25;
-    private const double OutlineExpansionSource = 1.0;
+    private const double OutlineExpansionTarget = 1.0;
     private const int NearbyOutlineRadius = 3;
     private const double MinimumOutlineNeighbourShare = 0.78;
     private const int MinimumOutlineContacts = 12;
@@ -76,21 +76,12 @@ internal static class CurveFillOutlinedRibbonRasterizer
         // Rebuild the dedicated 1x1 outline as the same continuous ribbon geometry expanded by
         // one source pixel. This is the missing outer silhouette: smoothing only the coloured
         // band/outline boundary still leaves the eye following the old block-scaled white edge.
-        var compoundPoints =
-            fit.Points
-                .Select(point =>
-                    point with
-                    {
-                        HalfWidth =
-                            point.HalfWidth +
-                            OutlineExpansionSource,
-                    })
-                .ToArray();
         var compoundPolygon =
-            LeafPetalArcRasterizer.BuildTargetPolygon(
-                compoundPoints,
+            LeafPetalArcRasterizer.BuildTargetExpandedPolygon(
+                fit.Points,
                 scaleX,
-                scaleY);
+                scaleY,
+                OutlineExpansionTarget);
         var compoundMask =
             LeafPetalArcRasterizer.RasterizePolygon(
                 compoundPolygon,
