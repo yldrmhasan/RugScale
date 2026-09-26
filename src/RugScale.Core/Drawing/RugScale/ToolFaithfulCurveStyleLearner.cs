@@ -28,8 +28,12 @@ internal static class ToolFaithfulCurveStyleLearner
     private const double MinimumModelGainOverPolyline = 0.003;
     private const double ComplexityPenaltyPerExtraControl = 0.003;
     private const double MaximumComplexityPenalty = 0.09;
-    private const double PixelCordCadenceWeight = 0.10;
-    private const double PlainCurveCadenceWeight = 0.04;
+    // Cadence may guide control/roundness optimization, but it must not weaken the raw source-
+    // geometry acceptance threshold. Final model selection uses only the tiny bonuses below.
+    private const double PixelCordOptimizationCadenceWeight = 0.10;
+    private const double PlainCurveOptimizationCadenceWeight = 0.04;
+    private const double PixelCordCadenceModelBonus = 0.006;
+    private const double PlainCurveCadenceModelBonus = 0.002;
 
     private static readonly double[] SimplifyTolerances =
     [
@@ -128,19 +132,26 @@ internal static class ToolFaithfulCurveStyleLearner
             if (controls.Count < 2)
                 continue;
 
-            var polylineRaw =
-                ScoreCandidate(
-                    sourceChain,
-                    sourceSet,
-                    RenderPolyline(
+            var polylinePath =
+                RenderPolyline(
                         controls,
-                        pixelCord),
-                    pixelCord);
-
+                        pixelCord)
+                    .ToArray();
+            var polylineRaw =
+                Score(
+                    sourceSet,
+                    polylinePath.ToHashSet());
+            var polylineCadence =
+                CurvePixelCadence.Measure(
+                    polylinePath,
+                    sourceChain);
             var polylineModel =
                 ModelScore(
                     polylineRaw,
-                    controls.Count);
+                    controls.Count) +
+                CadenceModelBonus(
+                    polylineCadence,
+                    pixelCord);
 
             if (polylineModel >
                 bestPolylineModelScore)
@@ -471,7 +482,9 @@ internal static class ToolFaithfulCurveStyleLearner
                     CurveType.SplineThroughPoints,
                     roundness,
                     controls,
-                    rawScore,
+                    sourceChain,
+                    sourceSet,
+                    pixelCord,
                     simplifyTolerance: 0d,
                     ref best);
             }
@@ -935,7 +948,9 @@ internal static class ToolFaithfulCurveStyleLearner
             CurveType.Bezier,
             roundness: 1.0,
             mutable,
-            rawScore,
+            sourceChain,
+            sourceSet,
+            pixelCord,
             simplifyTolerance: 0d,
             ref best);
     }
@@ -1205,7 +1220,9 @@ internal static class ToolFaithfulCurveStyleLearner
                 type,
                 roundness,
                 controls,
-                rawScore,
+                sourceChain,
+                sourceSet,
+                pixelCord,
                 simplifyTolerance,
                 ref best);
         }
@@ -1215,16 +1232,35 @@ internal static class ToolFaithfulCurveStyleLearner
         CurveType type,
         double roundness,
         IReadOnlyList<(int X, int Y)> controls,
-        double rawScore,
+        IReadOnlyList<(int X, int Y)> sourceChain,
+        IReadOnlySet<(int X, int Y)> sourceSet,
+        bool pixelCord,
         double simplifyTolerance,
         ref ToolFaithfulCurveStyleFit? best)
     {
+        var rendered =
+            RenderCurveOrdered(
+                controls,
+                type,
+                roundness,
+                pixelCord);
+        var rawScore =
+            Score(
+                sourceSet,
+                rendered.ToHashSet());
+        var cadence =
+            CurvePixelCadence.Measure(
+                rendered,
+                sourceChain);
         var modelScore =
             ModelScore(
                 rawScore,
-                controls.Count);
+                controls.Count) +
+            CadenceModelBonus(
+                cadence,
+                pixelCord);
 
-        // Tiny deterministic tie preference only. It never compensates for a meaningful fit loss.
+        // Tiny deterministic family preference only. It never compensates for meaningful fit loss.
         modelScore +=
             type switch
             {
@@ -1250,6 +1286,26 @@ internal static class ToolFaithfulCurveStyleLearner
                 PolylineBaselineScore: 0d,
                 PolylineBaselineModelScore: 0d,
                 SimplifyTolerance: simplifyTolerance);
+    }
+
+    private static double CadenceModelBonus(
+        double cadence,
+        bool pixelCord)
+    {
+        var maximum =
+            pixelCord
+                ? PixelCordCadenceModelBonus
+                : PlainCurveCadenceModelBonus;
+
+        // 0.5 is effectively neutral cadence. Only the better-than-neutral half contributes and
+        // the total authority is deliberately tiny compared with one meaningful geometry point.
+        return Math.Clamp(
+                   (cadence -
+                    0.5) *
+                   2d,
+                   0d,
+                   1d) *
+               maximum;
     }
 
     private static double ModelScore(
@@ -1328,8 +1384,8 @@ internal static class ToolFaithfulCurveStyleLearner
                 sourceChain);
         var cadenceWeight =
             pixelCord
-                ? PixelCordCadenceWeight
-                : PlainCurveCadenceWeight;
+                ? PixelCordOptimizationCadenceWeight
+                : PlainCurveOptimizationCadenceWeight;
 
         return geometry *
                    (1d -
