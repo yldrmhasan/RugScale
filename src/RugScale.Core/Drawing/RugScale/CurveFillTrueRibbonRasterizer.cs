@@ -19,7 +19,7 @@ namespace RugScale.Core.Drawing;
 /// </summary>
 internal static class CurveFillTrueRibbonRasterizer
 {
-    private const double OutlineExpansionSource = 1.0;
+    private const double OutlineExpansionTarget = 1.0;
     private const double EditScopeMarginSource = 3.25;
     private const double SourceBoundaryAuthorityRadius = 4.25;
 
@@ -75,21 +75,12 @@ internal static class CurveFillTrueRibbonRasterizer
         if (fillMask.Count == 0)
             return false;
 
-        var outerPoints =
-            fit.Points
-                .Select(point =>
-                    point with
-                    {
-                        HalfWidth =
-                            point.HalfWidth +
-                            OutlineExpansionSource,
-                    })
-                .ToArray();
         var outerPolygon =
-            LeafPetalArcRasterizer.BuildTargetPolygon(
-                outerPoints,
+            LeafPetalArcRasterizer.BuildTargetExpandedPolygon(
+                fit.Points,
                 scaleX,
-                scaleY);
+                scaleY,
+                OutlineExpansionTarget);
         var outerMask =
             LeafPetalArcRasterizer.RasterizePolygon(
                 outerPolygon,
