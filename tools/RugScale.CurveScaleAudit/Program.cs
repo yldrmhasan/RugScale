@@ -1528,6 +1528,82 @@ internal static class Program
                 focusNearest,
                 bmp.XPixelsPerMeter,
                 bmp.YPixelsPerMeter);
+
+            // Smaller persistent crop for the short navy tapered hook currently under dedicated
+            // curve training. This keeps the exact same visual checkpoint available after future
+            // classifier/fitter changes without relying on remembered screen coordinates.
+            const int HookSourceX = 88;
+            const int HookSourceY = 198;
+            const int HookSourceWidth = 64;
+            const int HookSourceHeight = 56;
+
+            var hookSource =
+                Crop(
+                    source,
+                    HookSourceX,
+                    HookSourceY,
+                    HookSourceWidth,
+                    HookSourceHeight);
+            var hookTargetX =
+                (int)Math.Floor(
+                    HookSourceX *
+                    direct.Width /
+                    (double)source.Width);
+            var hookTargetY =
+                (int)Math.Floor(
+                    HookSourceY *
+                    direct.Height /
+                    (double)source.Height);
+            var hookTargetRight =
+                (int)Math.Ceiling(
+                    (HookSourceX +
+                     HookSourceWidth) *
+                    direct.Width /
+                    (double)source.Width);
+            var hookTargetBottom =
+                (int)Math.Ceiling(
+                    (HookSourceY +
+                     HookSourceHeight) *
+                    direct.Height /
+                    (double)source.Height);
+            var hookWidth =
+                hookTargetRight -
+                hookTargetX;
+            var hookHeight =
+                hookTargetBottom -
+                hookTargetY;
+
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_navy_tapered_hook_source.bmp"),
+                hookSource,
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_navy_tapered_hook_rugscale.bmp"),
+                Crop(
+                    direct,
+                    hookTargetX,
+                    hookTargetY,
+                    hookWidth,
+                    hookHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_navy_tapered_hook_nearest.bmp"),
+                Crop(
+                    directNearest,
+                    hookTargetX,
+                    hookTargetY,
+                    hookWidth,
+                    hookHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
         }
 
         var roundTripAgreement =
