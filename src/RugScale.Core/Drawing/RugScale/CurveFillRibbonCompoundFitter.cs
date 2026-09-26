@@ -77,7 +77,8 @@ internal static class CurveFillRibbonCompoundFitter
                     model,
                     taperApex: false,
                     maximumAnchors: setting.Anchors,
-                    smoothingPasses: setting.SmoothingPasses);
+                    smoothingPasses: setting.SmoothingPasses,
+                    useCentripetalInterpolation: true);
 
             if (candidateFit.Points.Count < 8)
                 continue;
