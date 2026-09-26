@@ -15,7 +15,9 @@ namespace RugScale.Core.Drawing;
 /// </summary>
 internal static class CurveFillBroadOvalArcFitter
 {
-    private const int ContinuousSamples = 128;
+    private const int MinimumContinuousSamples = 128;
+    private const int MaximumContinuousSamples = 320;
+    private const double ContinuousSamplesPerChordPixel = 2.0;
     private const double MinimumHeightToHalfChord = 0.18;
     private const double MaximumHeightToHalfChord = 2.40;
     private const double MaximumBacktrackFraction = 0.08;
@@ -298,6 +300,106 @@ internal static class CurveFillBroadOvalArcFitter
         var height =
             numerator /
             denominator;
+
+        // Refit with a robust Huber-style weight. Thick indexed arches often have a handful of
+        // cap/shoulder pixels displaced by one or two cells; plain least squares lets those few
+        // raster outliers flatten or over-inflate the entire oval. The robust pass keeps the macro
+        // ellipse driven by the coherent majority while still using every source sample.
+        var residuals =
+            projected
+                .Select(point =>
+                {
+                    var u =
+                        Math.Clamp(
+                            point.U,
+                            -1d,
+                            1d);
+                    var basis =
+                        Math.Sqrt(
+                            Math.Max(
+                                0d,
+                                1d -
+                                u *
+                                    u));
+
+                    return basis < 0.08
+                        ? 0d
+                        : Math.Abs(
+                            point.V -
+                            height *
+                                basis);
+                })
+                .Where(value =>
+                    value > 0d)
+                .OrderBy(value =>
+                    value)
+                .ToArray();
+
+        if (residuals.Length > 0)
+        {
+            var medianResidual =
+                residuals[
+                    residuals.Length /
+                    2];
+            var robustThreshold =
+                Math.Max(
+                    0.55,
+                    medianResidual *
+                        2.75);
+            var weightedNumerator = 0d;
+            var weightedDenominator = 0d;
+
+            foreach (var point in projected)
+            {
+                var u =
+                    Math.Clamp(
+                        point.U,
+                        -1d,
+                        1d);
+                var basis =
+                    Math.Sqrt(
+                        Math.Max(
+                            0d,
+                            1d -
+                            u *
+                                u));
+
+                if (basis < 0.08)
+                    continue;
+
+                var residual =
+                    Math.Abs(
+                        point.V -
+                        height *
+                            basis);
+                var weight =
+                    residual <=
+                    robustThreshold
+                        ? 1d
+                        : robustThreshold /
+                          Math.Max(
+                              residual,
+                              1e-9);
+
+                weightedNumerator +=
+                    weight *
+                    basis *
+                    point.V;
+                weightedDenominator +=
+                    weight *
+                    basis *
+                    basis;
+            }
+
+            if (weightedDenominator >
+                1e-9)
+            {
+                height =
+                    weightedNumerator /
+                    weightedDenominator;
+            }
+        }
+
         var heightRatio =
             height /
             halfChord;
@@ -318,19 +420,26 @@ internal static class CurveFillBroadOvalArcFitter
             return false;
         }
 
+        var continuousSamples =
+            Math.Clamp(
+                (int)Math.Ceiling(
+                    chordLength *
+                    ContinuousSamplesPerChordPixel),
+                MinimumContinuousSamples,
+                MaximumContinuousSamples);
         var points =
             new List<ElegantArcPoint>(
-                ContinuousSamples);
+                continuousSamples);
 
         for (var index = 0;
-             index < ContinuousSamples;
+             index < continuousSamples;
              index++)
         {
             var t =
                 index /
                 (double)Math.Max(
                     1,
-                    ContinuousSamples - 1);
+                    continuousSamples - 1);
             var theta =
                 Math.PI *
                 (1d -
