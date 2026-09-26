@@ -1470,7 +1470,8 @@ internal static class CurveFillRibbonArcRefiner
                                 maximumAllowedFlips;
                         accepted =
                             fitSafe &&
-                            prefilterAccepted;
+                            (prefilterAccepted ||
+                             compactSpiralSweep);
                         maximumDeviation =
                             fit.MaximumCenterlineDeviation;
                         curvatureFlips =
@@ -1521,7 +1522,10 @@ internal static class CurveFillRibbonArcRefiner
 
                         status =
                             accepted
-                                ? "accepted"
+                                ? compactSpiralSweep &&
+                                  !prefilterAccepted
+                                    ? "accepted-compact-spiral"
+                                    : "accepted"
                                 : compactSpiralProbe &&
                                   fitSafe
                                     ? "compact-probe-safe"
