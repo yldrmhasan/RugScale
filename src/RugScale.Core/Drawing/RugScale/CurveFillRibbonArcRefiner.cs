@@ -1046,7 +1046,46 @@ internal static class CurveFillRibbonArcRefiner
                     ribbonRequiredBend =
                         ribbonShapeDiagnostics.RequiredBend;
 
-                    if (!designerRibbon)
+                    // Diagnostic only: short ornamental hooks may be coherent two-endpoint tapered
+                    // sweeps even when they fail the constant-ribbon terminal ratio. Measure them
+                    // with the existing fitters before granting any production redraw authority.
+                    var taperedHookProbe =
+                        !designerRibbon &&
+                        string.Equals(
+                            ribbonShapeDiagnostics.Reason,
+                            "terminal-width-ratio",
+                            StringComparison.Ordinal) &&
+                        centerlineDiagnostics.Endpoints == 2 &&
+                        centerlineDiagnostics.PrincipalPathCoverage >=
+                            0.95 &&
+                        candidate.Elongation >=
+                            1.75 &&
+                        candidate.Elongation <=
+                            2.40 &&
+                        boundingFillRatio >=
+                            0.15 &&
+                        boundingFillRatio <=
+                            0.32 &&
+                        candidate.BoundaryRatio <=
+                            0.46 &&
+                        ribbonShapeDiagnostics.WidthCoefficientVariation <=
+                            0.55 &&
+                        ribbonShapeDiagnostics.TerminalRatio >=
+                            0.10 &&
+                        ribbonShapeDiagnostics.TerminalRatio <=
+                            0.25 &&
+                        ribbonShapeDiagnostics.MaximumBend >=
+                            ribbonShapeDiagnostics.RequiredBend *
+                            2.0;
+
+                    if (taperedHookProbe)
+                    {
+                        ribbonShapeReason =
+                            "probe-tapered-hook";
+                    }
+
+                    if (!designerRibbon &&
+                        !taperedHookProbe)
                     {
                         status =
                             compactSpiralProbe
@@ -1470,6 +1509,7 @@ internal static class CurveFillRibbonArcRefiner
                                 maximumAllowedFlips;
                         accepted =
                             fitSafe &&
+                            !taperedHookProbe &&
                             (prefilterAccepted ||
                              compactSpiralSweep);
                         maximumDeviation =
@@ -1526,12 +1566,17 @@ internal static class CurveFillRibbonArcRefiner
                                   !prefilterAccepted
                                     ? "accepted-compact-spiral"
                                     : "accepted"
-                                : compactSpiralProbe &&
+                                : taperedHookProbe &&
                                   fitSafe
-                                    ? "compact-probe-safe"
-                                    : compactSpiralProbe
-                                        ? "compact-probe-fit-unsafe"
-                                        : "fit-unsafe";
+                                    ? "tapered-hook-probe-safe"
+                                    : taperedHookProbe
+                                        ? "tapered-hook-probe-fit-unsafe"
+                                        : compactSpiralProbe &&
+                                          fitSafe
+                                            ? "compact-probe-safe"
+                                            : compactSpiralProbe
+                                                ? "compact-probe-fit-unsafe"
+                                                : "fit-unsafe";
                     }
                 }
             }
