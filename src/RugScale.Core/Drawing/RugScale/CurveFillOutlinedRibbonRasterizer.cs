@@ -65,7 +65,7 @@ internal static class CurveFillOutlinedRibbonRasterizer
             return false;
 
         var targetMask =
-            LeafPetalArcRasterizer.RasterizePolygonBalanced(
+            LeafPetalArcRasterizer.RasterizePolygon(
                 polygon,
                 destination.Width,
                 destination.Height);
@@ -92,7 +92,7 @@ internal static class CurveFillOutlinedRibbonRasterizer
                 scaleX,
                 scaleY);
         var compoundMask =
-            LeafPetalArcRasterizer.RasterizePolygonBalanced(
+            LeafPetalArcRasterizer.RasterizePolygon(
                 compoundPolygon,
                 destination.Width,
                 destination.Height);
