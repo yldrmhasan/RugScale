@@ -710,7 +710,7 @@ Decision:
 The cadence metric itself is valuable; move it to a small model-selection/tie-break role while
 keeping raw acceptance pure geometry.
 
-### 4.23 Cadence as bounded model-selection bonus — CURRENT EXPERIMENT
+### 4.23 Cadence as bounded model-selection bonus — KEEP
 
 Commits:
 - `bb80f733e53dc3cfe54b6a960bdcddca451da9a2`,
@@ -729,8 +729,21 @@ Intent:
 cadence decides a near tie; it cannot rescue a geometrically weak model or suppress a geometrically
 valid model by changing the raw acceptance score.
 
-Status:
-CI / C069 / four-design validation pending at this documentation point.
+Validation/result:
+- RugScale CI: **success**,
+- Workbench: **success**,
+- C069 curve training: **success**,
+- B163A real-design validation: **success**,
+- B163A drawing self-training: **success**,
+- B163A motif audit: **success**,
+- four-design curve suite: **success**.
+
+Compared with the earlier 10% raw-score cadence experiment, this bounded version restores the C069
+learned open-curve count to **33** and Through-Points count to **17**, while keeping cadence as a
+useful tie-break signal. Through-Points training remains **60/60 accepted and 60/60 family-correct**
+with roundness MAE about **0.015**.
+
+Decision: **KEEP**. Do not return cadence to the raw geometry acceptance score.
 
 ### 4.24 Short tapered-hook coverage probe — SAFE, CONTINUE DIAGNOSTIC
 
@@ -782,7 +795,7 @@ Decision:
 the motif class is real enough to continue, but do **not** enable production while repeated copies
 choose different fitter families. First prove one common model across all repeats.
 
-### 4.25 Common compound model for tapered hooks — CURRENT DIAGNOSTIC
+### 4.25 Common compound model for tapered hooks — PROVED / KEEP AS EVIDENCE
 
 Commit:
 `f4e7875ef207caad2c8a363180475e4182b3e867`
@@ -791,11 +804,15 @@ Change:
 the diagnostic tapered-hook route tries the same low-frequency compound fitter first for every
 repeated copy. It still cannot affect production output.
 
-Goal:
-measure whether one repeat-consistent model can explain all four hooks inside the source safety
-corridor. Only after that can a separately gated true-redraw production class be considered.
+Result:
+all four repeated/mirrored hooks are explained by the same `CompoundSpline` family within the
+source safety corridor:
+- upper pair p95 **0.386953**, max **1.027677**, roughness **0.080480**,
+- lower pair p95 **0.483801**, max **0.919268**, roughness **0.079647**.
 
-### 4.26 Strict tapered-hook production redraw — CURRENT EXPERIMENT
+Decision: **KEEP AS TRAINING EVIDENCE**. This justified the separately gated production class below.
+
+### 4.26 Strict tapered-hook production redraw — KEEP
 
 Commit:
 `d1ce1d12fb2c656a7cffe9ed31544745abcad346`
@@ -826,9 +843,21 @@ Runtime behaviour:
 - an accepted hook receives authoritative true redraw,
 - other ribbon classes and thresholds are unchanged.
 
-Status:
-C069 real BMP + four-design/B163A validation running. Do not mark KEEP until the navy hook crop is
-visually inspected and no repeat/symmetry damage appears.
+Validation/result:
+- the new navy hook visibly follows a clean tapered curve instead of the previous resized wedge,
+- direct C069 output changed only about **1,834 pixels / 0.081%** versus the prior production baseline,
+- round-trip exact remained about **92.81%**,
+- ±1 px remained about **99.44%**,
+- palette remained **SAFE**,
+- RugScale CI: **success**,
+- Workbench: **success**,
+- C069 curve training: **success**,
+- B163A real-design validation: **success**,
+- B163A drawing self-training: **success**,
+- B163A motif audit: **success**,
+- four-design curve suite: **success**.
+
+Decision: **KEEP**.
 
 ### 4.27 Tapered-hook audit/CI synchronization — CURRENT GREEN C069
 
@@ -887,9 +916,50 @@ Audit-only `probe-variable-width-sweep` requires:
 The probe cannot be production-accepted. It only lets the existing symmetry/main-arc/fitter pipeline
 measure whether the designer sweep can be redrawn safely despite genuine low-frequency width change.
 
-Next decision:
-- safe fit + stable source-derived width profile -> define a separate variable-width sweep family,
-- unsafe fit -> keep baseline and improve model/extraction; do not raise the global width-CV limit.
+First C069 probe result across the four repeated/mirrored gold sweeps:
+- three copies extract a dominant one-sided main arc and select `SplineThroughPoints`,
+- those three are fit-safe with max deviation about **1.78-1.95 px**, 0 curvature flips and
+  smoothness about **0.033-0.041**,
+- the fourth copy had two raw endpoints and skipped main-arc extraction, selecting a whole-component
+  `CompoundSpline` instead (max **2.2465 px**, roughness **0.2301**).
+
+Decision:
+**do not enable production yet.** Repeat copies must not switch model families because a tiny source
+branch changes endpoint count.
+
+### 4.29 Repeat-consistent dominant sweep for variable-width family — CURRENT DIAGNOSTIC
+
+Commit:
+`6d2ccd77e0e801974f4ccb4117f8cf52f7ef85f2`
+
+For `probe-variable-width-sweep`, one-sided main-arc extraction is now attempted even when the raw
+skeleton has only two endpoints. This is diagnostic-only. The goal is to make all four repeated gold
+sweeps expose the same dominant path before comparing fit quality.
+
+### 4.30 Source-faithful variable-width profile transfer — CURRENT DIAGNOSTIC
+
+Commits:
+- `e05efc99a2c47954d1ef8e188c1e222da55c9cc2` — new
+  `CurveFillVariableWidthProfileMapper`,
+- `1f1bfa5cead14f5edd84e13e7b0bcce210c9c23c` — deterministic taper/noise regression test,
+- `ec34501f406f3622e12ef6f0476af20be4c45c02` +
+  `34663012b89a5e829ab08532348cd67ebf46d7e2` — audit diagnostics.
+
+Architectural reason:
+`CurveFillRibbonThroughPointsFitter` intentionally emits one robust constant half-width for normal
+ribbons. That is correct for raster-phase breathing, but wrong for a genuine variable-width
+designer sweep.
+
+The new mapper:
+- does **not** change ordinary Through-Points behaviour,
+- takes width only from the immutable ordered source centerline,
+- removes short local spikes with median + low-pass filtering,
+- restores the source mean visual weight,
+- clamps to robust 5th/95th source width bounds,
+- resamples that low-frequency width profile onto the already-safe geometric centreline.
+
+It remains diagnostic-only until all repeated gold sweeps share one safe dominant path and the
+mapped profile proves smooth without collapsing the real taper.
 
 ## 5. Do-not-repeat rules
 
