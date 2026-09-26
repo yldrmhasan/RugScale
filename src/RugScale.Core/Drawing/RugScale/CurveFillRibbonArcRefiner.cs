@@ -1282,6 +1282,37 @@ internal static class CurveFillRibbonArcRefiner
                             }
                         }
 
+                        // Variable-width sweeps need one repeat-consistent dominant
+                        // path before their fit quality is meaningful. Unlike the normal broad
+                        // ribbon logic, probe the one-sided extractor even when the raw skeleton
+                        // has only two endpoints; a mirrored copy must not switch to a whole-
+                        // component compound model merely because a tiny branch merged away.
+                        if (variableWidthSweepProbe &&
+                            !mainArcExtracted)
+                        {
+                            var variableWidthMainArcExtracted =
+                                CurveFillRibbonMainArcExtractor.TryExtractOneSidedSweep(
+                                    model,
+                                    out var variableWidthMainArcModel,
+                                    out var variableWidthMainArcDiagnostics);
+
+                            mainArcReason =
+                                variableWidthMainArcDiagnostics.Reason;
+                            mainArcStart =
+                                variableWidthMainArcDiagnostics.StartIndex;
+                            mainArcEnd =
+                                variableWidthMainArcDiagnostics.EndIndex;
+                            mainArcKeptFraction =
+                                variableWidthMainArcDiagnostics.KeptFraction;
+
+                            if (variableWidthMainArcExtracted)
+                            {
+                                model =
+                                    variableWidthMainArcModel;
+                                mainArcExtracted = true;
+                            }
+                        }
+
                         var sparseTaperCompoundAuthority =
                             sparseTaperSweep &&
                             (centerlineDiagnostics.Endpoints <= 2 ||
