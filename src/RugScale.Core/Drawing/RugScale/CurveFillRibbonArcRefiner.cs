@@ -284,7 +284,7 @@ internal static class CurveFillRibbonArcRefiner
             if (sparseTaperSweep &&
                 !mainArcExtractedForRegion &&
                 centerlineDiagnostics.Endpoints > 2 &&
-                CurveFillRibbonMainArcExtractor.TryExtractOneSidedSweep(
+                CurveFillRibbonMainArcExtractor.TryExtractSparseTaperSweep(
                     model,
                     out var sparseTaperMainArcModel,
                     out _))
@@ -1004,7 +1004,7 @@ internal static class CurveFillRibbonArcRefiner
                             centerlineDiagnostics.Endpoints > 2)
                         {
                             var sparseTaperMainArcExtracted =
-                                CurveFillRibbonMainArcExtractor.TryExtractOneSidedSweep(
+                                CurveFillRibbonMainArcExtractor.TryExtractSparseTaperSweep(
                                     model,
                                     out var sparseTaperMainArcModel,
                                     out var sparseTaperMainArcDiagnostics);
