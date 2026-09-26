@@ -277,6 +277,29 @@ internal static class CurveFillRibbonArcRefiner
                 }
             }
 
+            // Sparse tapered ornaments may have several skeleton endpoints because decorative
+            // hooks/branches share the same indexed region. Compound fitting the complete graph can
+            // shave valid side structure. Give this class compound authority only after extracting
+            // one coherent one-sided sweep (unless it was already a simple two-endpoint path).
+            if (sparseTaperSweep &&
+                !mainArcExtractedForRegion &&
+                centerlineDiagnostics.Endpoints > 2 &&
+                CurveFillRibbonMainArcExtractor.TryExtractOneSidedSweep(
+                    model,
+                    out var sparseTaperMainArcModel,
+                    out _))
+            {
+                model =
+                    sparseTaperMainArcModel;
+                mainArcExtractedForRegion = true;
+                mainArcExtractions++;
+            }
+
+            var sparseTaperCompoundAuthority =
+                sparseTaperSweep &&
+                (centerlineDiagnostics.Endpoints <= 2 ||
+                 mainArcExtractedForRegion);
+
             ribbonGeometryAccepted++;
 
             // Ribbon geometry is deliberately NOT apex-tapered. The source width profile already
@@ -407,7 +430,7 @@ internal static class CurveFillRibbonArcRefiner
                             cubicBezierFits++;
                         }
                         else if (mirrorSourceFused ||
-                                 sparseTaperSweep)
+                                 sparseTaperCompoundAuthority)
                         {
                             // Mirror-fused source remains the strongest authority. A second,
                             // deliberately narrow authority is the sparse-taper classifier:
@@ -976,6 +999,38 @@ internal static class CurveFillRibbonArcRefiner
                             }
                         }
 
+                        if (sparseTaperSweep &&
+                            !mainArcExtracted &&
+                            centerlineDiagnostics.Endpoints > 2)
+                        {
+                            var sparseTaperMainArcExtracted =
+                                CurveFillRibbonMainArcExtractor.TryExtractOneSidedSweep(
+                                    model,
+                                    out var sparseTaperMainArcModel,
+                                    out var sparseTaperMainArcDiagnostics);
+
+                            mainArcReason =
+                                sparseTaperMainArcDiagnostics.Reason;
+                            mainArcStart =
+                                sparseTaperMainArcDiagnostics.StartIndex;
+                            mainArcEnd =
+                                sparseTaperMainArcDiagnostics.EndIndex;
+                            mainArcKeptFraction =
+                                sparseTaperMainArcDiagnostics.KeptFraction;
+
+                            if (sparseTaperMainArcExtracted)
+                            {
+                                model =
+                                    sparseTaperMainArcModel;
+                                mainArcExtracted = true;
+                            }
+                        }
+
+                        var sparseTaperCompoundAuthority =
+                            sparseTaperSweep &&
+                            (centerlineDiagnostics.Endpoints <= 2 ||
+                             mainArcExtracted);
+
                         ElegantArcFit fit;
 
                         if (CurveFillRibbonToolFitter.TryFit(
@@ -1064,7 +1119,7 @@ internal static class CurveFillRibbonArcRefiner
                                     CurveType.Bezier.ToString();
                             }
                             else if (mirrorSourceFused ||
-                                     sparseTaperSweep)
+                                     sparseTaperCompoundAuthority)
                             {
                                 compoundAttempted = true;
 
