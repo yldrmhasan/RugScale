@@ -820,6 +820,11 @@ internal static class CurveFillRibbonArcRefiner
             var compoundSelectedRoughness = 0d;
             var compoundSelectedAnchors = 0;
             var compoundSelectedSmoothingPasses = 0;
+            var compoundSmoothestSafeRoughness = 0d;
+            var compoundSmoothestSafeAnchors = 0;
+            var compoundSmoothestSafeSmoothingPasses = 0;
+            var compoundSmoothestSafeP95Deviation = 0d;
+            var compoundSmoothestSafeMaximumDeviation = 0d;
             var fitKind = "none";
             var curveFamily = "none";
             var status =
@@ -1164,6 +1169,16 @@ internal static class CurveFillRibbonArcRefiner
                                     compoundDiagnostics.Anchors;
                                 compoundSelectedSmoothingPasses =
                                     compoundDiagnostics.SmoothingPasses;
+                                compoundSmoothestSafeRoughness =
+                                    compoundDiagnostics.SmoothestSafeRoughness;
+                                compoundSmoothestSafeAnchors =
+                                    compoundDiagnostics.SmoothestSafeAnchors;
+                                compoundSmoothestSafeSmoothingPasses =
+                                    compoundDiagnostics.SmoothestSafeSmoothingPasses;
+                                compoundSmoothestSafeP95Deviation =
+                                    compoundDiagnostics.SmoothestSafeP95Deviation;
+                                compoundSmoothestSafeMaximumDeviation =
+                                    compoundDiagnostics.SmoothestSafeMaximumDeviation;
                             }
                             else
                             {
@@ -1319,6 +1334,11 @@ internal static class CurveFillRibbonArcRefiner
                     compoundSelectedRoughness,
                     compoundSelectedAnchors,
                     compoundSelectedSmoothingPasses,
+                    compoundSmoothestSafeRoughness,
+                    compoundSmoothestSafeAnchors,
+                    compoundSmoothestSafeSmoothingPasses,
+                    compoundSmoothestSafeP95Deviation,
+                    compoundSmoothestSafeMaximumDeviation,
                     fitKind,
                     curveFamily,
                     roundness,
@@ -1616,6 +1636,11 @@ internal readonly record struct RibbonArcCandidateStage(
     double CompoundSelectedRoughness,
     int CompoundSelectedAnchors,
     int CompoundSelectedSmoothingPasses,
+    double CompoundSmoothestSafeRoughness,
+    int CompoundSmoothestSafeAnchors,
+    int CompoundSmoothestSafeSmoothingPasses,
+    double CompoundSmoothestSafeP95Deviation,
+    double CompoundSmoothestSafeMaximumDeviation,
     string FitKind,
     string CurveFamily,
     double Roundness,
