@@ -971,6 +971,215 @@ public sealed class CurveOvalTrainingTests
             7.0);
     }
 
+    [Fact]
+    public void SweptTubeRaster_TightHookHasNoEnclosedMaskHoles()
+    {
+        var points =
+            new List<ElegantArcPoint>();
+
+        // Dense U/hairpin with a radius close to the ribbon half-width: this is exactly where
+        // paired normal-offset polygons can cross themselves.
+        for (var index = 0;
+             index <= 24;
+             index++)
+        {
+            var t =
+                index /
+                24d;
+
+            points.Add(
+                new ElegantArcPoint(
+                    8d +
+                    12d *
+                        t,
+                    8d,
+                    3.8));
+        }
+
+        for (var index = 1;
+             index <= 24;
+             index++)
+        {
+            var angle =
+                -Math.PI /
+                    2d +
+                Math.PI *
+                    index /
+                    24d;
+
+            points.Add(
+                new ElegantArcPoint(
+                    20d +
+                    5d *
+                        Math.Cos(
+                            angle),
+                    13d +
+                    5d *
+                        Math.Sin(
+                            angle),
+                    3.8));
+        }
+
+        for (var index = 1;
+             index <= 24;
+             index++)
+        {
+            var t =
+                index /
+                24d;
+
+            points.Add(
+                new ElegantArcPoint(
+                    20d -
+                    12d *
+                        t,
+                    18d,
+                    3.8));
+        }
+
+        const int width = 80;
+        const int height = 64;
+        var mask =
+            CurveFillTrueRibbonRasterizer.BuildTargetSweptTubeMask(
+                points,
+                scaleX: 2d,
+                scaleY: 2d,
+                width,
+                height,
+                additionalTargetPixels: 0d);
+
+        Assert.NotEmpty(
+            mask);
+
+        var minX =
+            mask.Min(key =>
+                key %
+                width);
+        var maxX =
+            mask.Max(key =>
+                key %
+                width);
+        var minY =
+            mask.Min(key =>
+                key /
+                width);
+        var maxY =
+            mask.Max(key =>
+                key /
+                width);
+        var reachable =
+            new HashSet<int>();
+        var queue =
+            new Queue<int>();
+
+        void EnqueueBackground(
+            int x,
+            int y)
+        {
+            if (x < minX ||
+                x > maxX ||
+                y < minY ||
+                y > maxY)
+            {
+                return;
+            }
+
+            var key =
+                y *
+                    width +
+                x;
+
+            if (mask.Contains(
+                    key) ||
+                !reachable.Add(
+                    key))
+            {
+                return;
+            }
+
+            queue.Enqueue(
+                key);
+        }
+
+        for (var x = minX;
+             x <= maxX;
+             x++)
+        {
+            EnqueueBackground(
+                x,
+                minY);
+            EnqueueBackground(
+                x,
+                maxY);
+        }
+
+        for (var y = minY;
+             y <= maxY;
+             y++)
+        {
+            EnqueueBackground(
+                minX,
+                y);
+            EnqueueBackground(
+                maxX,
+                y);
+        }
+
+        while (queue.Count > 0)
+        {
+            var key =
+                queue.Dequeue();
+            var x =
+                key %
+                width;
+            var y =
+                key /
+                width;
+
+            EnqueueBackground(
+                x - 1,
+                y);
+            EnqueueBackground(
+                x + 1,
+                y);
+            EnqueueBackground(
+                x,
+                y - 1);
+            EnqueueBackground(
+                x,
+                y + 1);
+        }
+
+        var enclosedBackground = 0;
+
+        for (var y = minY;
+             y <= maxY;
+             y++)
+        {
+            for (var x = minX;
+                 x <= maxX;
+                 x++)
+            {
+                var key =
+                    y *
+                        width +
+                    x;
+
+                if (!mask.Contains(
+                        key) &&
+                    !reachable.Contains(
+                        key))
+                {
+                    enclosedBackground++;
+                }
+            }
+        }
+
+        Assert.Equal(
+            0,
+            enclosedBackground);
+    }
+
     private static LeafPetalArcModel Model(
         IReadOnlyList<LeafPetalAxisSample> samples,
         int width,
