@@ -222,9 +222,16 @@ internal static class CurveFillRibbonArcRefiner
                     model,
                     centerlineDiagnostics,
                     ribbonShapeDiagnostics);
+            var variableWidthSweep =
+                !designerRibbon &&
+                LooksLikeVariableWidthSweep(
+                    model,
+                    centerlineDiagnostics,
+                    ribbonShapeDiagnostics);
 
             if (!designerRibbon &&
-                !taperedHookSweep)
+                !taperedHookSweep &&
+                !variableWidthSweep)
             {
                 continue;
             }
@@ -341,6 +348,23 @@ internal static class CurveFillRibbonArcRefiner
                 mainArcExtractions++;
             }
 
+            if (variableWidthSweep &&
+                !mainArcExtractedForRegion)
+            {
+                if (!CurveFillRibbonMainArcExtractor.TryExtractOneSidedSweep(
+                        model,
+                        out var variableWidthMainArcModel,
+                        out _))
+                {
+                    continue;
+                }
+
+                model =
+                    variableWidthMainArcModel;
+                mainArcExtractedForRegion = true;
+                mainArcExtractions++;
+            }
+
             var sparseTaperCompoundAuthority =
                 sparseTaperSweep &&
                 (centerlineDiagnostics.Endpoints <= 2 ||
@@ -353,7 +377,45 @@ internal static class CurveFillRibbonArcRefiner
             ElegantArcFit fit;
             var compoundFitSelected = false;
 
-            if (taperedHookSweep)
+            if (variableWidthSweep)
+            {
+                geometricThroughAttempts++;
+
+                if (!CurveFillRibbonThroughPointsFitter.TryFit(
+                        model,
+                        out var variableWidthThroughFit,
+                        out var variableWidthThroughDiagnostics))
+                {
+                    lastGeometricThroughReason =
+                        variableWidthThroughDiagnostics.Reason;
+                    maxGeometricThroughDeviation =
+                        Math.Max(
+                            maxGeometricThroughDeviation,
+                            variableWidthThroughDiagnostics.MaximumDeviation);
+                    maxGeometricThroughP95Deviation =
+                        Math.Max(
+                            maxGeometricThroughP95Deviation,
+                            variableWidthThroughDiagnostics.Percentile95Deviation);
+                    continue;
+                }
+
+                fit =
+                    variableWidthThroughFit;
+                geometricThroughFits++;
+                geometricThroughRoundnessSum +=
+                    variableWidthThroughDiagnostics.Roundness;
+                lastGeometricThroughReason =
+                    variableWidthThroughDiagnostics.Reason;
+                maxGeometricThroughDeviation =
+                    Math.Max(
+                        maxGeometricThroughDeviation,
+                        variableWidthThroughDiagnostics.MaximumDeviation);
+                maxGeometricThroughP95Deviation =
+                    Math.Max(
+                        maxGeometricThroughP95Deviation,
+                        variableWidthThroughDiagnostics.Percentile95Deviation);
+            }
+            else if (taperedHookSweep)
             {
                 // The four real C069 repeats are all explained by the same compact compound family
                 // inside a ~1 source-pixel maximum corridor. Keep this authority all-or-nothing:
@@ -710,24 +772,51 @@ internal static class CurveFillRibbonArcRefiner
                 continue;
             }
 
-            fit =
-                CurveFillRibbonWidthProfileRegularizer.Regularize(
-                    model,
-                    fit,
-                    out var widthDiagnostics);
-
-            if (widthDiagnostics.Applied)
+            if (variableWidthSweep)
             {
-                widthRegularized++;
-                maxWidthRegularizationShift =
-                    Math.Max(
-                        maxWidthRegularizationShift,
-                        widthDiagnostics.MaximumHalfWidthShift);
-                maxWidthVariationReduction =
-                    Math.Max(
-                        maxWidthVariationReduction,
-                        widthDiagnostics.BeforeAdjacentVariation -
-                        widthDiagnostics.AfterAdjacentVariation);
+                fit =
+                    CurveFillVariableWidthProfileMapper.Apply(
+                        model,
+                        fit,
+                        out var variableWidthDiagnostics);
+
+                var profileFaithful =
+                    variableWidthDiagnostics.Applied &&
+                    variableWidthDiagnostics.SourceCoefficientVariation >
+                        1e-9 &&
+                    variableWidthDiagnostics.MappedCoefficientVariation >=
+                        variableWidthDiagnostics.SourceCoefficientVariation *
+                        0.90 &&
+                    variableWidthDiagnostics.MappedCoefficientVariation <=
+                        variableWidthDiagnostics.SourceCoefficientVariation *
+                        1.05 &&
+                    variableWidthDiagnostics.MaximumAdjacentVariation <=
+                        0.20;
+
+                if (!profileFaithful)
+                    continue;
+            }
+            else
+            {
+                fit =
+                    CurveFillRibbonWidthProfileRegularizer.Regularize(
+                        model,
+                        fit,
+                        out var widthDiagnostics);
+
+                if (widthDiagnostics.Applied)
+                {
+                    widthRegularized++;
+                    maxWidthRegularizationShift =
+                        Math.Max(
+                            maxWidthRegularizationShift,
+                            widthDiagnostics.MaximumHalfWidthShift);
+                    maxWidthVariationReduction =
+                        Math.Max(
+                            maxWidthVariationReduction,
+                            widthDiagnostics.BeforeAdjacentVariation -
+                            widthDiagnostics.AfterAdjacentVariation);
+                }
             }
 
             if (CurveFillRibbonSelfSymmetryNormalizer.TryNormalize(
@@ -1124,26 +1213,10 @@ internal static class CurveFillRibbonArcRefiner
                             ribbonShapeDiagnostics);
                     var variableWidthSweepProbe =
                         !designerRibbon &&
-                        string.Equals(
-                            ribbonShapeDiagnostics.Reason,
-                            "width-variation",
-                            StringComparison.Ordinal) &&
-                        centerlineDiagnostics.Endpoints >= 2 &&
-                        centerlineDiagnostics.Endpoints <= 4 &&
-                        centerlineDiagnostics.PrincipalPathCoverage >=
-                            0.90 &&
-                        candidate.Elongation >=
-                            3.0 &&
-                        boundingFillRatio <=
-                            0.16 &&
-                        candidate.BoundaryRatio <=
-                            0.35 &&
-                        ribbonShapeDiagnostics.MeanWidth >=
-                            1.5 &&
-                        ribbonShapeDiagnostics.WidthCoefficientVariation >
-                            MaximumWidthCoefficientVariation &&
-                        ribbonShapeDiagnostics.WidthCoefficientVariation <=
-                            0.80;
+                        LooksLikeVariableWidthSweep(
+                            model,
+                            centerlineDiagnostics,
+                            ribbonShapeDiagnostics);
 
                     if (taperedHookSweep)
                     {
@@ -1153,7 +1226,7 @@ internal static class CurveFillRibbonArcRefiner
                     else if (variableWidthSweepProbe)
                     {
                         ribbonShapeReason =
-                            "probe-variable-width-sweep";
+                            "ok-variable-width-sweep";
                     }
 
                     if (!designerRibbon &&
@@ -1328,7 +1401,30 @@ internal static class CurveFillRibbonArcRefiner
 
                         ElegantArcFit fit;
 
-                        if (taperedHookSweep)
+                        if (variableWidthSweepProbe)
+                        {
+                            if (CurveFillRibbonThroughPointsFitter.TryFit(
+                                    model,
+                                    out var variableWidthThroughFit,
+                                    out var variableWidthThroughDiagnostics))
+                            {
+                                fit =
+                                    variableWidthThroughFit;
+                            }
+                            else
+                            {
+                                fit =
+                                    variableWidthThroughFit;
+                            }
+
+                            fitKind =
+                                "variable-width-through";
+                            curveFamily =
+                                CurveType.SplineThroughPoints.ToString();
+                            roundness =
+                                variableWidthThroughDiagnostics.Roundness;
+                        }
+                        else if (taperedHookSweep)
                         {
                             // Production is deliberately compound-only. Audit the same candidate
                             // even when unsafe; there is no Through-Points/macro fallback that could
@@ -1666,10 +1762,10 @@ internal static class CurveFillRibbonArcRefiner
                                 maximumAllowedFlips;
                         accepted =
                             fitSafe &&
-                            !variableWidthSweepProbe &&
                             (prefilterAccepted ||
                              compactSpiralSweep ||
-                             taperedHookSweep);
+                             taperedHookSweep ||
+                             variableWidthSweepProbe);
                         maximumDeviation =
                             fit.MaximumCenterlineDeviation;
                         curvatureFlips =
@@ -1678,7 +1774,8 @@ internal static class CurveFillRibbonArcRefiner
                             CurveFillRibbonSmoothness.Measure(
                                 fit.Points);
 
-                        if (fitSafe)
+                        if (fitSafe &&
+                            !variableWidthSweepProbe)
                         {
                             _ =
                                 CurveFillRibbonWidthProfileRegularizer.Regularize(
@@ -1702,7 +1799,7 @@ internal static class CurveFillRibbonArcRefiner
                         if (fitSafe &&
                             variableWidthSweepProbe)
                         {
-                            _ =
+                            fit =
                                 CurveFillVariableWidthProfileMapper.Apply(
                                     model,
                                     fit,
@@ -1723,6 +1820,25 @@ internal static class CurveFillRibbonArcRefiner
                                 variableWidthDiagnostics.MappedMaximum;
                             variableWidthMaximumAdjacentVariation =
                                 variableWidthDiagnostics.MaximumAdjacentVariation;
+
+                            var profileFaithful =
+                                variableWidthDiagnostics.Applied &&
+                                variableWidthDiagnostics.SourceCoefficientVariation >
+                                    1e-9 &&
+                                variableWidthDiagnostics.MappedCoefficientVariation >=
+                                    variableWidthDiagnostics.SourceCoefficientVariation *
+                                    0.90 &&
+                                variableWidthDiagnostics.MappedCoefficientVariation <=
+                                    variableWidthDiagnostics.SourceCoefficientVariation *
+                                    1.05 &&
+                                variableWidthDiagnostics.MaximumAdjacentVariation <=
+                                    0.20;
+
+                            if (!profileFaithful)
+                            {
+                                fitSafe = false;
+                                accepted = false;
+                            }
                         }
 
                         if (broadSparseArch &&
@@ -1753,10 +1869,11 @@ internal static class CurveFillRibbonArcRefiner
                                         ? "accepted-compact-spiral"
                                         : "accepted"
                                 : variableWidthSweepProbe &&
-                                  fitSafe
-                                    ? "variable-width-probe-safe"
+                                  fitSafe &&
+                                  accepted
+                                    ? "accepted-variable-width-sweep"
                                     : variableWidthSweepProbe
-                                        ? "variable-width-probe-fit-unsafe"
+                                        ? "variable-width-fit-unsafe"
                                         : taperedHookSweep
                                             ? "tapered-hook-fit-unsafe"
                                             : compactSpiralProbe &&
@@ -1862,6 +1979,45 @@ internal static class CurveFillRibbonArcRefiner
             .ThenBy(stage =>
                 stage.MinX)
             .ToArray();
+    }
+
+    private static bool LooksLikeVariableWidthSweep(
+        LeafPetalArcModel model,
+        RibbonCenterlineBuildDiagnostics centerline,
+        RibbonShapeDiagnostics shape)
+    {
+        var candidate =
+            model.Candidate;
+        var region =
+            candidate.Region;
+        var boundingFillRatio =
+            region.Area /
+            (double)Math.Max(
+                1,
+                region.Width *
+                region.Height);
+
+        return
+            string.Equals(
+                shape.Reason,
+                "width-variation",
+                StringComparison.Ordinal) &&
+            centerline.Endpoints >= 2 &&
+            centerline.Endpoints <= 4 &&
+            centerline.PrincipalPathCoverage >=
+                0.90 &&
+            candidate.Elongation >=
+                3.0 &&
+            boundingFillRatio <=
+                0.16 &&
+            candidate.BoundaryRatio <=
+                0.35 &&
+            shape.MeanWidth >=
+                1.5 &&
+            shape.WidthCoefficientVariation >
+                MaximumWidthCoefficientVariation &&
+            shape.WidthCoefficientVariation <=
+                0.80;
     }
 
     private static bool LooksLikeTaperedHook(
