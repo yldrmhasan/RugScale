@@ -1604,6 +1604,80 @@ internal static class Program
                     hookHeight),
                 bmp.XPixelsPerMeter,
                 bmp.YPixelsPerMeter);
+
+            // Persistent checkpoint for the long gold variable-width designer sweep. This crop is
+            // intentionally tighter than the general spiral focus so taper quality and parallel
+            // boundary flow can be judged directly after future width-profile changes.
+            const int VariableWidthSourceX = 75;
+            const int VariableWidthSourceY = 115;
+            const int VariableWidthSourceWidth = 120;
+            const int VariableWidthSourceHeight = 230;
+
+            var variableWidthTargetX =
+                (int)Math.Floor(
+                    VariableWidthSourceX *
+                    direct.Width /
+                    (double)source.Width);
+            var variableWidthTargetY =
+                (int)Math.Floor(
+                    VariableWidthSourceY *
+                    direct.Height /
+                    (double)source.Height);
+            var variableWidthTargetRight =
+                (int)Math.Ceiling(
+                    (VariableWidthSourceX +
+                     VariableWidthSourceWidth) *
+                    direct.Width /
+                    (double)source.Width);
+            var variableWidthTargetBottom =
+                (int)Math.Ceiling(
+                    (VariableWidthSourceY +
+                     VariableWidthSourceHeight) *
+                    direct.Height /
+                    (double)source.Height);
+            var variableWidthTargetWidth =
+                variableWidthTargetRight -
+                variableWidthTargetX;
+            var variableWidthTargetHeight =
+                variableWidthTargetBottom -
+                variableWidthTargetY;
+
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_gold_variable_width_source.bmp"),
+                Crop(
+                    source,
+                    VariableWidthSourceX,
+                    VariableWidthSourceY,
+                    VariableWidthSourceWidth,
+                    VariableWidthSourceHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_gold_variable_width_rugscale.bmp"),
+                Crop(
+                    direct,
+                    variableWidthTargetX,
+                    variableWidthTargetY,
+                    variableWidthTargetWidth,
+                    variableWidthTargetHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_gold_variable_width_nearest.bmp"),
+                Crop(
+                    directNearest,
+                    variableWidthTargetX,
+                    variableWidthTargetY,
+                    variableWidthTargetWidth,
+                    variableWidthTargetHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
         }
 
         var roundTripAgreement =
