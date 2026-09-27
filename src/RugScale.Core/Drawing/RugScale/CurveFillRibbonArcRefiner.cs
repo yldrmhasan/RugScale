@@ -40,6 +40,7 @@ internal static class CurveFillRibbonArcRefiner
     private const double MaximumCompactSpiralWidthCoefficientVariation = 0.54;
     private const double MinimumAbsoluteBend = 1.35;
     private const double MinimumRelativeBend = 0.035;
+    private const double MinimumVariableWidthRedrawScale = 1.50;
 
     public static int Apply(
         DesignDocument source,
@@ -65,6 +66,12 @@ internal static class CurveFillRibbonArcRefiner
         var protectedStrokeColors =
             ToolFaithfulPixelCordOverlay.DetectStrokePaletteRoles(
                 source);
+        var redrawScale =
+            Math.Max(
+                destination.Width /
+                    (double)source.Width,
+                destination.Height /
+                    (double)source.Height);
         var regions =
             LeafPetalRegionExtractor.Extract(
                 source);
@@ -223,6 +230,8 @@ internal static class CurveFillRibbonArcRefiner
                     centerlineDiagnostics,
                     ribbonShapeDiagnostics);
             var variableWidthSweep =
+                redrawScale >=
+                    MinimumVariableWidthRedrawScale &&
                 !designerRibbon &&
                 LooksLikeVariableWidthSweep(
                     model,
