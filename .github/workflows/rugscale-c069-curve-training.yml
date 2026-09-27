@@ -125,6 +125,62 @@ jobs:
                   raise SystemExit(
                       f"{key}: tapered-hook roughness regressed to {row['selected_smoothness']}"
                   )
+
+          variable_width_targets = {
+              (83, 128, 178, 331),
+              (462, 128, 557, 331),
+              (83, 1047, 178, 1250),
+              (462, 1047, 557, 1250),
+          }
+          variable_width = {}
+          for row in rows:
+              key = tuple(int(row[name]) for name in ("min_x", "min_y", "max_x", "max_y"))
+              if key in variable_width_targets:
+                  variable_width[key] = row
+
+          missing_variable_width = variable_width_targets - variable_width.keys()
+          if missing_variable_width:
+              raise SystemExit(
+                  f"Missing variable-width sweep audit rows: {sorted(missing_variable_width)}"
+              )
+
+          for key, row in variable_width.items():
+              if row["ribbon_shape_reason"] != "ok-variable-width-sweep":
+                  raise SystemExit(
+                      f"{key}: unexpected variable-width reason {row['ribbon_shape_reason']}"
+                  )
+              if row["fit_kind"] != "variable-width-through":
+                  raise SystemExit(
+                      f"{key}: expected variable-width-through, got {row['fit_kind']}"
+                  )
+              if row["curve_family"] != "SplineThroughPoints":
+                  raise SystemExit(
+                      f"{key}: variable-width family changed to {row['curve_family']}"
+                  )
+              if row["fit_safe"] != "1" or row["accepted"] != "1":
+                  raise SystemExit(
+                      f"{key}: variable-width sweep is no longer production-accepted"
+                  )
+              if int(row["curvature_flips"]) != 0:
+                  raise SystemExit(f"{key}: variable-width sweep gained curvature flips")
+              if float(row["max_deviation"]) > 2.05:
+                  raise SystemExit(
+                      f"{key}: variable-width source deviation regressed to {row['max_deviation']} px"
+                  )
+              if row["variable_width_profile_applied"] != "1":
+                  raise SystemExit(f"{key}: variable-width profile mapper no longer applied")
+
+              source_cv = float(row["variable_width_source_cv"])
+              mapped_cv = float(row["variable_width_mapped_cv"])
+              if source_cv <= 0 or mapped_cv < source_cv * 0.90 or mapped_cv > source_cv * 1.05:
+                  raise SystemExit(
+                      f"{key}: variable-width CV transfer regressed source={source_cv}, mapped={mapped_cv}"
+                  )
+              if float(row["variable_width_max_adjacent_delta"]) > 0.20:
+                  raise SystemExit(
+                      f"{key}: variable-width local breathing regressed to "
+                      f"{row['variable_width_max_adjacent_delta']} px"
+                  )
           PY
 
       - name: Publish C069 summary
