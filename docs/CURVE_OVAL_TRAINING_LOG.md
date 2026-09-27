@@ -961,13 +961,16 @@ The new mapper:
 It remains diagnostic-only until all repeated gold sweeps share one safe dominant path and the
 mapped profile proves smooth without collapsing the real taper.
 
-### 4.31 Strict variable-width sweep production redraw — CURRENT EXPERIMENT
+### 4.31 Strict variable-width sweep production redraw — KEEP
 
-Commit:
-`82a7c9b97e7b3035c4bab7bff75cabcb1cc80487`
+Commits:
+- `82a7c9b97e7b3035c4bab7bff75cabcb1cc80487` — production trial,
+- `dd02ac848eb49beac9526e0dd87c1c54adff18a3` — restrict specialist redraw to >=1.50x enlargement,
+- `ce752edb46e6d1526f97f4aa9e9a6bef8288611c` — explicit audit status,
+- `d9675ca94d7d368dd7bfe6565527fdab69acb7ef` — permanent C069 specialist gate,
+- `e3c92589dbd05d123b7aa91d7570e3621047ed14` — persistent gold-sweep visual artifacts.
 
-Evidence before production trial:
-all four repeated/mirrored C069 gold sweeps now expose the same dominant one-sided
+All four repeated/mirrored C069 gold sweeps expose the same dominant one-sided
 `SplineThroughPoints` centreline:
 
 - top pair max deviation: **1.780271 px**, smoothness **0.041079**, 0 flips,
@@ -977,29 +980,51 @@ all four repeated/mirrored C069 gold sweeps now expose the same dominant one-sid
 - mapped half-width range: about **0.50 .. 7.37 px**,
 - maximum adjacent mapped-width delta: about **0.156-0.161 px**.
 
-Production trial is deliberately narrow:
-- source region must pass the exact measured variable-width source-evidence gate,
-- one-sided dominant sweep extraction is mandatory even when the raw skeleton has only two
-  endpoints,
-- fitter is **Through-Points only**; no Bezier/compound/macro fallback,
-- fitted centerline must pass the existing source safety gate,
-- variable-width mapper must:
-  - preserve at least **90%** of source width CV,
-  - not exceed **105%** of source width CV,
-  - keep maximum adjacent half-width change <= **0.20 px**,
-- ordinary width regularization is skipped for this family,
-- accepted output uses authoritative true redraw scoped to the extracted main sweep.
+Production authority:
+- exact variable-width source-evidence classifier,
+- mandatory one-sided dominant-sweep extraction,
+- **Through-Points only**; no Bezier/compound/macro fallback,
+- source-safe centreline,
+- mapped width CV must stay inside **90% .. 105%** of source CV,
+- maximum adjacent half-width delta <= **0.20 px**,
+- ordinary constant-width regularizer is bypassed,
+- authoritative true redraw is restricted to the extracted main sweep.
 
-No ordinary ribbon, compact-spiral, tapered-hook or sparse-taper thresholds are changed.
+First production trial at all enlargement factors:
+- direct 160% output changed only **5,309 pixels / 0.235%** versus the previous green baseline,
+- visual inspection showed the gold band retained a smooth designer taper without new ownership
+  cuts,
+- however round-trip exact dropped **92.81% -> 92.30%** and ±1 px **99.44% -> 99.15%** because the
+  specialist was also running on the moderate 80%->100% (**1.25x**) return enlargement.
 
-Status at documentation point:
-- RugScale CI: **success**,
-- Workbench: **success**,
-- C069/four-design/B163A real-raster validations: running.
+Scale correction:
+variable-width specialist redraw now requires **>=1.50x** enlargement. The direct 160% BMP after
+this change is **pixel-identical** to the visually accepted production trial (0 changed pixels),
+while the round-trip metrics return exactly to the previous green baseline:
 
-Decision must be based on the actual generated C069 BMP. If the taper looks synthetic, swollen,
-pinched, or damages nearby ownership, revert production authority while keeping the mapper/audit
-evidence.
+- round-trip exact: **92.81%**,
+- round-trip ±1 px: **99.44%**,
+- palette: **SAFE**.
+
+Decision: **KEEP**.
+Do not remove the >=1.50x gate unless a separate moderate-scale training cohort proves that the
+variable-width specialist improves rather than over-processes those resizes.
+
+Permanent C069 workflow now protects all four repeats:
+- `ribbon_shape_reason = ok-variable-width-sweep`,
+- `fit_kind = variable-width-through`,
+- `curve_family = SplineThroughPoints`,
+- accepted + safe,
+- 0 curvature flips,
+- max source deviation <= **2.05 px**,
+- mapper applied,
+- mapped/source CV ratio inside 0.90..1.05,
+- max adjacent mapped-width delta <= **0.20 px**.
+
+Persistent visual artifacts:
+- `C069_focus_gold_variable_width_source.bmp`,
+- `C069_focus_gold_variable_width_rugscale.bmp`,
+- `C069_focus_gold_variable_width_nearest.bmp`.
 
 ## 5. Do-not-repeat rules
 
