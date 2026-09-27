@@ -1900,8 +1900,17 @@ internal static class CurveFillRibbonArcRefiner
                             }
                         }
 
-                        if (broadSparseArch &&
-                            mainArcExtracted &&
+                        var probeHighRoughnessCompound =
+                            string.Equals(
+                                fitKind,
+                                "compound",
+                                StringComparison.Ordinal) &&
+                            selectedSmoothness >=
+                                0.20;
+
+                        if ((broadSparseArch &&
+                             mainArcExtracted ||
+                             probeHighRoughnessCompound) &&
                             CurveFillRibbonThroughPointsFitter.TryFit(
                                 model,
                                 out var alternativeThroughFit,
