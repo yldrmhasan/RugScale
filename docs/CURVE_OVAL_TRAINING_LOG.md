@@ -1026,6 +1026,88 @@ Persistent visual artifacts:
 - `C069_focus_gold_variable_width_rugscale.bmp`,
 - `C069_focus_gold_variable_width_nearest.bmp`.
 
+### 4.32 Tapered-hook swept-tube raster — KEEP AS SAFETY, NOT ROOT CAUSE
+
+Commits:
+- `7d7a1b18495aa467fb14402ae6e8ed98b4797552` — variable-radius target swept-tube mask,
+- `4108451b3b7413bce43dbb6e7c9e662f807b90af` — tapered-hook-only routing,
+- `ef025999ef2f569c8451d352ae6964887ca11432` — tight-hook no-hole regression test.
+
+Hypothesis:
+the light exterior wedge visible inside the tight navy hook might come from self-intersection of the
+paired left/right offset polygon at a hairpin.
+
+Change:
+tapered hooks now rasterize fill/outline as a union of variable-radius centreline capsules instead
+of relying on polygon winding. Other ribbon families keep the paired-boundary polygon raster.
+
+Result:
+- synthetic tight-hook mask contains **0 enclosed background holes**,
+- C069 CI and the specialist gates remain green,
+- hook focus crop changed about **185 target pixels / 1.95%** versus the prior polygon raster,
+- the visible light wedge was **not materially removed**.
+
+Decision:
+**KEEP as a topological safety improvement**, but record that polygon self-intersection was not the
+main cause of the user-visible hook indentation. Do not keep tuning tube radius blindly.
+
+### 4.33 Tapered-hook source width transfer — KEEP SOURCE AUTHORITY / NOT ROOT CAUSE
+
+Commits:
+- `36c54ba13ed515d5049a75290fa428f478e83b4c` — width-transfer diagnostic,
+- `c3925fb1fc75e5a42c2e06d027c8b9389ac7634f` — large-scale hook uses source-faithful taper.
+
+Measured source/mapped profiles for all four C069 repeats:
+- source width CV: **0.525 .. 0.544**,
+- mapped width CV: **0.500 .. 0.513**,
+- source max half-width: about **4.47 .. 4.49 px**,
+- mapped max: about **4.12 .. 4.16 px**,
+- maximum adjacent mapped-width delta: about **0.37 px**.
+
+Production rule:
+- source-width transfer is used for tapered hooks only at **>=1.50x** enlargement,
+- mapped/source CV must remain 0.90..1.05,
+- max adjacent half-width delta <= 0.45,
+- mapped max must retain >=85% of source max,
+- mapped min may not exceed 125% of source min.
+
+Result:
+the source-taper production version changed only **47 target pixels / ~0.50%** of the persistent hook
+focus crop relative to the swept-tube-only output. The visible indentation therefore did not come
+primarily from compound half-width interpolation.
+
+Decision:
+**KEEP the source-faithful width transfer** because it is the correct drawing authority and remains
+source-bounded, but do not treat it as the visual-hole solution.
+
+### 4.34 High-roughness long S-sweep alternative probe — CURRENT DIAGNOSTIC
+
+Commit:
+`55af95ac4c3858a0965afb0a69917c267a1aeed2`
+
+The worst remaining accepted centreline roughness in C069 is the repeated long color-6 S sweep:
+
+- left bbox `105,566 - 156,812`,
+- right bbox `484,566 - 535,812`,
+- current fit: `CompoundSpline`,
+- selected roughness: about **0.238**,
+- max source deviation: about **3.18-3.19 px**,
+- curvature flips: **2**.
+
+The existing low-anchor compound diagnostics already proved that extremely simple 5-anchor fits
+leave the source corridor by ~30 px, so do not revive that failed approach.
+
+New diagnostic:
+when an already-safe compound fit has smoothness >=0.20, audit a geometric
+`SplineThroughPoints` alternative and report its safety/deviation/smoothness. Production output is
+unchanged.
+
+Decision after C069 audit:
+- if Through-Points is source-safe and materially smoother, compare it visually and consider a
+  narrow selector,
+- if unsafe, keep compound and move to piecewise/curvature-continuity modelling rather than
+  loosening the source corridor.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
