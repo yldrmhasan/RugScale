@@ -961,6 +961,46 @@ The new mapper:
 It remains diagnostic-only until all repeated gold sweeps share one safe dominant path and the
 mapped profile proves smooth without collapsing the real taper.
 
+### 4.31 Strict variable-width sweep production redraw — CURRENT EXPERIMENT
+
+Commit:
+`82a7c9b97e7b3035c4bab7bff75cabcb1cc80487`
+
+Evidence before production trial:
+all four repeated/mirrored C069 gold sweeps now expose the same dominant one-sided
+`SplineThroughPoints` centreline:
+
+- top pair max deviation: **1.780271 px**, smoothness **0.041079**, 0 flips,
+- bottom pair max deviation: **1.945942 px**, smoothness **0.033188**, 0 flips,
+- source width CV: about **0.770-0.772**,
+- mapped width CV: about **0.760-0.761**,
+- mapped half-width range: about **0.50 .. 7.37 px**,
+- maximum adjacent mapped-width delta: about **0.156-0.161 px**.
+
+Production trial is deliberately narrow:
+- source region must pass the exact measured variable-width source-evidence gate,
+- one-sided dominant sweep extraction is mandatory even when the raw skeleton has only two
+  endpoints,
+- fitter is **Through-Points only**; no Bezier/compound/macro fallback,
+- fitted centerline must pass the existing source safety gate,
+- variable-width mapper must:
+  - preserve at least **90%** of source width CV,
+  - not exceed **105%** of source width CV,
+  - keep maximum adjacent half-width change <= **0.20 px**,
+- ordinary width regularization is skipped for this family,
+- accepted output uses authoritative true redraw scoped to the extracted main sweep.
+
+No ordinary ribbon, compact-spiral, tapered-hook or sparse-taper thresholds are changed.
+
+Status at documentation point:
+- RugScale CI: **success**,
+- Workbench: **success**,
+- C069/four-design/B163A real-raster validations: running.
+
+Decision must be based on the actual generated C069 BMP. If the taper looks synthetic, swollen,
+pinched, or damages nearby ownership, revert production authority while keeping the mapper/audit
+evidence.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
