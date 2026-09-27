@@ -29,7 +29,8 @@ internal static class CurveFillTrueRibbonRasterizer
         LeafPetalArcModel model,
         ElegantArcFit fit,
         IReadOnlySet<byte> protectedStrokeColors,
-        out int changed)
+        out int changed,
+        bool useSweptTube = false)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
@@ -57,38 +58,67 @@ internal static class CurveFillTrueRibbonRasterizer
             destination.Height /
             (double)source.Height;
 
-        var fillPolygon =
-            LeafPetalArcRasterizer.BuildTargetPolygon(
-                fit.Points,
-                scaleX,
-                scaleY);
+        HashSet<int> fillMask;
+        HashSet<int> outerMask;
 
-        if (fillPolygon.Count < 6)
+        if (useSweptTube)
+        {
+            // Tight ornamental hooks can make paired normal-offset polygons self-intersect. A
+            // variable-radius swept tube is topologically safer: it is the union of source-faithful
+            // centreline capsules and therefore cannot create polygon winding holes at a hairpin.
+            fillMask =
+                BuildTargetSweptTubeMask(
+                    fit.Points,
+                    scaleX,
+                    scaleY,
+                    destination.Width,
+                    destination.Height,
+                    additionalTargetPixels: 0d);
+            outerMask =
+                BuildTargetSweptTubeMask(
+                    fit.Points,
+                    scaleX,
+                    scaleY,
+                    destination.Width,
+                    destination.Height,
+                    additionalTargetPixels:
+                        OutlineExpansionTarget);
+        }
+        else
+        {
+            var fillPolygon =
+                LeafPetalArcRasterizer.BuildTargetPolygon(
+                    fit.Points,
+                    scaleX,
+                    scaleY);
+
+            if (fillPolygon.Count < 6)
+                return false;
+
+            fillMask =
+                LeafPetalArcRasterizer.RasterizePolygon(
+                    fillPolygon,
+                    destination.Width,
+                    destination.Height);
+
+            var outerPolygon =
+                LeafPetalArcRasterizer.BuildTargetExpandedPolygon(
+                    fit.Points,
+                    scaleX,
+                    scaleY,
+                    OutlineExpansionTarget);
+            outerMask =
+                LeafPetalArcRasterizer.RasterizePolygon(
+                    outerPolygon,
+                    destination.Width,
+                    destination.Height);
+        }
+
+        if (fillMask.Count == 0 ||
+            outerMask.Count == 0)
+        {
             return false;
-
-        var fillMask =
-            LeafPetalArcRasterizer.RasterizePolygon(
-                fillPolygon,
-                destination.Width,
-                destination.Height);
-
-        if (fillMask.Count == 0)
-            return false;
-
-        var outerPolygon =
-            LeafPetalArcRasterizer.BuildTargetExpandedPolygon(
-                fit.Points,
-                scaleX,
-                scaleY,
-                OutlineExpansionTarget);
-        var outerMask =
-            LeafPetalArcRasterizer.RasterizePolygon(
-                outerPolygon,
-                destination.Width,
-                destination.Height);
-
-        if (outerMask.Count == 0)
-            return false;
+        }
 
         var region =
             model.Candidate.Region;
@@ -117,41 +147,38 @@ internal static class CurveFillTrueRibbonRasterizer
                 region.MaxY + 3,
                 scaleY);
 
+        var outerBounds =
+            MaskBounds(
+                outerMask,
+                destination.Width);
+
         var minX =
             Math.Max(
                 0,
                 Math.Min(
                     mappedMinX,
-                    (int)Math.Floor(
-                        outerPolygon.Min(point =>
-                            point.X)) -
+                    outerBounds.MinX -
                     3));
         var maxX =
             Math.Min(
                 destination.Width - 1,
                 Math.Max(
                     mappedMaxX,
-                    (int)Math.Ceiling(
-                        outerPolygon.Max(point =>
-                            point.X)) +
+                    outerBounds.MaxX +
                     3));
         var minY =
             Math.Max(
                 0,
                 Math.Min(
                     mappedMinY,
-                    (int)Math.Floor(
-                        outerPolygon.Min(point =>
-                            point.Y)) -
+                    outerBounds.MinY -
                     3));
         var maxY =
             Math.Min(
                 destination.Height - 1,
                 Math.Max(
                     mappedMaxY,
-                    (int)Math.Ceiling(
-                        outerPolygon.Max(point =>
-                            point.Y)) +
+                    outerBounds.MaxY +
                     3));
 
         for (var y = minY;
@@ -332,6 +359,271 @@ internal static class CurveFillTrueRibbonRasterizer
 
         return changed > 0;
     }
+
+    internal static HashSet<int> BuildTargetSweptTubeMask(
+        IReadOnlyList<ElegantArcPoint> points,
+        double scaleX,
+        double scaleY,
+        int targetWidth,
+        int targetHeight,
+        double additionalTargetPixels)
+    {
+        ArgumentNullException.ThrowIfNull(points);
+
+        var result =
+            new HashSet<int>();
+
+        if (points.Count < 2 ||
+            targetWidth <= 0 ||
+            targetHeight <= 0)
+        {
+            return result;
+        }
+
+        var mapped =
+            new TargetTubePoint[
+                points.Count];
+
+        for (var index = 0;
+             index < points.Count;
+             index++)
+        {
+            var previous =
+                points[Math.Max(
+                    0,
+                    index - 1)];
+            var next =
+                points[Math.Min(
+                    points.Count - 1,
+                    index + 1)];
+            var tangentX =
+                next.X -
+                previous.X;
+            var tangentY =
+                next.Y -
+                previous.Y;
+            var tangentLength =
+                Math.Sqrt(
+                    tangentX *
+                        tangentX +
+                    tangentY *
+                        tangentY);
+            var normalScale =
+                (scaleX +
+                 scaleY) *
+                0.5;
+
+            if (tangentLength > 1e-9)
+            {
+                var normalX =
+                    -tangentY /
+                    tangentLength;
+                var normalY =
+                    tangentX /
+                    tangentLength;
+
+                normalScale =
+                    Math.Sqrt(
+                        normalX *
+                            normalX *
+                            scaleX *
+                            scaleX +
+                        normalY *
+                            normalY *
+                            scaleY *
+                            scaleY);
+            }
+
+            mapped[index] =
+                new TargetTubePoint(
+                    (points[index].X + 0.5) *
+                        scaleX -
+                    0.5,
+                    (points[index].Y + 0.5) *
+                        scaleY -
+                    0.5,
+                    Math.Max(
+                        0.45,
+                        points[index].HalfWidth *
+                            normalScale +
+                        additionalTargetPixels));
+        }
+
+        var maximumRadius =
+            mapped.Max(point =>
+                point.Radius);
+        var minX =
+            Math.Max(
+                0,
+                (int)Math.Floor(
+                    mapped.Min(point =>
+                        point.X) -
+                    maximumRadius -
+                    1d));
+        var maxX =
+            Math.Min(
+                targetWidth - 1,
+                (int)Math.Ceiling(
+                    mapped.Max(point =>
+                        point.X) +
+                    maximumRadius +
+                    1d));
+        var minY =
+            Math.Max(
+                0,
+                (int)Math.Floor(
+                    mapped.Min(point =>
+                        point.Y) -
+                    maximumRadius -
+                    1d));
+        var maxY =
+            Math.Min(
+                targetHeight - 1,
+                (int)Math.Ceiling(
+                    mapped.Max(point =>
+                        point.Y) +
+                    maximumRadius +
+                    1d));
+
+        for (var y = minY;
+             y <= maxY;
+             y++)
+        {
+            for (var x = minX;
+                 x <= maxX;
+                 x++)
+            {
+                var inside = false;
+
+                for (var segment = 1;
+                     segment < mapped.Length;
+                     segment++)
+                {
+                    var a =
+                        mapped[segment - 1];
+                    var b =
+                        mapped[segment];
+                    var dx =
+                        b.X -
+                        a.X;
+                    var dy =
+                        b.Y -
+                        a.Y;
+                    var lengthSquared =
+                        dx *
+                            dx +
+                        dy *
+                            dy;
+                    var t =
+                        lengthSquared <= 1e-12
+                            ? 0d
+                            : Math.Clamp(
+                                ((x -
+                                  a.X) *
+                                     dx +
+                                 (y -
+                                  a.Y) *
+                                     dy) /
+                                lengthSquared,
+                                0d,
+                                1d);
+                    var qx =
+                        a.X +
+                        dx *
+                            t;
+                    var qy =
+                        a.Y +
+                        dy *
+                            t;
+                    var radius =
+                        a.Radius +
+                        (b.Radius -
+                         a.Radius) *
+                        t;
+                    var ex =
+                        x -
+                        qx;
+                    var ey =
+                        y -
+                        qy;
+
+                    if (ex *
+                            ex +
+                        ey *
+                            ey <=
+                        radius *
+                            radius)
+                    {
+                        inside = true;
+                        break;
+                    }
+                }
+
+                if (inside)
+                {
+                    result.Add(
+                        y *
+                            targetWidth +
+                        x);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private static (
+        int MinX,
+        int MinY,
+        int MaxX,
+        int MaxY) MaskBounds(
+        IReadOnlySet<int> mask,
+        int width)
+    {
+        var minX = int.MaxValue;
+        var minY = int.MaxValue;
+        var maxX = int.MinValue;
+        var maxY = int.MinValue;
+
+        foreach (var key in mask)
+        {
+            var x =
+                key %
+                width;
+            var y =
+                key /
+                width;
+
+            minX =
+                Math.Min(
+                    minX,
+                    x);
+            minY =
+                Math.Min(
+                    minY,
+                    y);
+            maxX =
+                Math.Max(
+                    maxX,
+                    x);
+            maxY =
+                Math.Max(
+                    maxY,
+                    y);
+        }
+
+        return (
+            minX,
+            minY,
+            maxX,
+            maxY
+        );
+    }
+
+    private readonly record struct TargetTubePoint(
+        double X,
+        double Y,
+        double Radius);
 
     private static int MapSourceToTarget(
         double sourceCoordinate,
