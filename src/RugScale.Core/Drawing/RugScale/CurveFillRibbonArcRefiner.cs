@@ -1871,12 +1871,14 @@ internal static class CurveFillRibbonArcRefiner
 
                         status =
                             accepted
-                                ? taperedHookSweep
-                                    ? "accepted-tapered-hook"
-                                    : compactSpiralSweep &&
-                                      !prefilterAccepted
-                                        ? "accepted-compact-spiral"
-                                        : "accepted"
+                                ? variableWidthSweepProbe
+                                    ? "accepted-variable-width-sweep"
+                                    : taperedHookSweep
+                                        ? "accepted-tapered-hook"
+                                        : compactSpiralSweep &&
+                                          !prefilterAccepted
+                                            ? "accepted-compact-spiral"
+                                            : "accepted"
                                 : variableWidthSweepProbe &&
                                   fitSafe &&
                                   accepted
