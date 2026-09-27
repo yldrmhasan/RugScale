@@ -913,7 +913,10 @@ internal static class CurveFillRibbonArcRefiner
                     item.Model,
                     item.Fit,
                     protectedStrokeColors,
-                    out var trueRedrawChanged))
+                    out var trueRedrawChanged,
+                    useSweptTube:
+                        taperedHookRegions.Contains(
+                            item.Model.Candidate.Region)))
             {
                 outlinedRefined++;
                 changed +=
