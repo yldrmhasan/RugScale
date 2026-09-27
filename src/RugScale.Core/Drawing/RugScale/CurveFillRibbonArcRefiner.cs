@@ -781,7 +781,10 @@ internal static class CurveFillRibbonArcRefiner
                 continue;
             }
 
-            if (variableWidthSweep)
+            if (variableWidthSweep ||
+                taperedHookSweep &&
+                redrawScale >=
+                    MinimumVariableWidthRedrawScale)
             {
                 fit =
                     CurveFillVariableWidthProfileMapper.Apply(
@@ -789,18 +792,38 @@ internal static class CurveFillRibbonArcRefiner
                         fit,
                         out var variableWidthDiagnostics);
 
+                var minimumCvRetention =
+                    0.90;
+                var maximumCvRetention =
+                    1.05;
+                var maximumAdjacentVariation =
+                    variableWidthSweep
+                        ? 0.20
+                        : 0.45;
                 var profileFaithful =
                     variableWidthDiagnostics.Applied &&
                     variableWidthDiagnostics.SourceCoefficientVariation >
                         1e-9 &&
                     variableWidthDiagnostics.MappedCoefficientVariation >=
                         variableWidthDiagnostics.SourceCoefficientVariation *
-                        0.90 &&
+                        minimumCvRetention &&
                     variableWidthDiagnostics.MappedCoefficientVariation <=
                         variableWidthDiagnostics.SourceCoefficientVariation *
-                        1.05 &&
+                        maximumCvRetention &&
                     variableWidthDiagnostics.MaximumAdjacentVariation <=
-                        0.20;
+                        maximumAdjacentVariation;
+
+                if (taperedHookSweep)
+                {
+                    profileFaithful =
+                        profileFaithful &&
+                        variableWidthDiagnostics.MappedMaximum >=
+                            variableWidthDiagnostics.SourceMaximum *
+                            0.85 &&
+                        variableWidthDiagnostics.MappedMinimum <=
+                            variableWidthDiagnostics.SourceMinimum *
+                            1.25;
+                }
 
                 if (!profileFaithful)
                     continue;
@@ -1834,11 +1857,16 @@ internal static class CurveFillRibbonArcRefiner
                             variableWidthMaximumAdjacentVariation =
                                 variableWidthDiagnostics.MaximumAdjacentVariation;
 
-                            if (variableWidthSweepProbe)
+                            if (variableWidthSweepProbe ||
+                                taperedHookSweep)
                             {
                                 fit =
                                     mappedWidthFit;
 
+                                var maximumAdjacentVariation =
+                                    variableWidthSweepProbe
+                                        ? 0.20
+                                        : 0.45;
                                 var profileFaithful =
                                     variableWidthDiagnostics.Applied &&
                                     variableWidthDiagnostics.SourceCoefficientVariation >
@@ -1850,7 +1878,19 @@ internal static class CurveFillRibbonArcRefiner
                                         variableWidthDiagnostics.SourceCoefficientVariation *
                                         1.05 &&
                                     variableWidthDiagnostics.MaximumAdjacentVariation <=
-                                        0.20;
+                                        maximumAdjacentVariation;
+
+                                if (taperedHookSweep)
+                                {
+                                    profileFaithful =
+                                        profileFaithful &&
+                                        variableWidthDiagnostics.MappedMaximum >=
+                                            variableWidthDiagnostics.SourceMaximum *
+                                            0.85 &&
+                                        variableWidthDiagnostics.MappedMinimum <=
+                                            variableWidthDiagnostics.SourceMinimum *
+                                            1.25;
+                                }
 
                                 if (!profileFaithful)
                                 {
