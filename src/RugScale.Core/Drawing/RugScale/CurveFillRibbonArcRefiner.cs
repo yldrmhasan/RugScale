@@ -1809,9 +1809,10 @@ internal static class CurveFillRibbonArcRefiner
                         }
 
                         if (fitSafe &&
-                            variableWidthSweepProbe)
+                            (variableWidthSweepProbe ||
+                             taperedHookSweep))
                         {
-                            fit =
+                            var mappedWidthFit =
                                 CurveFillVariableWidthProfileMapper.Apply(
                                     model,
                                     fit,
@@ -1833,23 +1834,29 @@ internal static class CurveFillRibbonArcRefiner
                             variableWidthMaximumAdjacentVariation =
                                 variableWidthDiagnostics.MaximumAdjacentVariation;
 
-                            var profileFaithful =
-                                variableWidthDiagnostics.Applied &&
-                                variableWidthDiagnostics.SourceCoefficientVariation >
-                                    1e-9 &&
-                                variableWidthDiagnostics.MappedCoefficientVariation >=
-                                    variableWidthDiagnostics.SourceCoefficientVariation *
-                                    0.90 &&
-                                variableWidthDiagnostics.MappedCoefficientVariation <=
-                                    variableWidthDiagnostics.SourceCoefficientVariation *
-                                    1.05 &&
-                                variableWidthDiagnostics.MaximumAdjacentVariation <=
-                                    0.20;
-
-                            if (!profileFaithful)
+                            if (variableWidthSweepProbe)
                             {
-                                fitSafe = false;
-                                accepted = false;
+                                fit =
+                                    mappedWidthFit;
+
+                                var profileFaithful =
+                                    variableWidthDiagnostics.Applied &&
+                                    variableWidthDiagnostics.SourceCoefficientVariation >
+                                        1e-9 &&
+                                    variableWidthDiagnostics.MappedCoefficientVariation >=
+                                        variableWidthDiagnostics.SourceCoefficientVariation *
+                                        0.90 &&
+                                    variableWidthDiagnostics.MappedCoefficientVariation <=
+                                        variableWidthDiagnostics.SourceCoefficientVariation *
+                                        1.05 &&
+                                    variableWidthDiagnostics.MaximumAdjacentVariation <=
+                                        0.20;
+
+                                if (!profileFaithful)
+                                {
+                                    fitSafe = false;
+                                    accepted = false;
+                                }
                             }
                         }
 
