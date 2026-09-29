@@ -1141,6 +1141,13 @@ internal static class CurveFillRibbonArcRefiner
             var compoundSmoothestCurvatureValidSmoothingPasses = 0;
             var compoundSmoothestCurvatureValidP95Deviation = 0d;
             var compoundSmoothestCurvatureValidMaximumDeviation = 0d;
+            var compoundSelectedLobeFairness = 0d;
+            var compoundFairestSafeLobeFairness = 0d;
+            var compoundFairestSafeRoughness = 0d;
+            var compoundFairestSafeAnchors = 0;
+            var compoundFairestSafeSmoothingPasses = 0;
+            var compoundFairestSafeP95Deviation = 0d;
+            var compoundFairestSafeMaximumDeviation = 0d;
             var fitKind = "none";
             var curveFamily = "none";
             var status =
@@ -1532,6 +1539,20 @@ internal static class CurveFillRibbonArcRefiner
                                 hookCompoundDiagnostics.SmoothestCurvatureValidP95Deviation;
                             compoundSmoothestCurvatureValidMaximumDeviation =
                                 hookCompoundDiagnostics.SmoothestCurvatureValidMaximumDeviation;
+                            compoundSelectedLobeFairness =
+                                hookCompoundDiagnostics.SelectedLobeFairness;
+                            compoundFairestSafeLobeFairness =
+                                hookCompoundDiagnostics.FairestSafeLobeFairness;
+                            compoundFairestSafeRoughness =
+                                hookCompoundDiagnostics.FairestSafeRoughness;
+                            compoundFairestSafeAnchors =
+                                hookCompoundDiagnostics.FairestSafeAnchors;
+                            compoundFairestSafeSmoothingPasses =
+                                hookCompoundDiagnostics.FairestSafeSmoothingPasses;
+                            compoundFairestSafeP95Deviation =
+                                hookCompoundDiagnostics.FairestSafeP95Deviation;
+                            compoundFairestSafeMaximumDeviation =
+                                hookCompoundDiagnostics.FairestSafeMaximumDeviation;
                         }
                         else if (compactSpiralSweep)
                         {
@@ -1616,6 +1637,20 @@ internal static class CurveFillRibbonArcRefiner
                                     compactCompoundDiagnostics.SmoothestCurvatureValidP95Deviation;
                                 compoundSmoothestCurvatureValidMaximumDeviation =
                                     compactCompoundDiagnostics.SmoothestCurvatureValidMaximumDeviation;
+                            compoundSelectedLobeFairness =
+                                compactCompoundDiagnostics.SelectedLobeFairness;
+                            compoundFairestSafeLobeFairness =
+                                compactCompoundDiagnostics.FairestSafeLobeFairness;
+                            compoundFairestSafeRoughness =
+                                compactCompoundDiagnostics.FairestSafeRoughness;
+                            compoundFairestSafeAnchors =
+                                compactCompoundDiagnostics.FairestSafeAnchors;
+                            compoundFairestSafeSmoothingPasses =
+                                compactCompoundDiagnostics.FairestSafeSmoothingPasses;
+                            compoundFairestSafeP95Deviation =
+                                compactCompoundDiagnostics.FairestSafeP95Deviation;
+                            compoundFairestSafeMaximumDeviation =
+                                compactCompoundDiagnostics.FairestSafeMaximumDeviation;
                             }
                         }
                         else if (CurveFillRibbonToolFitter.TryFit(
@@ -1766,6 +1801,20 @@ internal static class CurveFillRibbonArcRefiner
                                     compoundDiagnostics.SmoothestCurvatureValidP95Deviation;
                                 compoundSmoothestCurvatureValidMaximumDeviation =
                                     compoundDiagnostics.SmoothestCurvatureValidMaximumDeviation;
+                            compoundSelectedLobeFairness =
+                                compoundDiagnostics.SelectedLobeFairness;
+                            compoundFairestSafeLobeFairness =
+                                compoundDiagnostics.FairestSafeLobeFairness;
+                            compoundFairestSafeRoughness =
+                                compoundDiagnostics.FairestSafeRoughness;
+                            compoundFairestSafeAnchors =
+                                compoundDiagnostics.FairestSafeAnchors;
+                            compoundFairestSafeSmoothingPasses =
+                                compoundDiagnostics.FairestSafeSmoothingPasses;
+                            compoundFairestSafeP95Deviation =
+                                compoundDiagnostics.FairestSafeP95Deviation;
+                            compoundFairestSafeMaximumDeviation =
+                                compoundDiagnostics.FairestSafeMaximumDeviation;
                             }
                             else
                             {
@@ -2101,6 +2150,13 @@ internal static class CurveFillRibbonArcRefiner
                     compoundSmoothestCurvatureValidSmoothingPasses,
                     compoundSmoothestCurvatureValidP95Deviation,
                     compoundSmoothestCurvatureValidMaximumDeviation,
+                    compoundSelectedLobeFairness,
+                    compoundFairestSafeLobeFairness,
+                    compoundFairestSafeRoughness,
+                    compoundFairestSafeAnchors,
+                    compoundFairestSafeSmoothingPasses,
+                    compoundFairestSafeP95Deviation,
+                    compoundFairestSafeMaximumDeviation,
                     fitKind,
                     curveFamily,
                     roundness,
@@ -2550,6 +2606,13 @@ internal readonly record struct RibbonArcCandidateStage(
     int CompoundSmoothestCurvatureValidSmoothingPasses,
     double CompoundSmoothestCurvatureValidP95Deviation,
     double CompoundSmoothestCurvatureValidMaximumDeviation,
+    double CompoundSelectedLobeFairness,
+    double CompoundFairestSafeLobeFairness,
+    double CompoundFairestSafeRoughness,
+    int CompoundFairestSafeAnchors,
+    int CompoundFairestSafeSmoothingPasses,
+    double CompoundFairestSafeP95Deviation,
+    double CompoundFairestSafeMaximumDeviation,
     string FitKind,
     string CurveFamily,
     double Roundness,
