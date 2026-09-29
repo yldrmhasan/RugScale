@@ -1781,7 +1781,6 @@ public sealed class CurveOvalTrainingTests
                 new HashSet<byte>
                 {
                     1,
-                    4,
                 },
                 out var changed);
 
