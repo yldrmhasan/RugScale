@@ -1197,8 +1197,8 @@ public sealed class CurveOvalTrainingTests
                             t -
                         1d;
                     var rasterPhase =
-                        index %
-                        4 switch
+                        (index %
+                         4) switch
                         {
                             0 => 0.14,
                             2 => -0.14,
