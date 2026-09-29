@@ -1193,6 +1193,73 @@ transitions. The next work must distinguish:
 Do not tune the production curve from the raw ~0.238 score until an inflection-aware fairness metric
 shows an actual lobe-local defect.
 
+### 4.37 Inflection-aware lobe fairness and fairest-safe compound audit — CURRENT DIAGNOSTIC
+
+Reason:
+the long color-6 S sweep's generic smoothness score (~0.238) was initially interpreted as severe
+staircase roughness. Two follow-up experiments disproved that interpretation:
+
+- piecewise two-lobe fitting made the real C069 curve much worse,
+- source-constrained fairing moved the accepted curve only ~0.006-0.012 source px and did not lower
+  generic roughness.
+
+A new S-aware metric was therefore introduced instead of forcing more smoothing.
+
+Commits:
+- `b327c81b199b088cd2bff356757af5e7b0cd6253` — `CurveFillRibbonCurvatureFairness`,
+- `3205bb3405665f3f44cbf5733df739d2f1033f85` — synthetic clean-S vs jittered-S regression,
+- `cc75b555ea8035d22ba66a255f1bd0db2b9ccf19` + `1fda59533e74a2b0c3d524312ccb9c63a403895b` — real-raster diagnostics,
+- `5db6d58e89e98bb50d23673cc6f0c220525bcce7` — persistent sign-run inflection detection,
+- `d3154a4c1c8eda26a923764cf6eca45eaa171d82` — compound fitter tracks the fairest **already-safe**
+  candidate without changing production selection,
+- `fb3290c5cccf04c77f843bb597f0857a848f24a3` +
+  `659cfdb2d8dc1aae1fcaf477e099f6542f6dda32` — expose/report candidate diagnostics.
+
+Metric behaviour:
+- arc-length resampling,
+- stable curvature-sign runs identify real S inflections,
+- a short neighbourhood around each inflection is excluded,
+- fairness is measured only inside same-sign curvature lobes,
+- short opposite sign bursts are treated as raster/high-frequency phase rather than new lobes.
+
+Real C069 baseline evidence before candidate comparison:
+
+Left S:
+- source lobe fairness: **0.042030**,
+- selected compound fairness: **0.049598**,
+- inflections: **2 -> 2**,
+- source max local variation: **0.067630**,
+- fit max local variation: **0.092121**.
+
+Right S:
+- source lobe fairness: **0.042549**,
+- selected compound fairness: **0.049647**,
+- inflections: **2 -> 2**,
+- source max local variation: **0.069275**,
+- fit max local variation: **0.092233**.
+
+Conclusion:
+the old ~0.238 generic score was indeed exaggerated for S geometry, but the fitted compound lobes are
+still about **18% less fair than source**, so there is a small measurable target left.
+
+Current diagnostic:
+among the normal **selection-eligible + source-safe compound candidates only**, record:
+- selected lobe fairness,
+- fairest-safe lobe fairness,
+- fairest-safe anchor/smoothing configuration,
+- its generic roughness,
+- p95/max source deviation.
+
+Production selection is unchanged.
+
+Decision gate:
+- if another already-safe candidate materially approaches source lobe fairness without meaningfully
+  increasing p95/max deviation, consider a narrowly scoped multi-inflection S selector;
+- if the improvement is negligible, stop centreline tuning for this family and move to
+  boundary/width/Pixel-Cord rendering instead.
+- never revive the unsafe 5-anchor candidate (~28-30 px source error) just because its curve looks
+  smoother.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
