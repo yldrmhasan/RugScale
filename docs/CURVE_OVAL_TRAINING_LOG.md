@@ -1145,6 +1145,55 @@ Independent lobe fitting destroys the natural coupled curvature of this long orn
 current compound production fit. The next experiment must smooth/fair the already-safe compound
 curve **inside the source corridor**, rather than re-fitting independent halves.
 
+### 4.36 Source-constrained compound fairing — CURRENT DIAGNOSTIC
+
+Reason:
+piecewise independent-lobe fitting failed on the real C069 long S sweep. The current accepted
+compound curve already has the correct global path and source safety; the remaining defect is
+high-frequency curvature roughness.
+
+Commits:
+- `20c0e223db9640c0cdcb5ac1e4357ed14087c549` — new
+  `CurveFillRibbonConstrainedFairing`,
+- `ed2f579f517ec9e9178a963a352ef86050004065` +
+  `63751480e1f5d1b6fc2551214a9499e68481f199` — deterministic synthetic fairing regression,
+- `e25349684eedcab736740622ea42fd7f7b264a09` — C069 candidate-stage diagnostics,
+- `25fc01ea23490e02ac4c0405da88968c2459bd2c` — CSV/report fields.
+
+Architecture:
+- start only from an already accepted safe compound fit,
+- keep endpoints fixed,
+- apply small Taubin-style positive/negative Laplacian steps,
+- cap every point's displacement from the accepted fit at **0.90 source px**,
+- keep every candidate point inside an adaptive immutable-source corridor,
+- never project onto nearest source pixels because that would reintroduce staircase phase,
+- after fairing, validate the complete curve with symmetric source-to-fit + fit-to-source distance,
+- keep <=2 curvature sign flips.
+
+Diagnostic acceptance:
+- p95 <= **3.80 px**,
+- max deviation <= **6.10 px**,
+- maximum movement <= **0.90 px**,
+- roughness must improve by at least **10%**.
+
+This path has **zero production authority** at this stage.
+
+Synthetic result:
+- core CI regression is expected to prove alternating raster phase can be reduced while preserving
+  the S inflection and source corridor.
+
+Real C069 decision gate:
+for both repeated long color-6 S sweeps, fairing must:
+1. stay source-safe,
+2. preserve 1..2 real curvature reversals,
+3. reduce roughness materially below ~0.238,
+4. remain repeat-consistent,
+5. show no radius collapse or endpoint drift in the persistent
+   `C069_focus_long_s_sweep_*.bmp` artifacts.
+
+If fairing does not satisfy all five, keep the existing compound production path and move to a
+higher-level curvature model rather than increasing movement/deviation limits.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
