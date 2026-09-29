@@ -1586,6 +1586,88 @@ public sealed class CurveOvalTrainingTests
             3);
     }
 
+    [Fact]
+    public void LayeredRibbonBandMask_UsesTargetCordWidthAndScaledBroadBand()
+    {
+        var points =
+            Enumerable.Range(
+                    0,
+                    41)
+                .Select(index =>
+                    new ElegantArcPoint(
+                        10d +
+                        index,
+                        20d,
+                        2d))
+                .ToArray();
+
+        var whiteCord =
+            CurveFillLayeredRibbonRasterizer.BuildOneSidedBandMask(
+                points,
+                side: 1d,
+                scaleX: 2d,
+                scaleY: 2d,
+                targetWidth: 128,
+                targetHeight: 96,
+                innerAdditionalTargetPixels: 0d,
+                sourceBandWidth: 0d,
+                fixedBandWidthTargetPixels: 1d);
+        var navyBand =
+            CurveFillLayeredRibbonRasterizer.BuildOneSidedBandMask(
+                points,
+                side: 1d,
+                scaleX: 2d,
+                scaleY: 2d,
+                targetWidth: 128,
+                targetHeight: 96,
+                innerAdditionalTargetPixels: 1d,
+                sourceBandWidth: 3d);
+
+        Assert.NotEmpty(
+            whiteCord);
+        Assert.NotEmpty(
+            navyBand);
+
+        var middleX = 80;
+        var whiteYs =
+            whiteCord
+                .Where(key =>
+                    key %
+                        128 ==
+                    middleX)
+                .Select(key =>
+                    key /
+                    128)
+                .Distinct()
+                .Order()
+                .ToArray();
+        var navyYs =
+            navyBand
+                .Where(key =>
+                    key %
+                        128 ==
+                    middleX)
+                .Select(key =>
+                    key /
+                    128)
+                .Distinct()
+                .Order()
+                .ToArray();
+
+        Assert.InRange(
+            whiteYs.Length,
+            1,
+            2);
+        Assert.InRange(
+            navyYs.Length,
+            5,
+            7);
+        Assert.True(
+            navyYs.Min() >=
+            whiteYs.Max(),
+            "The broad protected band must be outside the 1-target-pixel cord on the selected side.");
+    }
+
     private static LeafPetalArcModel Model(
         IReadOnlyList<LeafPetalAxisSample> samples,
         int width,
