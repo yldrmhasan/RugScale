@@ -68,6 +68,7 @@ internal static class CurveFillLayeredRibbonAnalyzer
                 "none",
                 chosen.Sequence,
                 chosen.Coverage,
+                chosen.BracketedCoverage,
                 chosen.SampleCount,
                 chosen.MatchingSamples,
                 chosen.MeanRunWidths);
@@ -82,6 +83,7 @@ internal static class CurveFillLayeredRibbonAnalyzer
                 : "negative",
             chosen.Sequence,
             chosen.Coverage,
+            chosen.BracketedCoverage,
             chosen.SampleCount,
             chosen.MatchingSamples,
             chosen.MeanRunWidths);
@@ -192,6 +194,7 @@ internal static class CurveFillLayeredRibbonAnalyzer
             return new SideProfile(
                 string.Empty,
                 0d,
+                0d,
                 validSamples,
                 0,
                 Array.Empty<double>());
@@ -216,10 +219,38 @@ internal static class CurveFillLayeredRibbonAnalyzer
                         1,
                         dominant.Value.Count))
                 .ToArray();
+        var dominantParts =
+            dominant.Key
+                .Split(
+                    '>',
+                    StringSplitOptions.RemoveEmptyEntries);
+        var bracketedCoverage = 0d;
+
+        if (dominantParts.Length >= 2)
+        {
+            var bracketPrefix =
+                dominantParts[0] +
+                ">" +
+                dominantParts[1] +
+                ">" +
+                dominantParts[0];
+            var bracketedCount =
+                sequences
+                    .Where(pair =>
+                        pair.Key.StartsWith(
+                            bracketPrefix,
+                            StringComparison.Ordinal))
+                    .Sum(pair =>
+                        pair.Value.Count);
+            bracketedCoverage =
+                bracketedCount /
+                (double)validSamples;
+        }
 
         return new SideProfile(
             dominant.Key,
             coverage,
+            bracketedCoverage,
             validSamples,
             dominant.Value.Count,
             means);
@@ -356,6 +387,7 @@ internal static class CurveFillLayeredRibbonAnalyzer
     private sealed record SideProfile(
         string Sequence,
         double Coverage,
+        double BracketedCoverage,
         int SampleCount,
         int MatchingSamples,
         IReadOnlyList<double> MeanRunWidths);
@@ -366,6 +398,7 @@ internal readonly record struct LayeredRibbonProfileDiagnostics(
     string Side,
     string Sequence,
     double Coverage,
+    double BracketedCoverage,
     int SampleCount,
     int MatchingSamples,
     IReadOnlyList<double> MeanRunWidths);
