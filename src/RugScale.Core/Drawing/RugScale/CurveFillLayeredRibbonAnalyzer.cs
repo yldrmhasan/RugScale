@@ -16,7 +16,10 @@ namespace RugScale.Core.Drawing;
 internal static class CurveFillLayeredRibbonAnalyzer
 {
     private const int MaximumRuns = 4;
-    private const double MaximumNormalDistance = 12d;
+    // Long ornamental bands can sit beside a broad protected outer colour. Twelve source pixels
+    // was enough to measure separator/band thickness but sometimes stopped before immutable
+    // exterior ownership was reached. This remains diagnostic source sampling only.
+    private const double MaximumNormalDistance = 22d;
     private const double MinimumDominantCoverage = 0.60;
 
     public static LayeredRibbonProfileDiagnostics Analyze(
