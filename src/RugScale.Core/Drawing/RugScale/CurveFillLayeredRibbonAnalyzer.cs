@@ -233,10 +233,10 @@ internal static class CurveFillLayeredRibbonAnalyzer
         byte regionColor,
         IReadOnlySet<byte> protectedStrokeColors)
     {
-        var visited =
-            new HashSet<int>();
-        var colors =
-            new List<byte>();
+        const double Step = 0.25;
+
+        var samples =
+            new List<(double Distance, byte Color)>();
         var startDistance =
             Math.Max(
                 0d,
@@ -247,7 +247,7 @@ internal static class CurveFillLayeredRibbonAnalyzer
              distance <=
              sample.HalfWidth +
              MaximumNormalDistance;
-             distance += 0.25)
+             distance += Step)
         {
             var x =
                 Math.Clamp(
@@ -265,74 +265,75 @@ internal static class CurveFillLayeredRibbonAnalyzer
                         distance),
                     0,
                     source.Height - 1);
-            var key =
-                y *
-                source.Width +
-                x;
 
-            if (!visited.Add(
-                    key))
-            {
-                continue;
-            }
-
-            colors.Add(
-                source.GetPixel(
-                    x,
-                    y));
+            samples.Add(
+                (
+                    distance,
+                    source.GetPixel(
+                        x,
+                        y)
+                ));
         }
 
-        if (colors.Count == 0)
+        if (samples.Count == 0)
             return Array.Empty<ColorRun>();
 
-        var runs =
-            new List<ColorRun>();
-
-        // Drop the leading candidate-fill run. HalfWidth can be phase-shifted by thinning, so a
-        // sample may begin one cell inside or outside the true boundary. Walk past any initial
-        // candidate-colour cells, then require the neighbouring sequence to start on a protected
-        // drawing role.
+        // Drop the leading candidate-fill samples. HalfWidth can be phase-shifted by thinning, so
+        // a scan may begin slightly inside the candidate region.
         var index = 0;
 
-        while (index < colors.Count &&
-               colors[index] ==
+        while (index < samples.Count &&
+               samples[index].Color ==
                    regionColor)
         {
             index++;
         }
 
-        if (index >= colors.Count ||
+        if (index >= samples.Count ||
             !protectedStrokeColors.Contains(
-                colors[index]))
+                samples[index].Color))
         {
             return Array.Empty<ColorRun>();
         }
 
-        while (index < colors.Count &&
+        var runs =
+            new List<ColorRun>();
+
+        while (index < samples.Count &&
                runs.Count <
                MaximumRuns)
         {
             var color =
-                colors[index];
-            var count = 1;
+                samples[index].Color;
+            var start =
+                samples[index].Distance;
+            var end =
+                start;
             index++;
 
-            while (index < colors.Count &&
-                   colors[index] ==
+            while (index < samples.Count &&
+                   samples[index].Color ==
                        color)
             {
-                count++;
+                end =
+                    samples[index].Distance;
                 index++;
             }
+
+            // Distance along the fitted normal is the authority. Unlike counting crossed grid
+            // cells, this does not make a 45-degree band appear sqrt(2) thicker.
+            var width =
+                Math.Max(
+                    Step,
+                    end -
+                    start +
+                    Step);
 
             runs.Add(
                 new ColorRun(
                     color,
-                    count));
+                    width));
 
-            // Once a non-protected exterior run is reached after at least one protected run, keep
-            // it as the terminal context and stop. This distinguishes 1>4>1>background from
-            // partial/occluded sequences.
             if (!protectedStrokeColors.Contains(
                     color) &&
                 runs.Count > 1)
