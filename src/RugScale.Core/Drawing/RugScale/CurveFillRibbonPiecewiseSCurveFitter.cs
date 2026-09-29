@@ -147,7 +147,8 @@ internal static class CurveFillRibbonPiecewiseSCurveFitter
             JoinC1(
                 leftFit.Points,
                 rightFit.Points,
-                model.Samples[splitIndex]);
+                model.Samples[splitIndex],
+                out var joinPointIndex);
 
         if (joined.Count < 16)
         {
@@ -175,7 +176,8 @@ internal static class CurveFillRibbonPiecewiseSCurveFitter
                 joined);
         var joinAngle =
             MeasureJoinAngleDegrees(
-                joined);
+                joined,
+                joinPointIndex);
 
         var safe =
             deviation.Percentile95 <=
@@ -433,7 +435,8 @@ internal static class CurveFillRibbonPiecewiseSCurveFitter
     private static IReadOnlyList<ElegantArcPoint> JoinC1(
         IReadOnlyList<ElegantArcPoint> left,
         IReadOnlyList<ElegantArcPoint> right,
-        LeafPetalAxisSample sourceJoin)
+        LeafPetalAxisSample sourceJoin,
+        out int joinPointIndex)
     {
         var leftPoints =
             left.ToArray();
@@ -556,6 +559,9 @@ internal static class CurveFillRibbonPiecewiseSCurveFitter
                     t);
         }
 
+        joinPointIndex =
+            leftPoints.Length -
+            1;
         var result =
             new List<ElegantArcPoint>(
                 leftPoints.Length +
@@ -720,14 +726,16 @@ internal static class CurveFillRibbonPiecewiseSCurveFitter
     }
 
     private static double MeasureJoinAngleDegrees(
-        IReadOnlyList<ElegantArcPoint> points)
+        IReadOnlyList<ElegantArcPoint> points,
+        int center)
     {
-        if (points.Count < 12)
+        if (points.Count < 12 ||
+            center < 4 ||
+            center + 4 >=
+                points.Count)
+        {
             return 180d;
-
-        var center =
-            points.Count /
-            2;
+        }
         var before =
             Normalize(
                 points[center].X -
