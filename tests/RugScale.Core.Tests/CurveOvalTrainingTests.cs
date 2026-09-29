@@ -1578,6 +1578,10 @@ public sealed class CurveOvalTrainingTests
             diagnostics.Coverage >=
             0.90);
         Assert.True(
+            diagnostics.BracketedCoverage >=
+            0.90,
+            $"Expected white/navy/white bracketing, got {diagnostics.BracketedCoverage:0.000}.");
+        Assert.True(
             diagnostics.MeanRunWidths.Count >=
             3);
     }
