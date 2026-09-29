@@ -1484,7 +1484,13 @@ internal static class Program
 
             Console.WriteLine(
                 $"[layered-ribbon-preview] changed={layeredDiagnostics.BoundaryPixelsChanged:N0}, " +
-                $"diff-vs-production={PixelDifferenceCount(direct, layeredRibbonPreview):N0}");
+                $"diff-vs-production={PixelDifferenceCount(direct, layeredRibbonPreview):N0}, " +
+                $"candidates={layeredDiagnostics.LayeredPreviewCandidates}, " +
+                $"applied={layeredDiagnostics.LayeredPreviewApplied}, " +
+                $"reason={layeredDiagnostics.LastLayeredPreviewReason}, " +
+                $"masks={layeredDiagnostics.LastLayeredSeparatorMaskPixels}/" +
+                $"{layeredDiagnostics.LastLayeredBandMaskPixels}/" +
+                $"{layeredDiagnostics.LastLayeredAuthorityMaskPixels}");
 
             IndexedBmp.Write(
                 Path.Combine(
