@@ -1465,11 +1465,33 @@ internal static class Program
                 directHeight,
                 ScaleMode.NearestNeighbor);
 
+        DesignDocument? layeredRibbonPreview = null;
+
         if (string.Equals(
                 fixture.Name,
                 "C069A_CREAM_N69",
                 StringComparison.Ordinal))
         {
+            layeredRibbonPreview =
+                CloneDocument(
+                    direct);
+            var layeredDiagnostics =
+                CurveFillRibbonArcRefiner.ApplyWithDiagnostics(
+                    source,
+                    layeredRibbonPreview,
+                    layeredBandsOnly: true);
+
+            Console.WriteLine(
+                $"[layered-ribbon-preview] changed={layeredDiagnostics.BoundaryPixelsChanged:N0}, " +
+                $"diff-vs-production={PixelDifferenceCount(direct, layeredRibbonPreview):N0}");
+
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069A_CREAM_N69_enlarge_160_layered_preview.bmp"),
+                layeredRibbonPreview,
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
             // Persistent visual calibration crop for the user-reported ugly left oval/spiral
             // region. Keep source + RugScale + Nearest together in every C069 artifact so future
             // training sessions can judge the same local geometry without rediscovering the area.
@@ -1762,6 +1784,23 @@ internal static class Program
                     sSweepTargetHeight),
                 bmp.XPixelsPerMeter,
                 bmp.YPixelsPerMeter);
+
+            if (layeredRibbonPreview is not null)
+            {
+                IndexedBmp.Write(
+                    Path.Combine(
+                        outputDir,
+                        "C069_focus_long_s_sweep_layered_preview.bmp"),
+                    Crop(
+                        layeredRibbonPreview,
+                        sSweepTargetX,
+                        sSweepTargetY,
+                        sSweepTargetWidth,
+                        sSweepTargetHeight),
+                    bmp.XPixelsPerMeter,
+                    bmp.YPixelsPerMeter);
+            }
+
             IndexedBmp.Write(
                 Path.Combine(
                     outputDir,
@@ -2278,6 +2317,35 @@ internal static class Program
             "All final pixels still pass Curve & Fill indexed-region ownership and RugCAD Pixel-Cord outline replay.");
 
         return sb.ToString();
+    }
+
+    private static DesignDocument CloneDocument(
+        DesignDocument source)
+    {
+        var result =
+            new DesignDocument(
+                source.Width,
+                source.Height,
+                source.Palette);
+
+        for (var y = 0;
+             y < source.Height;
+             y++)
+        {
+            for (var x = 0;
+                 x < source.Width;
+                 x++)
+            {
+                result.SetPixel(
+                    x,
+                    y,
+                    source.GetPixel(
+                        x,
+                        y));
+            }
+        }
+
+        return result;
     }
 
     private static DesignDocument Crop(
