@@ -1682,6 +1682,81 @@ internal static class Program
                     variableWidthTargetHeight),
                 bmp.XPixelsPerMeter,
                 bmp.YPixelsPerMeter);
+
+            // Persistent checkpoint for the long lower S-shaped sweep currently under
+            // piecewise-curvature training. Keep enough margin around the source bbox so a join
+            // kink, radius jump or nearby ownership cut is visible without inspecting the full
+            // 1024x2208 enlargement.
+            const int SSweepSourceX = 92;
+            const int SSweepSourceY = 548;
+            const int SSweepSourceWidth = 92;
+            const int SSweepSourceHeight = 282;
+
+            var sSweepTargetX =
+                (int)Math.Floor(
+                    SSweepSourceX *
+                    direct.Width /
+                    (double)source.Width);
+            var sSweepTargetY =
+                (int)Math.Floor(
+                    SSweepSourceY *
+                    direct.Height /
+                    (double)source.Height);
+            var sSweepTargetRight =
+                (int)Math.Ceiling(
+                    (SSweepSourceX +
+                     SSweepSourceWidth) *
+                    direct.Width /
+                    (double)source.Width);
+            var sSweepTargetBottom =
+                (int)Math.Ceiling(
+                    (SSweepSourceY +
+                     SSweepSourceHeight) *
+                    direct.Height /
+                    (double)source.Height);
+            var sSweepTargetWidth =
+                sSweepTargetRight -
+                sSweepTargetX;
+            var sSweepTargetHeight =
+                sSweepTargetBottom -
+                sSweepTargetY;
+
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_long_s_sweep_source.bmp"),
+                Crop(
+                    source,
+                    SSweepSourceX,
+                    SSweepSourceY,
+                    SSweepSourceWidth,
+                    SSweepSourceHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_long_s_sweep_rugscale.bmp"),
+                Crop(
+                    direct,
+                    sSweepTargetX,
+                    sSweepTargetY,
+                    sSweepTargetWidth,
+                    sSweepTargetHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_long_s_sweep_nearest.bmp"),
+                Crop(
+                    directNearest,
+                    sSweepTargetX,
+                    sSweepTargetY,
+                    sSweepTargetWidth,
+                    sSweepTargetHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
         }
 
         var roundTripAgreement =
