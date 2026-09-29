@@ -1180,6 +1180,91 @@ public sealed class CurveOvalTrainingTests
             enclosedBackground);
     }
 
+    [Fact]
+    public void PiecewiseSCurveFitter_PreservesInflectionAndBuildsContinuousJoin()
+    {
+        var samples =
+            Enumerable.Range(
+                    0,
+                    161)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        160d;
+                    var u =
+                        2d *
+                            t -
+                        1d;
+                    var rasterPhase =
+                        index %
+                        4 switch
+                        {
+                            0 => 0.14,
+                            2 => -0.14,
+                            _ => 0d,
+                        };
+
+                    return new LeafPetalAxisSample(
+                        12d +
+                        112d *
+                            t,
+                        54d +
+                        24d *
+                            u *
+                            u *
+                            u +
+                        rasterPhase,
+                        3.2 +
+                        0.15 *
+                            Math.Sin(
+                                Math.PI *
+                                t),
+                        t);
+                })
+                .ToArray();
+        var model =
+            Model(
+                samples,
+                width: 140,
+                height: 110);
+
+        var safe =
+            CurveFillRibbonPiecewiseSCurveFitter.TryFit(
+                model,
+                out var fit,
+                out var diagnostics);
+
+        Assert.True(
+            safe,
+            $"Expected a safe piecewise S fit: reason={diagnostics.Reason}, " +
+            $"split={diagnostics.SplitIndex}, p95={diagnostics.Percentile95Deviation:0.000}, " +
+            $"max={diagnostics.MaximumDeviation:0.000}, rough={diagnostics.Roughness:0.000}, " +
+            $"flips={diagnostics.CurvatureSignFlips}, join={diagnostics.JoinAngleDegrees:0.000}.");
+        Assert.True(
+            fit.IsSafe);
+        Assert.InRange(
+            diagnostics.SplitIndex,
+            55,
+            105);
+        Assert.InRange(
+            diagnostics.CurvatureSignFlips,
+            1,
+            2);
+        Assert.InRange(
+            diagnostics.JoinAngleDegrees,
+            0d,
+            8d);
+        Assert.InRange(
+            diagnostics.Percentile95Deviation,
+            0d,
+            3.80);
+        Assert.InRange(
+            diagnostics.MaximumDeviation,
+            0d,
+            6.10);
+    }
+
     private static LeafPetalArcModel Model(
         IReadOnlyList<LeafPetalAxisSample> samples,
         int width,
