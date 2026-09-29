@@ -89,8 +89,11 @@ internal static class CurveFillRibbonConstrainedFairing
             SymmetricPolylineDeviation(
                 points,
                 model.Samples);
+        var beforeFlips =
+            CountMacroCurvatureSignFlips(
+                original);
         var flips =
-            CountCurvatureSignFlips(
+            CountMacroCurvatureSignFlips(
                 points);
         var maximumShift =
             0d;
@@ -123,6 +126,8 @@ internal static class CurveFillRibbonConstrainedFairing
                 MaximumDeviation &&
             flips <=
                 MaximumCurvatureSignFlips &&
+            (beforeFlips == 0 ||
+             flips >= 1) &&
             maximumShift <=
                 MaximumShiftFromAcceptedFit +
                 1e-9;
@@ -148,7 +153,7 @@ internal static class CurveFillRibbonConstrainedFairing
                 deviation.Maximum,
                 deviation.Percentile95,
                 maximumShift,
-                acceptedFit.CurvatureSignFlips,
+                beforeFlips,
                 flips);
 
         fairedFit =
@@ -293,27 +298,45 @@ internal static class CurveFillRibbonConstrainedFairing
         return result;
     }
 
-    private static int CountCurvatureSignFlips(
+    private static int CountMacroCurvatureSignFlips(
         IReadOnlyList<ElegantArcPoint> points)
     {
+        if (points.Count < 12)
+            return 0;
+
+        // Curvature safety here is intentionally macro-scale. Dense target/source-independent
+        // sampling can produce tiny alternating cross-product signs after a sub-pixel fairing step
+        // even when the visible designer curve has one clean S inflection. Use a wider chord and a
+        // stronger normalized bend threshold so only real lobe reversals are counted.
+        var stride =
+            Math.Clamp(
+                points.Count /
+                40,
+                4,
+                18);
+        var sampleStep =
+            Math.Max(
+                1,
+                stride /
+                2);
         var previousSign = 0;
         var flips = 0;
 
-        for (var index = 2;
-             index < points.Count - 2;
-             index++)
+        for (var index = stride;
+             index < points.Count - stride;
+             index += sampleStep)
         {
             var ax =
                 points[index].X -
-                points[index - 2].X;
+                points[index - stride].X;
             var ay =
                 points[index].Y -
-                points[index - 2].Y;
+                points[index - stride].Y;
             var bx =
-                points[index + 2].X -
+                points[index + stride].X -
                 points[index].X;
             var by =
-                points[index + 2].Y -
+                points[index + stride].Y -
                 points[index].Y;
             var cross =
                 ax *
@@ -335,7 +358,7 @@ internal static class CurveFillRibbonConstrainedFairing
                 Math.Abs(
                     cross) <
                 scale *
-                0.025)
+                0.060)
             {
                 continue;
             }
