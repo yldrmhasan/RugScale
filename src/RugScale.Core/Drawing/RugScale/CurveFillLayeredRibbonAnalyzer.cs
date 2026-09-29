@@ -441,9 +441,12 @@ internal static class CurveFillLayeredRibbonAnalyzer
                     color,
                     width));
 
+            // The broader second layer may be a filled colour rather than a protected
+            // stroke role. Do not stop after separator -> band; continue far enough to observe
+            // whether that band is bracketed by the separator again (or by another exterior).
             if (!protectedStrokeColors.Contains(
                     color) &&
-                runs.Count > 1)
+                runs.Count >= 3)
             {
                 break;
             }
