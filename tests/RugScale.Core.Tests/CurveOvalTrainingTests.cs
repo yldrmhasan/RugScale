@@ -1668,6 +1668,167 @@ public sealed class CurveOvalTrainingTests
             "The broad protected band must be outside the 1-target-pixel cord on the selected side.");
     }
 
+    [Fact]
+    public void LayeredRibbonPreview_OverlayOnlyWorksWithoutBracketedExterior()
+    {
+        var palette =
+            new Palette(
+                new[]
+                {
+                    new RugColor(0, 0, 0),
+                    new RugColor(255, 255, 255),
+                    new RugColor(230, 224, 218),
+                    new RugColor(120, 120, 120),
+                    new RugColor(0, 0, 102),
+                });
+        var source =
+            new DesignDocument(
+                64,
+                48,
+                palette);
+        var destination =
+            new DesignDocument(
+                128,
+                96,
+                palette);
+
+        for (var y = 0;
+             y < source.Height;
+             y++)
+        {
+            for (var x = 0;
+                 x < source.Width;
+                 x++)
+            {
+                source.SetPixel(
+                    x,
+                    y,
+                    2);
+            }
+        }
+
+        for (var y = 0;
+             y < destination.Height;
+             y++)
+        {
+            for (var x = 0;
+                 x < destination.Width;
+                 x++)
+            {
+                destination.SetPixel(
+                    x,
+                    y,
+                    2);
+            }
+        }
+
+        var samples =
+            Enumerable.Range(
+                    0,
+                    41)
+                .Select(index =>
+                    new LeafPetalAxisSample(
+                        10d +
+                        index,
+                        20d,
+                        2d,
+                        index /
+                        40d))
+                .ToArray();
+        var model =
+            Model(
+                samples,
+                width: 64,
+                height: 48);
+        var fit =
+            new ElegantArcFit(
+                samples
+                    .Select(sample =>
+                        new ElegantArcPoint(
+                            sample.X,
+                            sample.Y,
+                            sample.HalfWidth))
+                    .ToArray(),
+                IsSafe: true,
+                IsMonotonic: true,
+                CurvatureSignFlips: 0,
+                MaximumCenterlineDeviation: 0d);
+        var profile =
+            new LayeredRibbonProfileDiagnostics(
+                Detected: true,
+                Side: "positive",
+                Sequence: "1>4",
+                Coverage: 0.95,
+                BracketedCoverage: 0d,
+                ExteriorColor: string.Empty,
+                ExteriorCoverage: 0d,
+                SampleCount: 30,
+                MatchingSamples: 29,
+                MeanRunWidths:
+                    new[]
+                    {
+                        1.2,
+                        3.0,
+                    });
+
+        var applied =
+            CurveFillLayeredRibbonRasterizer.TryApplySecondProtectedBandPreview(
+                source,
+                destination,
+                model,
+                fit,
+                profile,
+                new HashSet<byte>
+                {
+                    1,
+                    4,
+                },
+                out var changed);
+
+        Assert.True(
+            applied);
+        Assert.True(
+            changed > 0);
+        Assert.Contains(
+            Enumerable.Range(
+                    0,
+                    destination.Width *
+                    destination.Height),
+            key =>
+            {
+                var x =
+                    key %
+                    destination.Width;
+                var y =
+                    key /
+                    destination.Width;
+
+                return destination.GetPixel(
+                           x,
+                           y) ==
+                       1;
+            });
+        Assert.Contains(
+            Enumerable.Range(
+                    0,
+                    destination.Width *
+                    destination.Height),
+            key =>
+            {
+                var x =
+                    key %
+                    destination.Width;
+                var y =
+                    key /
+                    destination.Width;
+
+                return destination.GetPixel(
+                           x,
+                           y) ==
+                       4;
+            });
+    }
+
     private static LeafPetalArcModel Model(
         IReadOnlyList<LeafPetalAxisSample> samples,
         int width,
