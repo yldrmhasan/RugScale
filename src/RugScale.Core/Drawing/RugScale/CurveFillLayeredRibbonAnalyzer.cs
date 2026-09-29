@@ -29,7 +29,16 @@ internal static class CurveFillLayeredRibbonAnalyzer
         ArgumentNullException.ThrowIfNull(protectedStrokeColors);
 
         if (model.Samples.Count < 12)
-            return default;
+        {
+            return new LayeredRibbonProfileDiagnostics(
+                false,
+                "none",
+                string.Empty,
+                0d,
+                0,
+                0,
+                Array.Empty<double>());
+        }
 
         var positive =
             AnalyzeSide(
