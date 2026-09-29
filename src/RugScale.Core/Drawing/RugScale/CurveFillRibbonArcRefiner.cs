@@ -1158,6 +1158,13 @@ internal static class CurveFillRibbonArcRefiner
             var alternativeThroughMaximumDeviation = 0d;
             var alternativeThroughP95Deviation = 0d;
             var alternativeThroughRoundness = 0d;
+            var piecewiseSCurveSafe = false;
+            var piecewiseSCurveSplitIndex = 0;
+            var piecewiseSCurveSmoothness = double.PositiveInfinity;
+            var piecewiseSCurveMaximumDeviation = 0d;
+            var piecewiseSCurveP95Deviation = 0d;
+            var piecewiseSCurveCurvatureFlips = 0;
+            var piecewiseSCurveJoinAngleDegrees = 0d;
             var widthRegularizerApplied = false;
             var widthSourceCoefficientVariation = 0d;
             var widthTerminalRatio = 0d;
@@ -1928,6 +1935,27 @@ internal static class CurveFillRibbonArcRefiner
                                 alternativeThroughDiagnostics.Roundness;
                         }
 
+                        if (probeHighRoughnessCompound)
+                        {
+                            piecewiseSCurveSafe =
+                                CurveFillRibbonPiecewiseSCurveFitter.TryFit(
+                                    model,
+                                    out var piecewiseSCurveFit,
+                                    out var piecewiseSCurveDiagnostics);
+                            piecewiseSCurveSplitIndex =
+                                piecewiseSCurveDiagnostics.SplitIndex;
+                            piecewiseSCurveSmoothness =
+                                piecewiseSCurveDiagnostics.Roughness;
+                            piecewiseSCurveMaximumDeviation =
+                                piecewiseSCurveDiagnostics.MaximumDeviation;
+                            piecewiseSCurveP95Deviation =
+                                piecewiseSCurveDiagnostics.Percentile95Deviation;
+                            piecewiseSCurveCurvatureFlips =
+                                piecewiseSCurveDiagnostics.CurvatureSignFlips;
+                            piecewiseSCurveJoinAngleDegrees =
+                                piecewiseSCurveDiagnostics.JoinAngleDegrees;
+                        }
+
                         status =
                             accepted
                                 ? variableWidthSweepProbe
@@ -2025,6 +2053,13 @@ internal static class CurveFillRibbonArcRefiner
                     alternativeThroughMaximumDeviation,
                     alternativeThroughP95Deviation,
                     alternativeThroughRoundness,
+                    piecewiseSCurveSafe,
+                    piecewiseSCurveSplitIndex,
+                    piecewiseSCurveSmoothness,
+                    piecewiseSCurveMaximumDeviation,
+                    piecewiseSCurveP95Deviation,
+                    piecewiseSCurveCurvatureFlips,
+                    piecewiseSCurveJoinAngleDegrees,
                     widthRegularizerApplied,
                     widthSourceCoefficientVariation,
                     widthTerminalRatio,
@@ -2452,6 +2487,13 @@ internal readonly record struct RibbonArcCandidateStage(
     double AlternativeThroughMaximumDeviation,
     double AlternativeThroughP95Deviation,
     double AlternativeThroughRoundness,
+    bool PiecewiseSCurveSafe,
+    int PiecewiseSCurveSplitIndex,
+    double PiecewiseSCurveSmoothness,
+    double PiecewiseSCurveMaximumDeviation,
+    double PiecewiseSCurveP95Deviation,
+    int PiecewiseSCurveCurvatureFlips,
+    double PiecewiseSCurveJoinAngleDegrees,
     bool WidthRegularizerApplied,
     double WidthSourceCoefficientVariation,
     double WidthTerminalRatio,
