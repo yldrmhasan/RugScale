@@ -1108,7 +1108,7 @@ Decision after C069 audit:
 - if unsafe, keep compound and move to piecewise/curvature-continuity modelling rather than
   loosening the source corridor.
 
-### 4.35 Piecewise C1 S-sweep fitter — CURRENT DIAGNOSTIC
+### 4.35 Piecewise C1 S-sweep fitter — REJECT / DO NOT REPEAT
 
 Trigger:
 the high-roughness color-6 long S sweeps remain one of the worst accepted centreline families in
@@ -1121,43 +1121,29 @@ C069. Current production compound fit is source-safe but visually too raster-fai
 - max source deviation about **3.18-3.19 px**,
 - curvature flips: **2**.
 
-The previous diagnostic `SplineThroughPoints` alternative is **not safe** on either repeat, so do
-not open a production selector to it and do not relax its source corridor.
+The previous diagnostic `SplineThroughPoints` alternative is **not safe** on either repeat.
 
 Commits:
-- `d3642f6301bb7d17d0f3c1e05e8767c1765cc9b3` — new
-  `CurveFillRibbonPiecewiseSCurveFitter`,
-- `4ceb180420159984de6a78b100e5b4332a115da3` — candidate-stage diagnostics,
-- `4cc58acd152f7569be2792482edea5c3b7e07447` — C069 CSV/report fields,
+- `d3642f6301bb7d17d0f3c1e05e8767c1765cc9b3` — piecewise fitter,
+- `4ceb180420159984de6a78b100e5b4332a115da3` — audit fields,
+- `4cc58acd152f7569be2792482edea5c3b7e07447` — CSV/report,
 - `b691b714a1e9292d766e58f215da5e0fea1d4d6c` +
-  `a19e4ce5cd56bdabf7a60468544bc5f92b57e926` — deterministic synthetic regression.
+  `a19e4ce5cd56bdabf7a60468544bc5f92b57e926` — synthetic regression,
+- `253a26a1ce4289d0e0748b0a1645ba721a579e84` — real join-angle measurement,
+- `970be25c01eb3f9a4351954c161a0b1353a981ba` — persistent S-sweep focus artifacts.
 
-Architecture:
-- detect the dominant real source inflection from a locally smoothed copy of the immutable
-  centerline,
-- split into two source segments at that inflection,
-- fit each segment independently with centripetal macro splines,
-- rebuild a short Hermite transition around the split so both lobes share one tangent direction,
-- validate the combined curve against the **complete immutable source path** using symmetric
-  p95/max deviation,
-- require 1..2 curvature sign flips and a small join angle.
+Real C069 result:
+- left: roughness **0.343533**, max **4.500355**, p95 **1.862468**, **6** curvature flips,
+  join angle **30.296°**,
+- right: roughness **0.352923**, max **4.077223**, p95 **1.855536**, **6** curvature flips,
+  join angle **32.232°**.
 
-This fitter is diagnostic-only. It has **zero production authority**.
+This is substantially worse than the existing compound path despite acceptable source distance.
 
-Synthetic S regression:
-- RugScale core CI: **success**,
-- the piecewise fitter preserves the inflection,
-- source-distance and C1 join gates pass.
-
-Pending real-raster decision:
-the C069 audit must show whether both repeated color-6 sweeps are:
-1. source-safe,
-2. materially smoother than ~0.238,
-3. repeat-consistent,
-4. free of a visible join kink.
-
-If these are not all true, keep the existing compound production path and continue with a more
-explicit curvature-continuity model instead of loosening deviation thresholds.
+Decision: **REJECT / DO NOT REPEAT**.
+Independent lobe fitting destroys the natural coupled curvature of this long ornamental S. Keep the
+current compound production fit. The next experiment must smooth/fair the already-safe compound
+curve **inside the source corridor**, rather than re-fitting independent halves.
 
 ## 5. Do-not-repeat rules
 
