@@ -1442,6 +1442,146 @@ public sealed class CurveOvalTrainingTests
             cleanDiagnostics.MaximumVariation);
     }
 
+    [Fact]
+    public void LayeredRibbonAnalyzer_DetectsStableProtectedBandSequence()
+    {
+        var palette =
+            new Palette(
+                new[]
+                {
+                    new RugColor(0, 0, 255),
+                    new RugColor(255, 255, 255),
+                    new RugColor(230, 224, 218),
+                    new RugColor(215, 208, 186),
+                    new RugColor(0, 0, 102),
+                    new RugColor(216, 185, 124),
+                    new RugColor(44, 128, 166),
+                });
+        var source =
+            new DesignDocument(
+                84,
+                64,
+                palette);
+
+        // Background = 2. Horizontal fill ribbon = 6. On its positive-normal side build
+        // white(1) -> navy(4) -> white(1) -> background(2).
+        for (var y = 0;
+             y < source.Height;
+             y++)
+        {
+            for (var x = 0;
+                 x < source.Width;
+                 x++)
+            {
+                source.SetPixel(
+                    x,
+                    y,
+                    2);
+            }
+        }
+
+        for (var x = 8;
+             x <= 75;
+             x++)
+        {
+            source.SetPixel(x, 29, 6);
+            source.SetPixel(x, 30, 6);
+            source.SetPixel(x, 31, 6);
+            source.SetPixel(x, 32, 6);
+            source.SetPixel(x, 33, 6);
+
+            source.SetPixel(x, 34, 1);
+            source.SetPixel(x, 35, 4);
+            source.SetPixel(x, 36, 4);
+            source.SetPixel(x, 37, 1);
+        }
+
+        var regionPixels =
+            Enumerable.Range(
+                    8,
+                    68)
+                .SelectMany(x =>
+                    Enumerable.Range(
+                            29,
+                            5)
+                        .Select(y =>
+                            y *
+                                source.Width +
+                            x))
+                .ToArray();
+        var region =
+            new LeafPetalRegion(
+                6,
+                regionPixels,
+                regionPixels,
+                8,
+                29,
+                75,
+                33);
+        var candidate =
+            new LeafPetalArcCandidate(
+                region,
+                41.5,
+                31,
+                1,
+                0,
+                0,
+                1,
+                67,
+                4,
+                12,
+                0.15);
+        var samples =
+            Enumerable.Range(
+                    0,
+                    68)
+                .Select(index =>
+                    new LeafPetalAxisSample(
+                        8d +
+                        index,
+                        31d,
+                        2.25,
+                        index /
+                        67d))
+                .ToArray();
+        var model =
+            new LeafPetalArcModel(
+                candidate,
+                samples,
+                ReversedForApex: false,
+                BaseWidth: 2.25,
+                ApexWidth: 2.25,
+                SkeletonCoverage: 1d);
+
+        var diagnostics =
+            CurveFillLayeredRibbonAnalyzer.Analyze(
+                source,
+                model,
+                new HashSet<byte>
+                {
+                    1,
+                    4,
+                });
+
+        Assert.True(
+            diagnostics.Detected,
+            $"Expected stable layered ribbon, got side={diagnostics.Side}, " +
+            $"seq={diagnostics.Sequence}, cov={diagnostics.Coverage:0.000}.");
+        Assert.Equal(
+            "positive",
+            diagnostics.Side);
+        Assert.StartsWith(
+            "1>4>1",
+            diagnostics.Sequence,
+            StringComparison.Ordinal);
+        Assert.True(
+            diagnostics.Coverage >=
+            0.90);
+        Assert.True(
+            diagnostics.MeanRunWidths.Count >=
+            3);
+    }
+
     private static LeafPetalArcModel Model(
         IReadOnlyList<LeafPetalAxisSample> samples,
         int width,
