@@ -1365,6 +1365,83 @@ public sealed class CurveOvalTrainingTests
             6.10);
     }
 
+    [Fact]
+    public void CurvatureFairness_IgnoresLegitimateSInflectionButPenalizesLobeJitter()
+    {
+        var clean =
+            Enumerable.Range(
+                    0,
+                    241)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        240d;
+                    var u =
+                        2d *
+                            t -
+                        1d;
+
+                    return new ElegantArcPoint(
+                        10d +
+                        140d *
+                            t,
+                        64d +
+                        30d *
+                            u *
+                            u *
+                            u,
+                        3d);
+                })
+                .ToArray();
+        var noisy =
+            clean
+                .Select((point, index) =>
+                {
+                    var phase =
+                        (index %
+                         6) switch
+                        {
+                            0 => 0.55,
+                            3 => -0.55,
+                            _ => 0d,
+                        };
+
+                    return point with
+                    {
+                        Y =
+                            point.Y +
+                            phase,
+                    };
+                })
+                .ToArray();
+
+        var cleanDiagnostics =
+            CurveFillRibbonCurvatureFairness.Measure(
+                clean);
+        var noisyDiagnostics =
+            CurveFillRibbonCurvatureFairness.Measure(
+                noisy);
+
+        Assert.InRange(
+            cleanDiagnostics.InflectionCount,
+            1,
+            2);
+        Assert.InRange(
+            noisyDiagnostics.InflectionCount,
+            1,
+            4);
+        Assert.True(
+            noisyDiagnostics.Score >
+            cleanDiagnostics.Score *
+                1.35,
+            $"Expected lobe jitter to worsen fairness materially: clean={cleanDiagnostics.Score:0.000000}, " +
+            $"noisy={noisyDiagnostics.Score:0.000000}, inflections={cleanDiagnostics.InflectionCount}/{noisyDiagnostics.InflectionCount}.");
+        Assert.True(
+            noisyDiagnostics.MaximumVariation >
+            cleanDiagnostics.MaximumVariation);
+    }
+
     private static LeafPetalArcModel Model(
         IReadOnlyList<LeafPetalAxisSample> samples,
         int width,
