@@ -39,6 +39,8 @@ internal static class CurveFillLayeredRibbonAnalyzer
                 string.Empty,
                 0d,
                 0d,
+                string.Empty,
+                0d,
                 0,
                 0,
                 Array.Empty<double>());
@@ -73,6 +75,8 @@ internal static class CurveFillLayeredRibbonAnalyzer
                 chosen.Sequence,
                 chosen.Coverage,
                 chosen.BracketedCoverage,
+                chosen.ExteriorColor,
+                chosen.ExteriorCoverage,
                 chosen.SampleCount,
                 chosen.MatchingSamples,
                 chosen.MeanRunWidths);
@@ -88,6 +92,8 @@ internal static class CurveFillLayeredRibbonAnalyzer
             chosen.Sequence,
             chosen.Coverage,
             chosen.BracketedCoverage,
+            chosen.ExteriorColor,
+            chosen.ExteriorCoverage,
             chosen.SampleCount,
             chosen.MatchingSamples,
             chosen.MeanRunWidths);
@@ -199,6 +205,8 @@ internal static class CurveFillLayeredRibbonAnalyzer
                 string.Empty,
                 0d,
                 0d,
+                string.Empty,
+                0d,
                 validSamples,
                 0,
                 Array.Empty<double>());
@@ -229,6 +237,9 @@ internal static class CurveFillLayeredRibbonAnalyzer
                     '>',
                     StringSplitOptions.RemoveEmptyEntries);
         var bracketedCoverage = 0d;
+        var exteriorColor =
+            string.Empty;
+        var exteriorCoverage = 0d;
 
         if (dominantParts.Length >= 2)
         {
@@ -249,12 +260,73 @@ internal static class CurveFillLayeredRibbonAnalyzer
             bracketedCoverage =
                 bracketedCount /
                 (double)validSamples;
+
+            var exteriorCounts =
+                new Dictionary<string, int>(
+                    StringComparer.Ordinal);
+
+            foreach (var pair in sequences)
+            {
+                var parts =
+                    pair.Key.Split(
+                        '>',
+                        StringSplitOptions.RemoveEmptyEntries);
+
+                if (parts.Length < 3 ||
+                    !string.Equals(
+                        parts[0],
+                        dominantParts[0],
+                        StringComparison.Ordinal) ||
+                    !string.Equals(
+                        parts[1],
+                        dominantParts[1],
+                        StringComparison.Ordinal) ||
+                    !byte.TryParse(
+                        parts[2],
+                        out var outerColor) ||
+                    protectedStrokeColors.Contains(
+                        outerColor))
+                {
+                    continue;
+                }
+
+                var key =
+                    outerColor.ToString();
+
+                exteriorCounts[key] =
+                    exteriorCounts.TryGetValue(
+                        key,
+                        out var current)
+                        ? current +
+                          pair.Value.Count
+                        : pair.Value.Count;
+            }
+
+            if (exteriorCounts.Count > 0)
+            {
+                var dominantExterior =
+                    exteriorCounts
+                        .OrderByDescending(pair =>
+                            pair.Value)
+                        .ThenBy(pair =>
+                            pair.Key,
+                            StringComparer.Ordinal)
+                        .First();
+
+                exteriorColor =
+                    dominantExterior.Key;
+                exteriorCoverage =
+                    dominantExterior.Value /
+                    (double)validSamples;
+            }
         }
 
         return new SideProfile(
             dominant.Key,
             coverage,
             bracketedCoverage,
+            exteriorColor,
+            exteriorCoverage,
             validSamples,
             dominant.Value.Count,
             means);
@@ -392,6 +464,8 @@ internal static class CurveFillLayeredRibbonAnalyzer
         string Sequence,
         double Coverage,
         double BracketedCoverage,
+        string ExteriorColor,
+        double ExteriorCoverage,
         int SampleCount,
         int MatchingSamples,
         IReadOnlyList<double> MeanRunWidths);
@@ -403,6 +477,8 @@ internal readonly record struct LayeredRibbonProfileDiagnostics(
     string Sequence,
     double Coverage,
     double BracketedCoverage,
+    string ExteriorColor,
+    double ExteriorCoverage,
     int SampleCount,
     int MatchingSamples,
     IReadOnlyList<double> MeanRunWidths);
