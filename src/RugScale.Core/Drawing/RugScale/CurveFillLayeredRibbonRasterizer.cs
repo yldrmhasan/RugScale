@@ -217,7 +217,6 @@ internal static class CurveFillLayeredRibbonRasterizer
             fit.Points.Count < 8 ||
             !profile.Detected ||
             profile.Coverage < 0.80 ||
-            profile.BracketedCoverage < 0.50 ||
             profile.MeanRunWidths is null ||
             profile.MeanRunWidths.Count < 2)
         {
@@ -335,6 +334,9 @@ internal static class CurveFillLayeredRibbonRasterizer
 
         var regionColor =
             model.Candidate.Region.Color;
+        var allowStaleCleanup =
+            profile.BracketedCoverage >=
+            0.50;
 
         foreach (var key in authorityMask)
         {
@@ -421,11 +423,12 @@ internal static class CurveFillLayeredRibbonRasterizer
                 continue;
             }
 
-            // The measured source stack is separator -> broad protected band -> separator. Inside
-            // this strictly one-sided authority tube, stale broad-band pixels can therefore return
-            // to the separator colour. Require source/current evidence of that same band so the
-            // preview cannot erase a neighbouring motif that merely crosses the bounding box.
-            if (current !=
+            // Cleanup requires immutable evidence that the broad band is bracketed by the same
+            // separator colour. For unbracketed profiles we intentionally run overlay-only:
+            // redraw the learned parallel bands, but never erase stale baseline ownership until an
+            // exterior colour is actually proven by source evidence.
+            if (!allowStaleCleanup ||
+                current !=
                     bandColor ||
                 sourceOwner !=
                     bandColor &&
