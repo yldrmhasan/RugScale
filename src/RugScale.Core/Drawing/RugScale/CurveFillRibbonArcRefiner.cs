@@ -52,7 +52,8 @@ internal static class CurveFillRibbonArcRefiner
 
     internal static RibbonArcRefinementDiagnostics ApplyWithDiagnostics(
         DesignDocument source,
-        DesignDocument destination)
+        DesignDocument destination,
+        bool layeredBandsOnly = false)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
@@ -134,6 +135,8 @@ internal static class CurveFillRibbonArcRefiner
             new HashSet<LeafPetalRegion>();
         var taperedHookRegions =
             new HashSet<LeafPetalRegion>();
+        var layeredProfiles =
+            new Dictionary<LeafPetalRegion, LayeredRibbonProfileDiagnostics>();
 
         foreach (var region in regions)
         {
@@ -378,6 +381,14 @@ internal static class CurveFillRibbonArcRefiner
                 sparseTaperSweep &&
                 (centerlineDiagnostics.Endpoints <= 2 ||
                  mainArcExtractedForRegion);
+
+            var layeredProfile =
+                layeredBandsOnly
+                    ? CurveFillLayeredRibbonAnalyzer.Analyze(
+                        source,
+                        model,
+                        protectedStrokeColors)
+                    : default;
 
             ribbonGeometryAccepted++;
 
@@ -876,6 +887,14 @@ internal static class CurveFillRibbonArcRefiner
             accepted.Add(
                 (model, fit));
 
+            if (layeredBandsOnly &&
+                layeredProfile.Detected)
+            {
+                layeredProfiles[
+                    model.Candidate.Region] =
+                    layeredProfile;
+            }
+
             if (compactSpiralSweep)
             {
                 compactSpiralRegions.Add(
@@ -913,6 +932,27 @@ internal static class CurveFillRibbonArcRefiner
             var scopedMainArc =
                 mainArcScopedRegions.Contains(
                     item.Model.Candidate.Region);
+
+            if (layeredBandsOnly)
+            {
+                if (layeredProfiles.TryGetValue(
+                        item.Model.Candidate.Region,
+                        out var layeredProfileForRegion) &&
+                    CurveFillLayeredRibbonRasterizer.TryApplySecondProtectedBandPreview(
+                        source,
+                        destination,
+                        item.Model,
+                        item.Fit,
+                        layeredProfileForRegion,
+                        protectedStrokeColors,
+                        out var layeredChanged))
+                {
+                    changed +=
+                        layeredChanged;
+                }
+
+                continue;
+            }
 
             // This is the first genuinely authoritative redraw path in the ribbon pipeline.
             // Ordinary safe fits receive it only when their centreline stays within a very tight
