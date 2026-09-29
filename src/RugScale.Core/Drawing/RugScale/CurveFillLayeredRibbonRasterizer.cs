@@ -270,9 +270,7 @@ internal static class CurveFillLayeredRibbonRasterizer
             separatorColor ==
                 bandColor ||
             !protectedStrokeColors.Contains(
-                separatorColor) ||
-            !protectedStrokeColors.Contains(
-                bandColor))
+                separatorColor))
         {
             diagnostics =
                 diagnostics with
@@ -281,6 +279,10 @@ internal static class CurveFillLayeredRibbonRasterizer
                 };
             return false;
         }
+
+        // The first layer must be a known protected Pixel-Cord/outline role. The broader adjacent
+        // band may legitimately be a filled colour rather than a protected-stroke role; source
+        // cross-section evidence, not palette-role classification, is the authority in preview.
 
         var separatorSourceWidth =
             profile.MeanRunWidths[0];
