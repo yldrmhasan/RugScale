@@ -16,6 +16,8 @@ internal static class CurveFillRibbonCurvatureFairness
     private const int ResampleCount = 96;
     private const int InflectionExclusionRadius = 4;
     private const double SignificantTurnRadians = 0.0045;
+    private const int MinimumStableSignRun = 5;
+    private const int TurnSmoothingPasses = 2;
 
     public static RibbonCurvatureFairnessDiagnostics Measure(
         IReadOnlyList<ElegantArcPoint> points)
@@ -68,7 +70,7 @@ internal static class CurveFillRibbonCurvatureFairness
         }
 
         var filteredTurns =
-            MedianSmooth(
+            SmoothTurns(
                 turns);
         var inflections =
             FindStableInflections(
@@ -194,10 +196,33 @@ internal static class CurveFillRibbonCurvatureFairness
     private static IReadOnlyList<int> FindStableInflections(
         IReadOnlyList<double> turns)
     {
-        var result =
-            new List<int>();
-        var previousSign = 0;
-        var previousIndex = -1;
+        var runs =
+            new List<(int Sign, int Start, int End, int Count)>();
+        var currentSign = 0;
+        var start = -1;
+        var end = -1;
+        var count = 0;
+
+        void Flush()
+        {
+            if (currentSign != 0 &&
+                count >=
+                    MinimumStableSignRun)
+            {
+                runs.Add(
+                    (
+                        currentSign,
+                        start,
+                        end,
+                        count
+                    ));
+            }
+
+            currentSign = 0;
+            start = -1;
+            end = -1;
+            count = 0;
+        }
 
         for (var index = 0;
              index < turns.Count;
@@ -217,90 +242,155 @@ internal static class CurveFillRibbonCurvatureFairness
                 Math.Sign(
                     value);
 
-            if (previousSign != 0 &&
-                sign !=
-                previousSign)
+            if (currentSign == 0)
             {
-                var candidate =
-                    previousIndex < 0
-                        ? index
-                        : (previousIndex +
-                           index) /
-                          2;
-
-                if (result.Count == 0 ||
-                    candidate -
-                    result[^1] >
-                    InflectionExclusionRadius *
-                    2)
-                {
-                    result.Add(
-                        candidate);
-                }
+                currentSign =
+                    sign;
+                start =
+                    index;
+                end =
+                    index;
+                count = 1;
+                continue;
             }
 
-            previousSign =
+            if (sign ==
+                currentSign)
+            {
+                end =
+                    index;
+                count++;
+                continue;
+            }
+
+            // A short opposite burst is raster/high-frequency phase, not a real curvature lobe.
+            // Look ahead for persistence before ending the current stable run.
+            var persistent = 1;
+
+            for (var probe = index + 1;
+                 probe < turns.Count &&
+                 persistent <
+                     MinimumStableSignRun;
+                 probe++)
+            {
+                var probeValue =
+                    turns[probe];
+
+                if (Math.Abs(
+                        probeValue) <
+                    SignificantTurnRadians)
+                {
+                    continue;
+                }
+
+                if (Math.Sign(
+                        probeValue) !=
+                    sign)
+                {
+                    break;
+                }
+
+                persistent++;
+            }
+
+            if (persistent <
+                MinimumStableSignRun)
+            {
+                continue;
+            }
+
+            Flush();
+            currentSign =
                 sign;
-            previousIndex =
+            start =
                 index;
+            end =
+                index;
+            count = 1;
         }
 
-        return result;
-    }
+        Flush();
 
-    private static double[] MedianSmooth(
-        IReadOnlyList<double> values)
-    {
         var result =
-            new double[
-                values.Count];
+            new List<int>();
 
-        for (var index = 0;
-             index < values.Count;
+        for (var index = 1;
+             index < runs.Count;
              index++)
         {
-            var a =
-                values[
-                    Math.Max(
-                        0,
-                        index - 1)];
-            var b =
-                values[index];
-            var c =
-                values[
-                    Math.Min(
-                        values.Count - 1,
-                        index + 1)];
+            var previous =
+                runs[index - 1];
+            var current =
+                runs[index];
 
-            result[index] =
-                Median3(
-                    a,
-                    b,
-                    c);
+            if (previous.Sign ==
+                current.Sign)
+            {
+                continue;
+            }
+
+            result.Add(
+                (previous.End +
+                 current.Start) /
+                2);
         }
 
         return result;
     }
 
-    private static double Median3(
-        double a,
-        double b,
-        double c)
+    private static double[] SmoothTurns(
+        IReadOnlyList<double> values)
     {
-        if (a > b)
-            (a, b) =
-                (b, a);
+        var current =
+            values.ToArray();
 
-        if (b > c)
-            (b, c) =
-                (c, b);
+        for (var pass = 0;
+             pass < TurnSmoothingPasses;
+             pass++)
+        {
+            var result =
+                current.ToArray();
 
-        if (a > b)
-            (a, b) =
-                (b, a);
+            for (var index = 0;
+                 index < current.Length;
+                 index++)
+            {
+                var i0 =
+                    Math.Max(
+                        0,
+                        index - 2);
+                var i1 =
+                    Math.Max(
+                        0,
+                        index - 1);
+                var i3 =
+                    Math.Min(
+                        current.Length - 1,
+                        index + 1);
+                var i4 =
+                    Math.Min(
+                        current.Length - 1,
+                        index + 2);
 
-        return b;
+                result[index] =
+                    (current[i0] +
+                     current[i1] *
+                         2d +
+                     current[index] *
+                         4d +
+                     current[i3] *
+                         2d +
+                     current[i4]) /
+                    10d;
+            }
+
+            current =
+                result;
+        }
+
+        return current;
     }
+
 
     private static IReadOnlyList<(double X, double Y)> ResampleByArcLength(
         IReadOnlyList<ElegantArcPoint> points,
