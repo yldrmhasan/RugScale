@@ -203,7 +203,26 @@ internal static class CurveFillLayeredRibbonRasterizer
         ElegantArcFit fit,
         LayeredRibbonProfileDiagnostics profile,
         IReadOnlySet<byte> protectedStrokeColors,
-        out int changed)
+        out int changed) =>
+        TryApplySecondProtectedBandPreview(
+            source,
+            destination,
+            model,
+            fit,
+            profile,
+            protectedStrokeColors,
+            out changed,
+            out _);
+
+    internal static bool TryApplySecondProtectedBandPreview(
+        RugScale.Core.Models.DesignDocument source,
+        RugScale.Core.Models.DesignDocument destination,
+        LeafPetalArcModel model,
+        ElegantArcFit fit,
+        LayeredRibbonProfileDiagnostics profile,
+        IReadOnlySet<byte> protectedStrokeColors,
+        out int changed,
+        out LayeredRibbonPreviewDiagnostics diagnostics)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(destination);
@@ -212,6 +231,13 @@ internal static class CurveFillLayeredRibbonRasterizer
         ArgumentNullException.ThrowIfNull(protectedStrokeColors);
 
         changed = 0;
+        diagnostics =
+            new LayeredRibbonPreviewDiagnostics(
+                "not-attempted",
+                0,
+                0,
+                0,
+                0);
 
         if (!fit.IsSafe ||
             fit.Points.Count < 8 ||
@@ -220,6 +246,11 @@ internal static class CurveFillLayeredRibbonRasterizer
             profile.MeanRunWidths is null ||
             profile.MeanRunWidths.Count < 2)
         {
+            diagnostics =
+                diagnostics with
+                {
+                    Reason = "input-gate",
+                };
             return false;
         }
 
@@ -243,6 +274,11 @@ internal static class CurveFillLayeredRibbonRasterizer
             !protectedStrokeColors.Contains(
                 bandColor))
         {
+            diagnostics =
+                diagnostics with
+                {
+                    Reason = "sequence-gate",
+                };
             return false;
         }
 
@@ -260,6 +296,11 @@ internal static class CurveFillLayeredRibbonRasterizer
             bandSourceWidth >
                 8.0)
         {
+            diagnostics =
+                diagnostics with
+                {
+                    Reason = "width-gate",
+                };
             return false;
         }
 
@@ -280,6 +321,11 @@ internal static class CurveFillLayeredRibbonRasterizer
                 side) <
             0.5)
         {
+            diagnostics =
+                diagnostics with
+                {
+                    Reason = "side-gate",
+                };
             return false;
         }
 
@@ -325,10 +371,26 @@ internal static class CurveFillLayeredRibbonRasterizer
                     bandSourceWidth +
                     2.0);
 
+        diagnostics =
+            diagnostics with
+            {
+                SeparatorMaskPixels =
+                    separatorMask.Count,
+                BandMaskPixels =
+                    protectedBandMask.Count,
+                AuthorityMaskPixels =
+                    authorityMask.Count,
+            };
+
         if (separatorMask.Count == 0 ||
             protectedBandMask.Count == 0 ||
             authorityMask.Count == 0)
         {
+            diagnostics =
+                diagnostics with
+                {
+                    Reason = "mask-gate",
+                };
             return false;
         }
 
@@ -447,7 +509,25 @@ internal static class CurveFillLayeredRibbonRasterizer
             changed++;
         }
 
+        diagnostics =
+            diagnostics with
+            {
+                Reason =
+                    changed > 0
+                        ? "ok"
+                        : "no-pixel-authority",
+                ChangedPixels =
+                    changed,
+            };
+
         return changed > 0;
     }
 
 }
+
+internal readonly record struct LayeredRibbonPreviewDiagnostics(
+    string Reason,
+    int SeparatorMaskPixels,
+    int BandMaskPixels,
+    int AuthorityMaskPixels,
+    int ChangedPixels);
