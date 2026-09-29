@@ -1265,6 +1265,106 @@ public sealed class CurveOvalTrainingTests
             6.10);
     }
 
+    [Fact]
+    public void ConstrainedFairing_ReducesRasterPhaseWithoutLeavingSourceCorridor()
+    {
+        var samples =
+            Enumerable.Range(
+                    0,
+                    181)
+                .Select(index =>
+                {
+                    var t =
+                        index /
+                        180d;
+                    var u =
+                        2d *
+                            t -
+                        1d;
+
+                    return new LeafPetalAxisSample(
+                        10d +
+                        126d *
+                            t,
+                        58d +
+                        26d *
+                            u *
+                            u *
+                            u,
+                        3.0,
+                        t);
+                })
+                .ToArray();
+        var model =
+            Model(
+                samples,
+                width: 150,
+                height: 120);
+        var noisy =
+            samples
+                .Select((sample, index) =>
+                {
+                    var phase =
+                        index %
+                        4 switch
+                        {
+                            0 => 0.34,
+                            2 => -0.34,
+                            _ => 0d,
+                        };
+
+                    return new ElegantArcPoint(
+                        sample.X,
+                        sample.Y +
+                        phase,
+                        sample.HalfWidth);
+                })
+                .ToArray();
+        var acceptedFit =
+            new ElegantArcFit(
+                noisy,
+                IsSafe: true,
+                IsMonotonic: true,
+                CurvatureSignFlips: 1,
+                MaximumCenterlineDeviation: 0.34);
+
+        var safe =
+            CurveFillRibbonConstrainedFairing.TryFair(
+                model,
+                acceptedFit,
+                out var faired,
+                out var diagnostics);
+
+        Assert.True(
+            safe,
+            $"Expected source-bounded fairing: reason={diagnostics.Reason}, " +
+            $"rough={diagnostics.BeforeRoughness:0.000}->{diagnostics.AfterRoughness:0.000}, " +
+            $"p95={diagnostics.Percentile95Deviation:0.000}, max={diagnostics.MaximumDeviation:0.000}, " +
+            $"shift={diagnostics.MaximumShift:0.000}, flips={diagnostics.BeforeCurvatureSignFlips}->{diagnostics.AfterCurvatureSignFlips}.");
+        Assert.True(
+            faired.IsSafe);
+        Assert.True(
+            diagnostics.AfterRoughness <
+            diagnostics.BeforeRoughness *
+                0.90);
+        Assert.InRange(
+            diagnostics.MaximumShift,
+            0d,
+            0.90);
+        Assert.InRange(
+            diagnostics.AfterCurvatureSignFlips,
+            1,
+            2);
+        Assert.InRange(
+            diagnostics.Percentile95Deviation,
+            0d,
+            3.80);
+        Assert.InRange(
+            diagnostics.MaximumDeviation,
+            0d,
+            6.10);
+    }
+
     private static LeafPetalArcModel Model(
         IReadOnlyList<LeafPetalAxisSample> samples,
         int width,
