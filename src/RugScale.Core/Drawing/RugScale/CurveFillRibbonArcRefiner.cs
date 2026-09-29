@@ -1165,6 +1165,15 @@ internal static class CurveFillRibbonArcRefiner
             var piecewiseSCurveP95Deviation = 0d;
             var piecewiseSCurveCurvatureFlips = 0;
             var piecewiseSCurveJoinAngleDegrees = 0d;
+            var constrainedFairingSafe = false;
+            var constrainedFairingReason = "not-attempted";
+            var constrainedFairingBeforeRoughness = 0d;
+            var constrainedFairingAfterRoughness = double.PositiveInfinity;
+            var constrainedFairingMaximumDeviation = 0d;
+            var constrainedFairingP95Deviation = 0d;
+            var constrainedFairingMaximumShift = 0d;
+            var constrainedFairingBeforeCurvatureFlips = 0;
+            var constrainedFairingAfterCurvatureFlips = 0;
             var widthRegularizerApplied = false;
             var widthSourceCoefficientVariation = 0d;
             var widthTerminalRatio = 0d;
@@ -1954,6 +1963,29 @@ internal static class CurveFillRibbonArcRefiner
                                 piecewiseSCurveDiagnostics.CurvatureSignFlips;
                             piecewiseSCurveJoinAngleDegrees =
                                 piecewiseSCurveDiagnostics.JoinAngleDegrees;
+
+                            constrainedFairingSafe =
+                                CurveFillRibbonConstrainedFairing.TryFair(
+                                    model,
+                                    fit,
+                                    out var constrainedFairingFit,
+                                    out var constrainedFairingDiagnostics);
+                            constrainedFairingReason =
+                                constrainedFairingDiagnostics.Reason;
+                            constrainedFairingBeforeRoughness =
+                                constrainedFairingDiagnostics.BeforeRoughness;
+                            constrainedFairingAfterRoughness =
+                                constrainedFairingDiagnostics.AfterRoughness;
+                            constrainedFairingMaximumDeviation =
+                                constrainedFairingDiagnostics.MaximumDeviation;
+                            constrainedFairingP95Deviation =
+                                constrainedFairingDiagnostics.Percentile95Deviation;
+                            constrainedFairingMaximumShift =
+                                constrainedFairingDiagnostics.MaximumShift;
+                            constrainedFairingBeforeCurvatureFlips =
+                                constrainedFairingDiagnostics.BeforeCurvatureSignFlips;
+                            constrainedFairingAfterCurvatureFlips =
+                                constrainedFairingDiagnostics.AfterCurvatureSignFlips;
                         }
 
                         status =
@@ -2060,6 +2092,15 @@ internal static class CurveFillRibbonArcRefiner
                     piecewiseSCurveP95Deviation,
                     piecewiseSCurveCurvatureFlips,
                     piecewiseSCurveJoinAngleDegrees,
+                    constrainedFairingSafe,
+                    constrainedFairingReason,
+                    constrainedFairingBeforeRoughness,
+                    constrainedFairingAfterRoughness,
+                    constrainedFairingMaximumDeviation,
+                    constrainedFairingP95Deviation,
+                    constrainedFairingMaximumShift,
+                    constrainedFairingBeforeCurvatureFlips,
+                    constrainedFairingAfterCurvatureFlips,
                     widthRegularizerApplied,
                     widthSourceCoefficientVariation,
                     widthTerminalRatio,
@@ -2494,6 +2535,15 @@ internal readonly record struct RibbonArcCandidateStage(
     double PiecewiseSCurveP95Deviation,
     int PiecewiseSCurveCurvatureFlips,
     double PiecewiseSCurveJoinAngleDegrees,
+    bool ConstrainedFairingSafe,
+    string ConstrainedFairingReason,
+    double ConstrainedFairingBeforeRoughness,
+    double ConstrainedFairingAfterRoughness,
+    double ConstrainedFairingMaximumDeviation,
+    double ConstrainedFairingP95Deviation,
+    double ConstrainedFairingMaximumShift,
+    int ConstrainedFairingBeforeCurvatureFlips,
+    int ConstrainedFairingAfterCurvatureFlips,
     bool WidthRegularizerApplied,
     double WidthSourceCoefficientVariation,
     double WidthTerminalRatio,
