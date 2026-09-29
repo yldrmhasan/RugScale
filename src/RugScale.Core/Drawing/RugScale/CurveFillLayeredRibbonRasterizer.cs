@@ -195,4 +195,256 @@ internal static class CurveFillLayeredRibbonRasterizer
             targetWidth,
             targetHeight);
     }
+
+    internal static bool TryApplySecondProtectedBandPreview(
+        RugScale.Core.Models.DesignDocument source,
+        RugScale.Core.Models.DesignDocument destination,
+        LeafPetalArcModel model,
+        ElegantArcFit fit,
+        LayeredRibbonProfileDiagnostics profile,
+        IReadOnlySet<byte> protectedStrokeColors,
+        out int changed)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(fit);
+        ArgumentNullException.ThrowIfNull(protectedStrokeColors);
+
+        changed = 0;
+
+        if (!fit.IsSafe ||
+            fit.Points.Count < 8 ||
+            !profile.Detected ||
+            profile.Coverage < 0.80 ||
+            profile.BracketedCoverage < 0.50 ||
+            profile.MeanRunWidths is null ||
+            profile.MeanRunWidths.Count < 2)
+        {
+            return false;
+        }
+
+        var parts =
+            profile.Sequence
+                .Split(
+                    '>',
+                    StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length < 2 ||
+            !byte.TryParse(
+                parts[0],
+                out var separatorColor) ||
+            !byte.TryParse(
+                parts[1],
+                out var bandColor) ||
+            separatorColor ==
+                bandColor ||
+            !protectedStrokeColors.Contains(
+                separatorColor) ||
+            !protectedStrokeColors.Contains(
+                bandColor))
+        {
+            return false;
+        }
+
+        var separatorSourceWidth =
+            profile.MeanRunWidths[0];
+        var bandSourceWidth =
+            profile.MeanRunWidths[1];
+
+        // The first layer is treated as a 1x1 Pixel-Cord only when immutable source evidence says
+        // it is genuinely thin. Wider first layers remain source-scaled and need a different model.
+        if (separatorSourceWidth >
+                1.65 ||
+            bandSourceWidth <
+                1.75 ||
+            bandSourceWidth >
+                8.0)
+        {
+            return false;
+        }
+
+        var side =
+            string.Equals(
+                profile.Side,
+                "positive",
+                StringComparison.Ordinal)
+                ? 1d
+                : string.Equals(
+                    profile.Side,
+                    "negative",
+                    StringComparison.Ordinal)
+                    ? -1d
+                    : 0d;
+
+        if (Math.Abs(
+                side) <
+            0.5)
+        {
+            return false;
+        }
+
+        var scaleX =
+            destination.Width /
+            (double)source.Width;
+        var scaleY =
+            destination.Height /
+            (double)source.Height;
+        var separatorMask =
+            BuildOneSidedBandMask(
+                fit.Points,
+                side,
+                scaleX,
+                scaleY,
+                destination.Width,
+                destination.Height,
+                innerAdditionalTargetPixels: 0d,
+                sourceBandWidth: 0d,
+                fixedBandWidthTargetPixels: 1d);
+        var protectedBandMask =
+            BuildOneSidedBandMask(
+                fit.Points,
+                side,
+                scaleX,
+                scaleY,
+                destination.Width,
+                destination.Height,
+                innerAdditionalTargetPixels: 1d,
+                sourceBandWidth:
+                    bandSourceWidth);
+        var authorityMask =
+            BuildOneSidedBandMask(
+                fit.Points,
+                side,
+                scaleX,
+                scaleY,
+                destination.Width,
+                destination.Height,
+                innerAdditionalTargetPixels: 0d,
+                sourceBandWidth:
+                    separatorSourceWidth +
+                    bandSourceWidth +
+                    2.0);
+
+        if (separatorMask.Count == 0 ||
+            protectedBandMask.Count == 0 ||
+            authorityMask.Count == 0)
+        {
+            return false;
+        }
+
+        var regionColor =
+            model.Candidate.Region.Color;
+
+        foreach (var key in authorityMask)
+        {
+            var x =
+                key %
+                destination.Width;
+            var y =
+                key /
+                destination.Width;
+            var current =
+                destination.GetPixel(
+                    x,
+                    y);
+            var sourceX =
+                Math.Clamp(
+                    (int)Math.Round(
+                        (x + 0.5) /
+                        scaleX -
+                        0.5),
+                    0,
+                    source.Width - 1);
+            var sourceY =
+                Math.Clamp(
+                    (int)Math.Round(
+                        (y + 0.5) /
+                        scaleY -
+                        0.5),
+                    0,
+                    source.Height - 1);
+            var sourceOwner =
+                source.GetPixel(
+                    sourceX,
+                    sourceY);
+
+            if (separatorMask.Contains(
+                    key))
+            {
+                if (current ==
+                    separatorColor)
+                {
+                    continue;
+                }
+
+                if (protectedStrokeColors.Contains(
+                        current) &&
+                    current !=
+                        bandColor)
+                {
+                    continue;
+                }
+
+                destination.SetPixel(
+                    x,
+                    y,
+                    separatorColor);
+                changed++;
+                continue;
+            }
+
+            if (protectedBandMask.Contains(
+                    key))
+            {
+                if (current ==
+                    bandColor)
+                {
+                    continue;
+                }
+
+                if (protectedStrokeColors.Contains(
+                        current) &&
+                    current !=
+                        separatorColor &&
+                    current !=
+                        bandColor)
+                {
+                    continue;
+                }
+
+                destination.SetPixel(
+                    x,
+                    y,
+                    bandColor);
+                changed++;
+                continue;
+            }
+
+            // The measured source stack is separator -> broad protected band -> separator. Inside
+            // this strictly one-sided authority tube, stale broad-band pixels can therefore return
+            // to the separator colour. Require source/current evidence of that same band so the
+            // preview cannot erase a neighbouring motif that merely crosses the bounding box.
+            if (current !=
+                    bandColor ||
+                sourceOwner !=
+                    bandColor &&
+                sourceOwner !=
+                    separatorColor &&
+                sourceOwner !=
+                    regionColor)
+            {
+                continue;
+            }
+
+            destination.SetPixel(
+                x,
+                y,
+                separatorColor);
+            changed++;
+        }
+
+        return changed > 0;
+    }
+
 }
