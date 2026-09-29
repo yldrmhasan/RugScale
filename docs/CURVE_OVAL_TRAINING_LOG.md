@@ -1260,6 +1260,79 @@ Decision gate:
 - never revive the unsafe 5-anchor candidate (~28-30 px source error) just because its curve looks
   smoother.
 
+Result:
+the fairest already-safe candidate is effectively identical to the current production selection.
+
+Left S:
+- selected lobe fairness: **0.049598**,
+- fairest-safe lobe fairness: **0.049587**,
+- fairness gain: **0.000011**,
+- selected config: 20 anchors / 2 smoothing passes,
+- fairest-safe config: 20 anchors / 3 smoothing passes,
+- p95: **1.693541 -> 1.692905 px**,
+- max: **3.190097 -> 3.153208 px**.
+
+Right S:
+- selected lobe fairness: **0.049647**,
+- fairest-safe lobe fairness: **0.049641**,
+- fairness gain: **0.000006**,
+- selected config: 20 anchors / 2 smoothing passes,
+- fairest-safe config: 20 anchors / 3 smoothing passes,
+- p95: **1.692942 -> 1.687693 px**,
+- max: **3.181240 -> 3.137938 px**.
+
+Decision: **STOP CENTRELINE TUNING FOR THIS FAMILY.**
+The remaining visual defect is not meaningfully solvable by another source-safe centreline candidate.
+Do not add more anchors, more fairing force, looser deviation thresholds or another independent-lobe
+fit. Move to the coupled boundary / Pixel-Cord layers surrounding this same centreline.
+
+### 4.38 Layered ribbon cross-section audit — CURRENT DIAGNOSTIC
+
+Visual/source finding:
+the long cyan color-6 S curve is not an isolated filled ribbon. Repeated source cross-sections contain
+a stable adjacent protected-band stack, typically:
+
+`cyan fill -> white cord (1) -> navy band (4) -> ...`
+
+This explains why changing only the cyan fitted region cannot make the complete ornament look like
+one parallel designer curve: neighbouring white/navy bands can remain on baseline geometry.
+
+Commits:
+- `232538e9177c5ebd8aa1fdaeab35601173c4b287` — source cross-section analyzer,
+- `84f26406f6476774b6707664d3bff72e18e1496a` — fill-aware scanning,
+- `50f9e252c2fc68904d42e984204944f733ae3bba` + `867e6208953f795732a71ce54db1e1fca1db3a1f` — candidate/audit reporting,
+- `0e691caa1353f19bc9f5cffb3d23b0a0dd261e81` — synthetic layered-band regression,
+- `4cf00fb3212260acee5c8885a860d05dead194ad` — null-safe short-candidate handling,
+- `64486c8664b94fe1d90fd6164838619c95f2fe11` — measure band thickness in true source-normal distance rather than crossed-cell count.
+
+First real C069 evidence before the normal-distance refinement:
+
+Left long S:
+- detected: **yes**,
+- side: **negative**,
+- dominant protected sequence: **1 > 4**,
+- coverage: **0.884817**.
+
+Right mirror:
+- detected: **yes**,
+- side: **positive**,
+- dominant protected sequence: **1 > 4**,
+- coverage: **0.888889**.
+
+The side reversal is exactly what a mirrored repeat should produce, while the colour sequence remains
+the same. This is strong evidence that the next redraw unit should be a **layered ribbon**, not three
+independently resized colour regions.
+
+Current status:
+normal-distance width measurement + full C069/four-design audit are running. No production raster
+authority has been added yet.
+
+Next gate:
+- confirm the same high sequence coverage after geometric width measurement,
+- infer robust white/navy band widths from immutable source evidence,
+- create a diagnostic-only layered redraw preview using the already accepted compound centreline,
+- only then consider production routing.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
