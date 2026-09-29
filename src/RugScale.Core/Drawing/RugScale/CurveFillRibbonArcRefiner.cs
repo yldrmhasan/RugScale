@@ -1215,6 +1215,7 @@ internal static class CurveFillRibbonArcRefiner
             var layeredRibbonSide = "none";
             var layeredRibbonSequence = string.Empty;
             var layeredRibbonCoverage = 0d;
+            var layeredRibbonBracketedCoverage = 0d;
             var layeredRibbonMeanWidths = string.Empty;
 
             if (analysisEligible)
@@ -1258,6 +1259,8 @@ internal static class CurveFillRibbonArcRefiner
                         layeredDiagnostics.Sequence;
                     layeredRibbonCoverage =
                         layeredDiagnostics.Coverage;
+                    layeredRibbonBracketedCoverage =
+                        layeredDiagnostics.BracketedCoverage;
                     layeredRibbonMeanWidths =
                         string.Join(
                             "|",
@@ -2149,6 +2152,7 @@ internal static class CurveFillRibbonArcRefiner
                     layeredRibbonSide,
                     layeredRibbonSequence,
                     layeredRibbonCoverage,
+                    layeredRibbonBracketedCoverage,
                     layeredRibbonMeanWidths,
                     symmetryRecovered,
                     symmetryAxis,
@@ -2610,6 +2614,7 @@ internal readonly record struct RibbonArcCandidateStage(
     string LayeredRibbonSide,
     string LayeredRibbonSequence,
     double LayeredRibbonCoverage,
+    double LayeredRibbonBracketedCoverage,
     string LayeredRibbonMeanWidths,
     bool SymmetryRecovered,
     string SymmetryAxis,
