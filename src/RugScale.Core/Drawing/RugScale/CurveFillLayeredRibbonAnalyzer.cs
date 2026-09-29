@@ -35,6 +35,7 @@ internal static class CurveFillLayeredRibbonAnalyzer
                 "none",
                 string.Empty,
                 0d,
+                0d,
                 0,
                 0,
                 Array.Empty<double>());
