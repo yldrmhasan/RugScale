@@ -1153,6 +1153,12 @@ internal static class CurveFillRibbonArcRefiner
             var maximumDeviation = 0d;
             var curvatureFlips = 0;
             var selectedSmoothness = double.PositiveInfinity;
+            var sourceCurvatureFairness = 0d;
+            var fitCurvatureFairness = 0d;
+            var sourceCurvatureInflections = 0;
+            var fitCurvatureInflections = 0;
+            var sourceCurvatureMaximumVariation = 0d;
+            var fitCurvatureMaximumVariation = 0d;
             var alternativeThroughSafe = false;
             var alternativeThroughSmoothness = double.PositiveInfinity;
             var alternativeThroughMaximumDeviation = 0d;
@@ -1924,6 +1930,28 @@ internal static class CurveFillRibbonArcRefiner
                             selectedSmoothness >=
                                 0.20;
 
+                        if (probeHighRoughnessCompound)
+                        {
+                            var sourceFairnessDiagnostics =
+                                CurveFillRibbonCurvatureFairness.Measure(
+                                    model.Samples);
+                            var fitFairnessDiagnostics =
+                                CurveFillRibbonCurvatureFairness.Measure(
+                                    fit.Points);
+                            sourceCurvatureFairness =
+                                sourceFairnessDiagnostics.Score;
+                            fitCurvatureFairness =
+                                fitFairnessDiagnostics.Score;
+                            sourceCurvatureInflections =
+                                sourceFairnessDiagnostics.InflectionCount;
+                            fitCurvatureInflections =
+                                fitFairnessDiagnostics.InflectionCount;
+                            sourceCurvatureMaximumVariation =
+                                sourceFairnessDiagnostics.MaximumVariation;
+                            fitCurvatureMaximumVariation =
+                                fitFairnessDiagnostics.MaximumVariation;
+                        }
+
                         if ((broadSparseArch &&
                              mainArcExtracted ||
                              probeHighRoughnessCompound) &&
@@ -2080,6 +2108,12 @@ internal static class CurveFillRibbonArcRefiner
                     maximumDeviation,
                     curvatureFlips,
                     selectedSmoothness,
+                    sourceCurvatureFairness,
+                    fitCurvatureFairness,
+                    sourceCurvatureInflections,
+                    fitCurvatureInflections,
+                    sourceCurvatureMaximumVariation,
+                    fitCurvatureMaximumVariation,
                     alternativeThroughSafe,
                     alternativeThroughSmoothness,
                     alternativeThroughMaximumDeviation,
@@ -2523,6 +2557,12 @@ internal readonly record struct RibbonArcCandidateStage(
     double MaximumDeviation,
     int CurvatureSignFlips,
     double SelectedSmoothness,
+    double SourceCurvatureFairness,
+    double FitCurvatureFairness,
+    int SourceCurvatureInflections,
+    int FitCurvatureInflections,
+    double SourceCurvatureMaximumVariation,
+    double FitCurvatureMaximumVariation,
     bool AlternativeThroughSafe,
     double AlternativeThroughSmoothness,
     double AlternativeThroughMaximumDeviation,
