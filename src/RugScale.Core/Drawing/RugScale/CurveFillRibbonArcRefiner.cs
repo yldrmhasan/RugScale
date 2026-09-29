@@ -1211,6 +1211,11 @@ internal static class CurveFillRibbonArcRefiner
             var ribbonTerminalRatio = 0d;
             var ribbonMaximumBend = 0d;
             var ribbonRequiredBend = 0d;
+            var layeredRibbonDetected = false;
+            var layeredRibbonSide = "none";
+            var layeredRibbonSequence = string.Empty;
+            var layeredRibbonCoverage = 0d;
+            var layeredRibbonMeanWidths = string.Empty;
 
             if (analysisEligible)
             {
@@ -1240,6 +1245,28 @@ internal static class CurveFillRibbonArcRefiner
                 }
                 else
                 {
+                    var layeredDiagnostics =
+                        CurveFillLayeredRibbonAnalyzer.Analyze(
+                            source,
+                            model,
+                            protectedStrokeColors);
+                    layeredRibbonDetected =
+                        layeredDiagnostics.Detected;
+                    layeredRibbonSide =
+                        layeredDiagnostics.Side;
+                    layeredRibbonSequence =
+                        layeredDiagnostics.Sequence;
+                    layeredRibbonCoverage =
+                        layeredDiagnostics.Coverage;
+                    layeredRibbonMeanWidths =
+                        string.Join(
+                            "|",
+                            layeredDiagnostics.MeanRunWidths
+                                .Select(width =>
+                                    width.ToString(
+                                        "0.000",
+                                        System.Globalization.CultureInfo.InvariantCulture)));
+
                     designerRibbon =
                         LooksLikeDesignerRibbon(
                             model,
@@ -2118,6 +2145,11 @@ internal static class CurveFillRibbonArcRefiner
                     ribbonTerminalRatio,
                     ribbonMaximumBend,
                     ribbonRequiredBend,
+                    layeredRibbonDetected,
+                    layeredRibbonSide,
+                    layeredRibbonSequence,
+                    layeredRibbonCoverage,
+                    layeredRibbonMeanWidths,
                     symmetryRecovered,
                     symmetryAxis,
                     mirrorAgreement,
@@ -2574,6 +2606,11 @@ internal readonly record struct RibbonArcCandidateStage(
     double RibbonTerminalRatio,
     double RibbonMaximumBend,
     double RibbonRequiredBend,
+    bool LayeredRibbonDetected,
+    string LayeredRibbonSide,
+    string LayeredRibbonSequence,
+    double LayeredRibbonCoverage,
+    string LayeredRibbonMeanWidths,
     bool SymmetryRecovered,
     string SymmetryAxis,
     double MirrorAgreement,
