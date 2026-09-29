@@ -129,6 +129,7 @@ internal static class CurveFillLayeredRibbonAnalyzer
                     current,
                     nx,
                     ny,
+                    model.Candidate.Region.Color,
                     protectedStrokeColors);
 
             if (runs.Count < 2)
@@ -220,6 +221,7 @@ internal static class CurveFillLayeredRibbonAnalyzer
         LeafPetalAxisSample sample,
         double nx,
         double ny,
+        byte regionColor,
         IReadOnlySet<byte> protectedStrokeColors)
     {
         var visited =
@@ -276,19 +278,25 @@ internal static class CurveFillLayeredRibbonAnalyzer
 
         var runs =
             new List<ColorRun>();
-        var regionColor =
-            modelRegionColorUnavailable: false;
 
-        // Drop the leading fill run. The caller is interested in neighbouring bands outside the
-        // candidate region. Source HalfWidth can be phase-shifted, so tolerate a few leading
-        // samples of any colour until the first protected band is reached.
+        // Drop the leading candidate-fill run. HalfWidth can be phase-shifted by thinning, so a
+        // sample may begin one cell inside or outside the true boundary. Walk past any initial
+        // candidate-colour cells, then require the neighbouring sequence to start on a protected
+        // drawing role.
         var index = 0;
 
         while (index < colors.Count &&
-               !protectedStrokeColors.Contains(
-                   colors[index]))
+               colors[index] ==
+                   regionColor)
         {
             index++;
+        }
+
+        if (index >= colors.Count ||
+            !protectedStrokeColors.Contains(
+                colors[index]))
+        {
+            return Array.Empty<ColorRun>();
         }
 
         while (index < colors.Count &&
