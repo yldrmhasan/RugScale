@@ -922,6 +922,12 @@ internal static class CurveFillRibbonArcRefiner
 
         var changed = 0;
         var outlinedRefined = 0;
+        var layeredPreviewCandidates = 0;
+        var layeredPreviewApplied = 0;
+        var lastLayeredPreviewReason = "not-attempted";
+        var lastLayeredSeparatorMaskPixels = 0;
+        var lastLayeredBandMaskPixels = 0;
+        var lastLayeredAuthorityMaskPixels = 0;
 
         foreach (var item in accepted
                      .OrderByDescending(pair =>
@@ -937,18 +943,36 @@ internal static class CurveFillRibbonArcRefiner
             {
                 if (layeredProfiles.TryGetValue(
                         item.Model.Candidate.Region,
-                        out var layeredProfileForRegion) &&
-                    CurveFillLayeredRibbonRasterizer.TryApplySecondProtectedBandPreview(
-                        source,
-                        destination,
-                        item.Model,
-                        item.Fit,
-                        layeredProfileForRegion,
-                        protectedStrokeColors,
-                        out var layeredChanged))
+                        out var layeredProfileForRegion))
                 {
-                    changed +=
-                        layeredChanged;
+                    layeredPreviewCandidates++;
+
+                    var layeredApplied =
+                        CurveFillLayeredRibbonRasterizer.TryApplySecondProtectedBandPreview(
+                            source,
+                            destination,
+                            item.Model,
+                            item.Fit,
+                            layeredProfileForRegion,
+                            protectedStrokeColors,
+                            out var layeredChanged,
+                            out var layeredDiagnostics);
+
+                    lastLayeredPreviewReason =
+                        layeredDiagnostics.Reason;
+                    lastLayeredSeparatorMaskPixels =
+                        layeredDiagnostics.SeparatorMaskPixels;
+                    lastLayeredBandMaskPixels =
+                        layeredDiagnostics.BandMaskPixels;
+                    lastLayeredAuthorityMaskPixels =
+                        layeredDiagnostics.AuthorityMaskPixels;
+
+                    if (layeredApplied)
+                    {
+                        layeredPreviewApplied++;
+                        changed +=
+                            layeredChanged;
+                    }
                 }
 
                 continue;
@@ -1080,7 +1104,13 @@ internal static class CurveFillRibbonArcRefiner
             MaxMirrorPairDeviation: mirrorPairDiagnostics.MaximumMirroredDeviation,
             Refined: accepted.Count,
             OutlinedRefined: outlinedRefined,
-            BoundaryPixelsChanged: changed);
+            BoundaryPixelsChanged: changed,
+            LayeredPreviewCandidates: layeredPreviewCandidates,
+            LayeredPreviewApplied: layeredPreviewApplied,
+            LastLayeredPreviewReason: lastLayeredPreviewReason,
+            LastLayeredSeparatorMaskPixels: lastLayeredSeparatorMaskPixels,
+            LastLayeredBandMaskPixels: lastLayeredBandMaskPixels,
+            LastLayeredAuthorityMaskPixels: lastLayeredAuthorityMaskPixels);
     }
 
     internal static IReadOnlyList<RibbonArcCandidateStage> AnalyzeCandidateStages(
@@ -2814,4 +2844,10 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     double MaxMirrorPairDeviation,
     int Refined,
     int OutlinedRefined,
-    int BoundaryPixelsChanged);
+    int BoundaryPixelsChanged,
+    int LayeredPreviewCandidates,
+    int LayeredPreviewApplied,
+    string LastLayeredPreviewReason,
+    int LastLayeredSeparatorMaskPixels,
+    int LastLayeredBandMaskPixels,
+    int LastLayeredAuthorityMaskPixels);
