@@ -1305,8 +1305,8 @@ public sealed class CurveOvalTrainingTests
                 .Select((sample, index) =>
                 {
                     var phase =
-                        index %
-                        4 switch
+                        (index %
+                         4) switch
                         {
                             0 => 0.34,
                             2 => -0.34,
