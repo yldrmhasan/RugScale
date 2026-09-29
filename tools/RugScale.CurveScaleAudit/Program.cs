@@ -1199,6 +1199,11 @@ internal static class Program
                     $"p95={stage.PiecewiseSCurveP95Deviation:0.000} max={stage.PiecewiseSCurveMaximumDeviation:0.000} " +
                     $"rough={stage.PiecewiseSCurveSmoothness:0.000000} flips={stage.PiecewiseSCurveCurvatureFlips} " +
                     $"join={stage.PiecewiseSCurveJoinAngleDegrees:0.000}deg, " +
+                    $"fair={stage.ConstrainedFairingSafe}/{stage.ConstrainedFairingReason} " +
+                    $"rough={stage.ConstrainedFairingBeforeRoughness:0.000000}->{stage.ConstrainedFairingAfterRoughness:0.000000} " +
+                    $"p95/max={stage.ConstrainedFairingP95Deviation:0.000}/{stage.ConstrainedFairingMaximumDeviation:0.000} " +
+                    $"shift={stage.ConstrainedFairingMaximumShift:0.000} " +
+                    $"flips={stage.ConstrainedFairingBeforeCurvatureFlips}->{stage.ConstrainedFairingAfterCurvatureFlips}, " +
                     $"widthReg={stage.WidthRegularizerApplied} cv={stage.WidthSourceCoefficientVariation:0.000} " +
                     $"terminal={stage.WidthTerminalRatio:0.000} dv={stage.WidthVariationBefore:0.000}->{stage.WidthVariationAfter:0.000} " +
                     $"shift={stage.WidthMaximumShift:0.000}, " +
@@ -2013,7 +2018,7 @@ internal static class Program
             new StringBuilder();
 
         sb.AppendLine(
-            "color,min_x,min_y,max_x,max_y,area,elongation,boundary_ratio,bounding_fill,broad_sparse_arch,prefilter,centerline,skeleton_pixels,endpoints,principal_path_pixels,path_coverage,designer_ribbon,ribbon_shape_reason,ribbon_mean_width,ribbon_width_cv,ribbon_terminal_ratio,ribbon_max_bend,ribbon_required_bend,symmetry_recovered,symmetry_axis,mirror_agreement,symmetry_mean_shift,symmetry_max_shift,mirror_source_recovered,mirror_source_reason,mirror_source_agreement,mirror_source_mean_shift,mirror_source_max_shift,main_arc_extracted,main_arc_reason,main_arc_start,main_arc_end,main_arc_kept_fraction,compound_attempted,compound_reason,compound_p95_deviation,compound_max_deviation,compound_selected_roughness,compound_selected_anchors,compound_selected_smoothing_passes,compound_smoothest_safe_roughness,compound_smoothest_safe_anchors,compound_smoothest_safe_smoothing_passes,compound_smoothest_safe_p95_deviation,compound_smoothest_safe_max_deviation,compound_smoothest_curvature_valid_roughness,compound_smoothest_curvature_valid_anchors,compound_smoothest_curvature_valid_smoothing_passes,compound_smoothest_curvature_valid_p95_deviation,compound_smoothest_curvature_valid_max_deviation,fit_kind,curve_family,roundness,fit_safe,max_deviation,curvature_flips,selected_smoothness,alt_through_safe,alt_through_smoothness,alt_through_max_deviation,alt_through_p95_deviation,alt_through_roundness,piecewise_s_safe,piecewise_s_split_index,piecewise_s_smoothness,piecewise_s_max_deviation,piecewise_s_p95_deviation,piecewise_s_curvature_flips,piecewise_s_join_angle_deg,width_reg_applied,width_source_cv,width_terminal_ratio,width_variation_before,width_variation_after,width_max_shift,variable_width_profile_applied,variable_width_source_cv,variable_width_mapped_cv,variable_width_source_min,variable_width_source_max,variable_width_mapped_min,variable_width_mapped_max,variable_width_max_adjacent_delta,accepted,status");
+            "color,min_x,min_y,max_x,max_y,area,elongation,boundary_ratio,bounding_fill,broad_sparse_arch,prefilter,centerline,skeleton_pixels,endpoints,principal_path_pixels,path_coverage,designer_ribbon,ribbon_shape_reason,ribbon_mean_width,ribbon_width_cv,ribbon_terminal_ratio,ribbon_max_bend,ribbon_required_bend,symmetry_recovered,symmetry_axis,mirror_agreement,symmetry_mean_shift,symmetry_max_shift,mirror_source_recovered,mirror_source_reason,mirror_source_agreement,mirror_source_mean_shift,mirror_source_max_shift,main_arc_extracted,main_arc_reason,main_arc_start,main_arc_end,main_arc_kept_fraction,compound_attempted,compound_reason,compound_p95_deviation,compound_max_deviation,compound_selected_roughness,compound_selected_anchors,compound_selected_smoothing_passes,compound_smoothest_safe_roughness,compound_smoothest_safe_anchors,compound_smoothest_safe_smoothing_passes,compound_smoothest_safe_p95_deviation,compound_smoothest_safe_max_deviation,compound_smoothest_curvature_valid_roughness,compound_smoothest_curvature_valid_anchors,compound_smoothest_curvature_valid_smoothing_passes,compound_smoothest_curvature_valid_p95_deviation,compound_smoothest_curvature_valid_max_deviation,fit_kind,curve_family,roundness,fit_safe,max_deviation,curvature_flips,selected_smoothness,alt_through_safe,alt_through_smoothness,alt_through_max_deviation,alt_through_p95_deviation,alt_through_roundness,piecewise_s_safe,piecewise_s_split_index,piecewise_s_smoothness,piecewise_s_max_deviation,piecewise_s_p95_deviation,piecewise_s_curvature_flips,piecewise_s_join_angle_deg,fairing_safe,fairing_reason,fairing_before_roughness,fairing_after_roughness,fairing_max_deviation,fairing_p95_deviation,fairing_max_shift,fairing_before_flips,fairing_after_flips,width_reg_applied,width_source_cv,width_terminal_ratio,width_variation_before,width_variation_after,width_max_shift,variable_width_profile_applied,variable_width_source_cv,variable_width_mapped_cv,variable_width_source_min,variable_width_source_max,variable_width_mapped_min,variable_width_mapped_max,variable_width_max_adjacent_delta,accepted,status");
 
         foreach (var stage in stages)
         {
@@ -2091,6 +2096,15 @@ internal static class Program
             sb.Append(stage.PiecewiseSCurveP95Deviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
             sb.Append(stage.PiecewiseSCurveCurvatureFlips).Append(',');
             sb.Append(stage.PiecewiseSCurveJoinAngleDegrees.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.ConstrainedFairingSafe ? 1 : 0).Append(',');
+            sb.Append(stage.ConstrainedFairingReason).Append(',');
+            sb.Append(stage.ConstrainedFairingBeforeRoughness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.ConstrainedFairingAfterRoughness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.ConstrainedFairingMaximumDeviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.ConstrainedFairingP95Deviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.ConstrainedFairingMaximumShift.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.ConstrainedFairingBeforeCurvatureFlips).Append(',');
+            sb.Append(stage.ConstrainedFairingAfterCurvatureFlips).Append(',');
             sb.Append(stage.WidthRegularizerApplied ? 1 : 0).Append(',');
             sb.Append(stage.WidthSourceCoefficientVariation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
             sb.Append(stage.WidthTerminalRatio.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
