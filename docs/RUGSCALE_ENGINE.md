@@ -1,11 +1,61 @@
 # RugScale — Indexed Carpet Design Resampling
 
 **Durum:** aktif geliştirme / üretim adayı  
-**Son güncelleme:** 23 Eylül 2026  
+**Son güncelleme:** 26 Eylül 2026  
 **Core:** `RugScaleEngine.cs` + `MotifShrinkEngine.cs` + `MotifMemory.cs` + `MotifRepairEngine.cs` + `MotifSourceCatalog.cs`  
 **Dispatcher:** `src/RugScale.Core/Drawing/DesignResizer.cs`  
 **Host:** UI bağımsız; manuel çalışma için `tools/RugScale.Cli`, entegrasyon için `RugScale.Core` API  
 **Testler:** `tests/RugScale.Core.Tests/DesignResizerTests.cs` + `MotifMemoryTests.cs`
+
+## Curve / oval eğitim devam durumu
+
+Curve-heavy enlargement eğitiminin ayrıntılı, deney-bazlı devam kaydı artık
+[`CURVE_OVAL_TRAINING_LOG.md`](CURVE_OVAL_TRAINING_LOG.md) içinde tutulur.
+
+Bu kayıt özellikle şu bilgileri kalıcı tutar:
+
+- hangi fitting/raster denemelerinin yapıldığı,
+- hangi denemelerin geri alındığı ve neden,
+- C069 problem bölgelerinin ölçümleri,
+- görsel kalite ile pixel-F1 arasındaki ayrım,
+- bir sonraki oturumun hangi problemden devam edeceği,
+- tekrar edilmemesi gereken başarısız yaklaşımlar.
+
+**Kural:** Curve/oval eğitiminde anlamlı her deneyden sonra CI/audit ve gerçek BMP sonucu bu loga
+işlenmeden bir sonraki hipoteze geçilmemelidir. Böylece yeni bir oturum aynı başarısız yaklaşımı
+yeniden denemez.
+
+## Layered ribbon / coupled-band redraw (Eylül 2026)
+
+Curve-heavy halı desenlerinde bazı bölgeler tek bir dolgu renginden ibaret değildir. C069 uzun
+S-sweep eğitimi source kesitlerinde şu tip kararlı katman yapısını gösterdi:
+
+`fill -> 1 px separator -> geniş yan band -> 1 px separator -> exterior`
+
+Bu sınıfta yalnız fill centerline'ını yeniden çizmek yeterli değildir; komşu bantlar baseline
+geometrisinde kalırsa tüm motif paralelliğini kaybeder.
+
+Güncel mimari:
+
+- `CurveFillLayeredRibbonAnalyzer`
+  - immutable source centerline normalleri boyunca colour-run ölçer,
+  - tam sekans coverage'ını ve daha kararlı `separator > band > separator` bracket coverage'ını
+    ayrı raporlar,
+  - mirrored tekrarların side yönünü ayrı tutar,
+  - cleanup için exterior ownership'i açıkça kanıtlar.
+- `CurveFillLayeredRibbonRasterizer`
+  - accepted centerline etrafında one-sided target masks üretir,
+  - ilk/son separatorü target-grid Pixel-Cord kalınlığında tutabilir,
+  - geniş orta bandı source fiziksel genişliğine göre ölçekler,
+  - exterior kanıtı yoksa overlay-only çalışır,
+  - stale protected/fill ownership cleanup'ı yalnız güçlü bracket + exterior evidence ile yapabilir.
+
+**Güvenlik kuralı:** layered-ribbon yolu şu anda eğitim/preview ağırlıklıdır. Genel ribbon eşikleri
+gevşetilmez ve bir dış zemin rengi source tarafından kanıtlanmadan eski white/navy ownership
+silinmez.
+
+Ayrıntılı deney geçmişi ve KEEP/REJECT kararları:
+[`CURVE_OVAL_TRAINING_LOG.md`](CURVE_OVAL_TRAINING_LOG.md).
 
 ## Amaç
 

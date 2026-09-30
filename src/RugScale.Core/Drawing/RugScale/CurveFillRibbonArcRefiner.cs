@@ -1,0 +1,3016 @@
+using RugScale.Core.Models;
+
+namespace RugScale.Core.Drawing;
+
+/// <summary>
+/// Geometric post-refiner for long filled carpet arcs/ribbons.
+///
+/// CurveFill's signed-distance reconstruction is deliberately conservative and preserves every
+/// indexed region, but a long 3-6px designer ribbon can still inherit the source raster's tiny
+/// staircase phase when enlarged. This pass is narrower and more aesthetic: it only accepts
+/// elongated filled regions whose two ends have comparable thickness, whose centreline has one
+/// coherent bend, and whose width profile is stable. Those regions are rebuilt as a smooth
+/// centreline plus two parallel boundaries.
+///
+/// Tapered leaves/petals are intentionally excluded here; they remain owned by LeafPetalArcs.
+/// Straight borders are excluded by the minimum-bend gate. Protected Curve/Pixel-Cord palette
+/// roles are never painted over.
+/// </summary>
+internal static class CurveFillRibbonArcRefiner
+{
+    private const int MaximumRefinedRegions = 160;
+    private const double MinimumRibbonElongation = 2.00;
+    private const double MinimumBroadArchElongation = 1.25;
+    private const double MaximumBroadArchBoundingFill = 0.28;
+    private const double MaximumBroadArchBoundaryRatio = 0.58;
+    private const double MaximumBoundaryRatio = 0.66;
+    private const double MaximumWidthCoefficientVariation = 0.55;
+    private const double MinimumTerminalWidthRatio = 0.45;
+    private const double MinimumSparseTaperTerminalWidthRatio = 0.25;
+    private const double MinimumSparseTaperElongation = 2.50;
+    private const double MaximumSparseTaperBoundingFill = 0.20;
+    private const double MinimumSparseTaperPathCoverage = 0.64;
+    private const double MinimumCompactSpiralTerminalWidthRatio = 0.44;
+    private const double MinimumCompactSpiralElongation = 1.35;
+    private const double MaximumCompactSpiralElongation = 1.80;
+    private const double MinimumCompactSpiralBoundingFill = 0.42;
+    private const double MaximumCompactSpiralBoundingFill = 0.56;
+    private const double MaximumCompactSpiralBoundaryRatio = 0.25;
+    private const double MinimumCompactSpiralPathCoverage = 0.84;
+    private const double MaximumCompactSpiralWidthCoefficientVariation = 0.54;
+    private const double MinimumAbsoluteBend = 1.35;
+    private const double MinimumRelativeBend = 0.035;
+    private const double MinimumVariableWidthRedrawScale = 1.50;
+    private const double MinimumLayeredRibbonRedrawScale = 1.50;
+
+    public static int Apply(
+        DesignDocument source,
+        DesignDocument destination) =>
+        ApplyWithDiagnostics(
+            source,
+            destination)
+        .BoundaryPixelsChanged;
+
+    internal static RibbonArcRefinementDiagnostics ApplyWithDiagnostics(
+        DesignDocument source,
+        DesignDocument destination,
+        bool layeredBandsOnly = false)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(destination);
+
+        if (source.Width == destination.Width &&
+            source.Height == destination.Height)
+        {
+            return default;
+        }
+
+        var protectedStrokeColors =
+            ToolFaithfulPixelCordOverlay.DetectStrokePaletteRoles(
+                source);
+        var redrawScale =
+            Math.Max(
+                destination.Width /
+                    (double)source.Width,
+                destination.Height /
+                    (double)source.Height);
+        var regions =
+            LeafPetalRegionExtractor.Extract(
+                source);
+
+        var classified = 0;
+        var axisBuilt = 0;
+        var maxSkeletonPixels = 0;
+        var maxEndpoints = 0;
+        var maxPrincipalPathPixels = 0;
+        var maxPrincipalPathCoverage = 0d;
+        var lastCenterlineReason = "not-attempted";
+        var ribbonGeometryAccepted = 0;
+        var fitSafe = 0;
+        var symmetryRecoveries = 0;
+        var mainArcExtractions = 0;
+        var maxSymmetrySampleShift = 0d;
+        var mirrorSourceFusions = 0;
+        var bestMirrorSourceAgreement = 0d;
+        var maxMirrorSourceFusionShift = 0d;
+        var compoundFits = 0;
+        var compoundAttempts = 0;
+        var maxCompoundP95Deviation = 0d;
+        var maxCompoundDeviation = 0d;
+        var lastCompoundReason = "not-attempted";
+        var curveToolFits = 0;
+        var curveToolThroughPointsFits = 0;
+        var curveToolSplineFits = 0;
+        var curveToolBezierFits = 0;
+        var curveToolRoundnessSum = 0d;
+        var geometricThroughFits = 0;
+        var geometricThroughAttempts = 0;
+        var maxGeometricThroughDeviation = 0d;
+        var maxGeometricThroughP95Deviation = 0d;
+        var lastGeometricThroughReason = "not-attempted";
+        var geometricThroughRoundnessSum = 0d;
+        var broadOvalFits = 0;
+        var broadOvalAttempts = 0;
+        var maxBroadOvalDeviation = 0d;
+        var maxBroadOvalP95Deviation = 0d;
+        var lastBroadOvalReason = "not-attempted";
+        var cubicBezierFits = 0;
+        var cubicAttempts = 0;
+        var maxCubicDeviation = 0d;
+        var maxCubicP95Deviation = 0d;
+        var maxCubicHandleRatio = 0d;
+        var lastCubicReason = "not-attempted";
+        var maxFitDeviation = 0d;
+        var maxFitCurvatureFlips = 0;
+        var widthRegularized = 0;
+        var maxWidthRegularizationShift = 0d;
+        var maxWidthVariationReduction = 0d;
+        var selfSymmetryNormalizations = 0;
+        var bestSelfSymmetryAgreement = 0d;
+        var maxSelfSymmetryDeviation = 0d;
+        var accepted =
+            new List<(LeafPetalArcModel Model, ElegantArcFit Fit)>();
+        var mainArcScopedRegions =
+            new HashSet<LeafPetalRegion>();
+        var compactSpiralRegions =
+            new HashSet<LeafPetalRegion>();
+        var taperedHookRegions =
+            new HashSet<LeafPetalRegion>();
+        var layeredProfiles =
+            new Dictionary<LeafPetalRegion, LayeredRibbonProfileDiagnostics>();
+
+        foreach (var region in regions)
+        {
+            if (protectedStrokeColors.Contains(
+                    region.Color))
+            {
+                continue;
+            }
+
+            if (!LeafPetalArcClassifier.TryClassify(
+                    region,
+                    source.Width,
+                    out var candidate))
+            {
+                continue;
+            }
+
+            classified++;
+
+            var boundingFillRatio =
+                region.Area /
+                (double)Math.Max(
+                    1,
+                    region.Width *
+                    region.Height);
+            var broadSparseArch =
+                candidate.Elongation >=
+                    MinimumBroadArchElongation &&
+                boundingFillRatio <=
+                    MaximumBroadArchBoundingFill &&
+                candidate.BoundaryRatio <=
+                    MaximumBroadArchBoundaryRatio;
+            var compactSpiralPrefilter =
+                candidate.Elongation >=
+                    1.25 &&
+                boundingFillRatio <=
+                    0.58 &&
+                candidate.BoundaryRatio <=
+                    0.32;
+
+            // A wide U/half-oval has poor PCA elongation because its two shoulders spread across
+            // both axes, even though visually it is one long ribbon. Admit only sparse broad
+            // arches here; the medial-skeleton, stable-width, bend and no-inflection gates below
+            // remain the actual redraw authority.
+            if ((candidate.Elongation <
+                     MinimumRibbonElongation &&
+                 !broadSparseArch &&
+                 !compactSpiralPrefilter) ||
+                candidate.BoundaryRatio >
+                    MaximumBoundaryRatio)
+            {
+                continue;
+            }
+
+            var centerlineBuilt =
+                CurveFillRibbonCenterlineBuilder.TryBuild(
+                    candidate,
+                    source.Width,
+                    out var model,
+                    out var centerlineDiagnostics);
+
+            maxSkeletonPixels =
+                Math.Max(
+                    maxSkeletonPixels,
+                    centerlineDiagnostics.SkeletonPixels);
+            maxEndpoints =
+                Math.Max(
+                    maxEndpoints,
+                    centerlineDiagnostics.Endpoints);
+            maxPrincipalPathPixels =
+                Math.Max(
+                    maxPrincipalPathPixels,
+                    centerlineDiagnostics.PrincipalPathPixels);
+            maxPrincipalPathCoverage =
+                Math.Max(
+                    maxPrincipalPathCoverage,
+                    centerlineDiagnostics.PrincipalPathCoverage);
+            lastCenterlineReason =
+                centerlineDiagnostics.Reason;
+
+            if (!centerlineBuilt)
+                continue;
+
+            axisBuilt++;
+
+            var designerRibbon =
+                LooksLikeDesignerRibbon(
+                    model,
+                    out var ribbonShapeDiagnostics);
+            var taperedHookSweep =
+                !designerRibbon &&
+                LooksLikeTaperedHook(
+                    model,
+                    centerlineDiagnostics,
+                    ribbonShapeDiagnostics);
+            var variableWidthSweep =
+                redrawScale >=
+                    MinimumVariableWidthRedrawScale &&
+                !designerRibbon &&
+                LooksLikeVariableWidthSweep(
+                    model,
+                    centerlineDiagnostics,
+                    ribbonShapeDiagnostics);
+
+            if (!designerRibbon &&
+                !taperedHookSweep &&
+                !variableWidthSweep)
+            {
+                continue;
+            }
+
+            var sparseTaperSweep =
+                string.Equals(
+                    ribbonShapeDiagnostics.Reason,
+                    "ok-sparse-taper",
+                    StringComparison.Ordinal);
+            var compactSpiralSweep =
+                string.Equals(
+                    ribbonShapeDiagnostics.Reason,
+                    "ok-compact-spiral",
+                    StringComparison.Ordinal);
+
+            // A compact prefilter is only an analysis doorway. Production authority is granted
+            // exclusively by the strict ok-compact-spiral classifier after centerline evidence.
+            if (compactSpiralPrefilter &&
+                !compactSpiralSweep &&
+                candidate.Elongation <
+                    MinimumRibbonElongation &&
+                !broadSparseArch)
+            {
+                continue;
+            }
+
+            var mainArcExtractedForRegion = false;
+
+            if (broadSparseArch &&
+                centerlineDiagnostics.Endpoints > 2 &&
+                CurveFillRibbonSymmetryRecovery.TryRecover(
+                    model,
+                    source.Width,
+                    out var symmetricModel,
+                    out var symmetryDiagnostics))
+            {
+                model =
+                    symmetricModel;
+                symmetryRecoveries++;
+                maxSymmetrySampleShift =
+                    Math.Max(
+                        maxSymmetrySampleShift,
+                        symmetryDiagnostics.MaximumSampleShift);
+
+                if (CurveFillRibbonMainArcExtractor.TryExtract(
+                        model,
+                        out var mainArcModel,
+                        out _))
+                {
+                    model =
+                        mainArcModel;
+                    mainArcExtractedForRegion = true;
+                    mainArcExtractions++;
+                }
+            }
+
+            var mirrorSourceFused = false;
+
+            if (broadSparseArch &&
+                CurveFillRibbonMirrorPairRecovery.TryRecover(
+                    model,
+                    regions,
+                    source.Width,
+                    out var mirrorFusedModel,
+                    out var mirrorFusionDiagnostics))
+            {
+                model =
+                    mirrorFusedModel;
+                mirrorSourceFused = true;
+                mirrorSourceFusions++;
+                bestMirrorSourceAgreement =
+                    Math.Max(
+                        bestMirrorSourceAgreement,
+                        mirrorFusionDiagnostics.MirrorAgreement);
+                maxMirrorSourceFusionShift =
+                    Math.Max(
+                        maxMirrorSourceFusionShift,
+                        mirrorFusionDiagnostics.MaximumFusionShift);
+
+                // Mirror-pair fusion is another high-confidence way to suppress one-sided raster
+                // phase. Multi-endpoint hooked ribbons may fail self-symmetry recovery yet still
+                // have an obvious dominant designer sweep. Extract that sweep AFTER fusion so the
+                // main arc can be fitted by the normal Curve-tool family while terminal hooks stay
+                // on the categorical baseline.
+                if (!mainArcExtractedForRegion &&
+                    centerlineDiagnostics.Endpoints > 2 &&
+                    CurveFillRibbonMainArcExtractor.TryExtractMirrorFusedSweep(
+                        model,
+                        out var mirrorMainArcModel,
+                        out _))
+                {
+                    model =
+                        mirrorMainArcModel;
+                    mainArcExtractedForRegion = true;
+                    mainArcExtractions++;
+                }
+            }
+
+            // Sparse tapered ornaments may have several skeleton endpoints because decorative
+            // hooks/branches share the same indexed region. Compound fitting the complete graph can
+            // shave valid side structure. Give this class compound authority only after extracting
+            // one coherent one-sided sweep (unless it was already a simple two-endpoint path).
+            if (sparseTaperSweep &&
+                !mainArcExtractedForRegion &&
+                centerlineDiagnostics.Endpoints > 2 &&
+                CurveFillRibbonMainArcExtractor.TryExtractSparseTaperSweep(
+                    model,
+                    out var sparseTaperMainArcModel,
+                    out _))
+            {
+                model =
+                    sparseTaperMainArcModel;
+                mainArcExtractedForRegion = true;
+                mainArcExtractions++;
+            }
+
+            if (variableWidthSweep &&
+                !mainArcExtractedForRegion)
+            {
+                if (!CurveFillRibbonMainArcExtractor.TryExtractOneSidedSweep(
+                        model,
+                        out var variableWidthMainArcModel,
+                        out _))
+                {
+                    continue;
+                }
+
+                model =
+                    variableWidthMainArcModel;
+                mainArcExtractedForRegion = true;
+                mainArcExtractions++;
+            }
+
+            var sparseTaperCompoundAuthority =
+                sparseTaperSweep &&
+                (centerlineDiagnostics.Endpoints <= 2 ||
+                 mainArcExtractedForRegion);
+
+            var layeredProductionProbe =
+                !layeredBandsOnly &&
+                redrawScale >=
+                    MinimumLayeredRibbonRedrawScale &&
+                candidate.Elongation >=
+                    4.0 &&
+                boundingFillRatio <=
+                    0.20;
+            var layeredProfile =
+                layeredBandsOnly ||
+                layeredProductionProbe
+                    ? CurveFillLayeredRibbonAnalyzer.Analyze(
+                        source,
+                        model,
+                        protectedStrokeColors)
+                    : default;
+
+            ribbonGeometryAccepted++;
+
+            // Ribbon geometry is deliberately NOT apex-tapered. The source width profile already
+            // contains the designer's constant/slowly-varying band thickness.
+            ElegantArcFit fit;
+            var compoundFitSelected = false;
+
+            if (variableWidthSweep)
+            {
+                geometricThroughAttempts++;
+
+                if (!CurveFillRibbonThroughPointsFitter.TryFit(
+                        model,
+                        out var variableWidthThroughFit,
+                        out var variableWidthThroughDiagnostics))
+                {
+                    lastGeometricThroughReason =
+                        variableWidthThroughDiagnostics.Reason;
+                    maxGeometricThroughDeviation =
+                        Math.Max(
+                            maxGeometricThroughDeviation,
+                            variableWidthThroughDiagnostics.MaximumDeviation);
+                    maxGeometricThroughP95Deviation =
+                        Math.Max(
+                            maxGeometricThroughP95Deviation,
+                            variableWidthThroughDiagnostics.Percentile95Deviation);
+                    continue;
+                }
+
+                fit =
+                    variableWidthThroughFit;
+                geometricThroughFits++;
+                geometricThroughRoundnessSum +=
+                    variableWidthThroughDiagnostics.Roundness;
+                lastGeometricThroughReason =
+                    variableWidthThroughDiagnostics.Reason;
+                maxGeometricThroughDeviation =
+                    Math.Max(
+                        maxGeometricThroughDeviation,
+                        variableWidthThroughDiagnostics.MaximumDeviation);
+                maxGeometricThroughP95Deviation =
+                    Math.Max(
+                        maxGeometricThroughP95Deviation,
+                        variableWidthThroughDiagnostics.Percentile95Deviation);
+            }
+            else if (taperedHookSweep)
+            {
+                // The four real C069 repeats are all explained by the same compact compound family
+                // inside a ~1 source-pixel maximum corridor. Keep this authority all-or-nothing:
+                // if the compound fit fails its normal safety gates, leave the baseline untouched.
+                compoundAttempts++;
+
+                if (!CurveFillRibbonCompoundFitter.TryFit(
+                        model,
+                        out var taperedHookCompoundFit,
+                        out var taperedHookCompoundDiagnostics))
+                {
+                    lastCompoundReason =
+                        taperedHookCompoundDiagnostics.Reason;
+                    maxCompoundDeviation =
+                        Math.Max(
+                            maxCompoundDeviation,
+                            taperedHookCompoundDiagnostics.MaximumDeviation);
+                    maxCompoundP95Deviation =
+                        Math.Max(
+                            maxCompoundP95Deviation,
+                            taperedHookCompoundDiagnostics.Percentile95Deviation);
+                    continue;
+                }
+
+                fit =
+                    taperedHookCompoundFit;
+                compoundFitSelected = true;
+                compoundFits++;
+                lastCompoundReason =
+                    taperedHookCompoundDiagnostics.Reason;
+                maxCompoundDeviation =
+                    Math.Max(
+                        maxCompoundDeviation,
+                        taperedHookCompoundDiagnostics.MaximumDeviation);
+                maxCompoundP95Deviation =
+                    Math.Max(
+                        maxCompoundP95Deviation,
+                        taperedHookCompoundDiagnostics.Percentile95Deviation);
+            }
+            else if (compactSpiralSweep)
+            {
+                // Compact spirals are complete multi-turn ribbons. The real-raster probe proved
+                // generic macro splines unsafe, while the low-frequency compound fitter stayed
+                // source-bounded with zero curvature flips. Do not fall back to a generic model:
+                // if compound fitting becomes unsafe, leave the categorical baseline untouched.
+                compoundAttempts++;
+
+                if (!CurveFillRibbonCompoundFitter.TryFit(
+                        model,
+                        out var compactCompoundFit,
+                        out var compactCompoundDiagnostics))
+                {
+                    lastCompoundReason =
+                        compactCompoundDiagnostics.Reason;
+                    maxCompoundDeviation =
+                        Math.Max(
+                            maxCompoundDeviation,
+                            compactCompoundDiagnostics.MaximumDeviation);
+                    maxCompoundP95Deviation =
+                        Math.Max(
+                            maxCompoundP95Deviation,
+                            compactCompoundDiagnostics.Percentile95Deviation);
+                    continue;
+                }
+
+                fit =
+                    compactCompoundFit;
+                compoundFitSelected = true;
+                compoundFits++;
+                lastCompoundReason =
+                    compactCompoundDiagnostics.Reason;
+                maxCompoundDeviation =
+                    Math.Max(
+                        maxCompoundDeviation,
+                        compactCompoundDiagnostics.MaximumDeviation);
+                maxCompoundP95Deviation =
+                    Math.Max(
+                        maxCompoundP95Deviation,
+                        compactCompoundDiagnostics.Percentile95Deviation);
+            }
+            else if (CurveFillRibbonToolFitter.TryFit(
+                    model,
+                    out var toolFit,
+                    out var toolStyle))
+            {
+                fit =
+                    toolFit;
+                var selectedToolFit = true;
+
+                // Once a hooked/broad region has been reduced to its dominant designer sweep,
+                // compare the source-faithful inverse tool fit with a fixed 5-control
+                // Through-Points reconstruction. The alternative may win only when it is
+                // substantially smoother AND remains source-bounded; this is the aesthetic
+                // correction for the C069 green/gold arches, not a general smoothing override.
+                if (broadSparseArch &&
+                    mainArcExtractedForRegion)
+                {
+                    geometricThroughAttempts++;
+
+                    var alternativeSafe =
+                        CurveFillRibbonThroughPointsFitter.TryFit(
+                            model,
+                            out var alternativeFit,
+                            out var alternativeDiagnostics);
+
+                    lastGeometricThroughReason =
+                        alternativeDiagnostics.Reason;
+                    maxGeometricThroughDeviation =
+                        Math.Max(
+                            maxGeometricThroughDeviation,
+                            alternativeDiagnostics.MaximumDeviation);
+                    maxGeometricThroughP95Deviation =
+                        Math.Max(
+                            maxGeometricThroughP95Deviation,
+                            alternativeDiagnostics.Percentile95Deviation);
+
+                    if (alternativeSafe)
+                    {
+                        var toolRoughness =
+                            CurveFillRibbonSmoothness.Measure(
+                                toolFit.Points);
+                        var alternativeRoughness =
+                            CurveFillRibbonSmoothness.Measure(
+                                alternativeFit.Points);
+
+                        if (CurveFillRibbonFitSelector.PreferGeometricThroughPoints(
+                                toolFit,
+                                toolRoughness,
+                                alternativeFit,
+                                alternativeRoughness))
+                        {
+                            fit =
+                                alternativeFit;
+                            selectedToolFit = false;
+                            geometricThroughFits++;
+                            geometricThroughRoundnessSum +=
+                                alternativeDiagnostics.Roundness;
+                        }
+                    }
+                }
+
+                if (selectedToolFit)
+                {
+                    curveToolFits++;
+                    curveToolRoundnessSum +=
+                        toolStyle.Roundness;
+
+                    switch (toolStyle.Type)
+                    {
+                        case CurveType.SplineThroughPoints:
+                            curveToolThroughPointsFits++;
+                            break;
+                        case CurveType.Spline:
+                            curveToolSplineFits++;
+                            break;
+                        case CurveType.Bezier:
+                            curveToolBezierFits++;
+                            break;
+                    }
+                }
+            }
+            else if (broadSparseArch)
+            {
+                geometricThroughAttempts++;
+
+                if (CurveFillRibbonThroughPointsFitter.TryFit(
+                        model,
+                        out var throughFit,
+                        out var throughDiagnostics))
+                {
+                    fit =
+                        throughFit;
+                    geometricThroughFits++;
+                    geometricThroughRoundnessSum +=
+                        throughDiagnostics.Roundness;
+                }
+                else
+                {
+                    broadOvalAttempts++;
+
+                    if (CurveFillBroadOvalArcFitter.TryFit(
+                            model,
+                            out var ovalFit,
+                            out var ovalDiagnostics))
+                    {
+                        fit =
+                            ovalFit;
+                        broadOvalFits++;
+                    }
+                    else
+                    {
+                        cubicAttempts++;
+
+                        if (CurveFillRibbonBezierFitter.TryFit(
+                                model,
+                                out var bezierFit,
+                                out var cubicDiagnostics))
+                        {
+                            fit =
+                                bezierFit;
+                            cubicBezierFits++;
+                        }
+                        else if (mirrorSourceFused ||
+                                 sparseTaperCompoundAuthority)
+                        {
+                            // Mirror-fused source remains the strongest authority. A second,
+                            // deliberately narrow authority is the sparse-taper classifier:
+                            // elongated, low-fill, high-coverage sweeps whose only reason for not
+                            // looking like a constant-width ribbon is a designer taper. These are
+                            // exactly the C069 long ornamental curls that previously reached an
+                            // unsafe macro spline and were therefore left block-scaled.
+                            compoundAttempts++;
+
+                            if (CurveFillRibbonCompoundFitter.TryFit(
+                                    model,
+                                    out var compoundFit,
+                                    out var compoundDiagnostics))
+                            {
+                                fit =
+                                    compoundFit;
+                                compoundFitSelected = true;
+                                compoundFits++;
+                            }
+                            else
+                            {
+                                fit =
+                                    ElegantArcFitter.Fit(
+                                        model,
+                                        taperApex: false,
+                                        maximumAnchors: 8,
+                                        smoothingPasses: 2);
+                            }
+
+                            lastCompoundReason =
+                                compoundDiagnostics.Reason;
+                            maxCompoundDeviation =
+                                Math.Max(
+                                    maxCompoundDeviation,
+                                    compoundDiagnostics.MaximumDeviation);
+                            maxCompoundP95Deviation =
+                                Math.Max(
+                                    maxCompoundP95Deviation,
+                                    compoundDiagnostics.Percentile95Deviation);
+                        }
+                        else
+                        {
+                            fit =
+                                ElegantArcFitter.Fit(
+                                    model,
+                                    taperApex: false,
+                                    maximumAnchors: 8,
+                                    smoothingPasses: 2);
+                        }
+
+                        lastCubicReason =
+                            cubicDiagnostics.Reason;
+                        maxCubicDeviation =
+                            Math.Max(
+                                maxCubicDeviation,
+                                cubicDiagnostics.MaximumDeviation);
+                        maxCubicP95Deviation =
+                            Math.Max(
+                                maxCubicP95Deviation,
+                                cubicDiagnostics.Percentile95Deviation);
+                        maxCubicHandleRatio =
+                            Math.Max(
+                                maxCubicHandleRatio,
+                                cubicDiagnostics.MaximumHandleToChordRatio);
+                    }
+
+                    lastBroadOvalReason =
+                        ovalDiagnostics.Reason;
+                    maxBroadOvalDeviation =
+                        Math.Max(
+                            maxBroadOvalDeviation,
+                            ovalDiagnostics.MaximumDeviation);
+                    maxBroadOvalP95Deviation =
+                        Math.Max(
+                            maxBroadOvalP95Deviation,
+                            ovalDiagnostics.Percentile95Deviation);
+                }
+
+                lastGeometricThroughReason =
+                    throughDiagnostics.Reason;
+                maxGeometricThroughDeviation =
+                    Math.Max(
+                        maxGeometricThroughDeviation,
+                        throughDiagnostics.MaximumDeviation);
+                maxGeometricThroughP95Deviation =
+                    Math.Max(
+                        maxGeometricThroughP95Deviation,
+                        throughDiagnostics.Percentile95Deviation);
+            }
+            else
+            {
+                cubicAttempts++;
+
+                if (CurveFillRibbonBezierFitter.TryFit(
+                        model,
+                        out var bezierFit,
+                        out var cubicDiagnostics))
+                {
+                    // A single cubic removes the last source-staircase phase from simple oval/arch
+                    // ribbons while staying source-bounded. Complex or inflected shapes still fall
+                    // through to the conservative multi-anchor fitter below.
+                    fit =
+                        bezierFit;
+                    cubicBezierFits++;
+                }
+                else
+                {
+                    fit =
+                        ElegantArcFitter.Fit(
+                            model,
+                            taperApex: false,
+                            maximumAnchors: 8,
+                            smoothingPasses: 2);
+                }
+
+                lastCubicReason =
+                    cubicDiagnostics.Reason;
+                maxCubicDeviation =
+                    Math.Max(
+                        maxCubicDeviation,
+                        cubicDiagnostics.MaximumDeviation);
+                maxCubicP95Deviation =
+                    Math.Max(
+                        maxCubicP95Deviation,
+                        cubicDiagnostics.Percentile95Deviation);
+                maxCubicHandleRatio =
+                    Math.Max(
+                        maxCubicHandleRatio,
+                        cubicDiagnostics.MaximumHandleToChordRatio);
+            }
+
+            maxFitDeviation =
+                Math.Max(
+                    maxFitDeviation,
+                    fit.MaximumCenterlineDeviation);
+            maxFitCurvatureFlips =
+                Math.Max(
+                    maxFitCurvatureFlips,
+                    fit.CurvatureSignFlips);
+
+            var maximumAllowedCurvatureFlips =
+                compoundFitSelected
+                    ? 2
+                    : 1;
+
+            if (!fit.IsSafe ||
+                fit.CurvatureSignFlips >
+                    maximumAllowedCurvatureFlips)
+            {
+                continue;
+            }
+
+            if (variableWidthSweep ||
+                taperedHookSweep &&
+                redrawScale >=
+                    MinimumVariableWidthRedrawScale)
+            {
+                fit =
+                    CurveFillVariableWidthProfileMapper.Apply(
+                        model,
+                        fit,
+                        out var variableWidthDiagnostics);
+
+                var minimumCvRetention =
+                    0.90;
+                var maximumCvRetention =
+                    1.05;
+                var maximumAdjacentVariation =
+                    variableWidthSweep
+                        ? 0.20
+                        : 0.45;
+                var profileFaithful =
+                    variableWidthDiagnostics.Applied &&
+                    variableWidthDiagnostics.SourceCoefficientVariation >
+                        1e-9 &&
+                    variableWidthDiagnostics.MappedCoefficientVariation >=
+                        variableWidthDiagnostics.SourceCoefficientVariation *
+                        minimumCvRetention &&
+                    variableWidthDiagnostics.MappedCoefficientVariation <=
+                        variableWidthDiagnostics.SourceCoefficientVariation *
+                        maximumCvRetention &&
+                    variableWidthDiagnostics.MaximumAdjacentVariation <=
+                        maximumAdjacentVariation;
+
+                if (taperedHookSweep)
+                {
+                    profileFaithful =
+                        profileFaithful &&
+                        variableWidthDiagnostics.MappedMaximum >=
+                            variableWidthDiagnostics.SourceMaximum *
+                            0.85 &&
+                        variableWidthDiagnostics.MappedMinimum <=
+                            variableWidthDiagnostics.SourceMinimum *
+                            1.25;
+                }
+
+                if (!profileFaithful)
+                    continue;
+            }
+            else
+            {
+                fit =
+                    CurveFillRibbonWidthProfileRegularizer.Regularize(
+                        model,
+                        fit,
+                        out var widthDiagnostics);
+
+                if (widthDiagnostics.Applied)
+                {
+                    widthRegularized++;
+                    maxWidthRegularizationShift =
+                        Math.Max(
+                            maxWidthRegularizationShift,
+                            widthDiagnostics.MaximumHalfWidthShift);
+                    maxWidthVariationReduction =
+                        Math.Max(
+                            maxWidthVariationReduction,
+                            widthDiagnostics.BeforeAdjacentVariation -
+                            widthDiagnostics.AfterAdjacentVariation);
+                }
+            }
+
+            if (CurveFillRibbonSelfSymmetryNormalizer.TryNormalize(
+                    model,
+                    fit,
+                    source.Width,
+                    out var symmetricFit,
+                    out var selfSymmetryDiagnostics))
+            {
+                fit =
+                    symmetricFit;
+                selfSymmetryNormalizations++;
+                bestSelfSymmetryAgreement =
+                    Math.Max(
+                        bestSelfSymmetryAgreement,
+                        selfSymmetryDiagnostics.SourceMirrorAgreement);
+                maxSelfSymmetryDeviation =
+                    Math.Max(
+                        maxSelfSymmetryDeviation,
+                        selfSymmetryDiagnostics.MaximumDeviation);
+            }
+
+            fitSafe++;
+
+            accepted.Add(
+                (model, fit));
+
+            var layeredProductionAuthorized =
+                !layeredBandsOnly &&
+                LooksLikeProductionLayeredRibbon(
+                    model,
+                    fit,
+                    layeredProfile,
+                    protectedStrokeColors,
+                    redrawScale);
+
+            if ((layeredBandsOnly &&
+                 layeredProfile.Detected) ||
+                layeredProductionAuthorized)
+            {
+                layeredProfiles[
+                    model.Candidate.Region] =
+                    layeredProfile;
+            }
+
+            if (compactSpiralSweep)
+            {
+                compactSpiralRegions.Add(
+                    model.Candidate.Region);
+            }
+
+            if (taperedHookSweep)
+            {
+                taperedHookRegions.Add(
+                    model.Candidate.Region);
+            }
+
+            if (mainArcExtractedForRegion)
+            {
+                mainArcScopedRegions.Add(
+                    model.Candidate.Region);
+            }
+        }
+
+        var mirrorPairDiagnostics =
+            CurveFillRibbonMirrorPairNormalizer.Normalize(
+                accepted,
+                source.Width,
+                mainArcScopedRegions);
+
+        var changed = 0;
+        var outlinedRefined = 0;
+        var layeredPreviewCandidates = 0;
+        var layeredPreviewApplied = 0;
+        var lastLayeredPreviewReason = "not-attempted";
+        var lastLayeredSeparatorMaskPixels = 0;
+        var lastLayeredBandMaskPixels = 0;
+        var lastLayeredAuthorityMaskPixels = 0;
+
+        int ApplyProductionLayeredBands(
+            LeafPetalArcModel model,
+            ElegantArcFit fit)
+        {
+            if (layeredBandsOnly ||
+                !layeredProfiles.TryGetValue(
+                    model.Candidate.Region,
+                    out var profile))
+            {
+                return 0;
+            }
+
+            layeredPreviewCandidates++;
+
+            var applied =
+                CurveFillLayeredRibbonRasterizer.TryApplySecondProtectedBandPreview(
+                    source,
+                    destination,
+                    model,
+                    fit,
+                    profile,
+                    protectedStrokeColors,
+                    out var localChanged,
+                    out var localDiagnostics);
+
+            lastLayeredPreviewReason =
+                localDiagnostics.Reason;
+            lastLayeredSeparatorMaskPixels =
+                localDiagnostics.SeparatorMaskPixels;
+            lastLayeredBandMaskPixels =
+                localDiagnostics.BandMaskPixels;
+            lastLayeredAuthorityMaskPixels =
+                localDiagnostics.AuthorityMaskPixels;
+
+            if (applied)
+            {
+                layeredPreviewApplied++;
+                return localChanged;
+            }
+
+            return 0;
+        }
+
+        foreach (var item in accepted
+                     .OrderByDescending(pair =>
+                         pair.Model.Candidate.MajorExtent *
+                         pair.Model.Candidate.Elongation)
+                     .Take(MaximumRefinedRegions))
+        {
+            var scopedMainArc =
+                mainArcScopedRegions.Contains(
+                    item.Model.Candidate.Region);
+
+            if (layeredBandsOnly)
+            {
+                if (layeredProfiles.TryGetValue(
+                        item.Model.Candidate.Region,
+                        out var layeredProfileForRegion))
+                {
+                    layeredPreviewCandidates++;
+
+                    var layeredApplied =
+                        CurveFillLayeredRibbonRasterizer.TryApplySecondProtectedBandPreview(
+                            source,
+                            destination,
+                            item.Model,
+                            item.Fit,
+                            layeredProfileForRegion,
+                            protectedStrokeColors,
+                            out var layeredChanged,
+                            out var layeredDiagnostics);
+
+                    lastLayeredPreviewReason =
+                        layeredDiagnostics.Reason;
+                    lastLayeredSeparatorMaskPixels =
+                        layeredDiagnostics.SeparatorMaskPixels;
+                    lastLayeredBandMaskPixels =
+                        layeredDiagnostics.BandMaskPixels;
+                    lastLayeredAuthorityMaskPixels =
+                        layeredDiagnostics.AuthorityMaskPixels;
+
+                    if (layeredApplied)
+                    {
+                        layeredPreviewApplied++;
+                        changed +=
+                            layeredChanged;
+                    }
+                }
+
+                continue;
+            }
+
+            // This is the first genuinely authoritative redraw path in the ribbon pipeline.
+            // Ordinary safe fits receive it only when their centreline stays within a very tight
+            // source corridor and has no curvature reversal. Extracted main arcs are separately
+            // source-scoped, so they may use the same redraw even when a compound fit needs a
+            // wider deviation budget.
+            var trueRedrawAuthority =
+                scopedMainArc ||
+                compactSpiralRegions.Contains(
+                    item.Model.Candidate.Region) ||
+                taperedHookRegions.Contains(
+                    item.Model.Candidate.Region) ||
+                item.Fit.CurvatureSignFlips == 0 &&
+                item.Fit.MaximumCenterlineDeviation <=
+                    1.75;
+
+            if (trueRedrawAuthority &&
+                CurveFillTrueRibbonRasterizer.TryApply(
+                    source,
+                    destination,
+                    item.Model,
+                    item.Fit,
+                    protectedStrokeColors,
+                    out var trueRedrawChanged,
+                    useSweptTube:
+                        taperedHookRegions.Contains(
+                            item.Model.Candidate.Region)))
+            {
+                outlinedRefined++;
+                changed +=
+                    trueRedrawChanged;
+                changed +=
+                    ApplyProductionLayeredBands(
+                        item.Model,
+                        item.Fit);
+                continue;
+            }
+
+            if (CurveFillOutlinedRibbonRasterizer.TryApply(
+                    source,
+                    destination,
+                    item.Model,
+                    item.Fit,
+                    protectedStrokeColors,
+                    out var outlinedChanged,
+                    restrictToFittedSweep:
+                        scopedMainArc))
+            {
+                outlinedRefined++;
+                changed +=
+                    outlinedChanged;
+                changed +=
+                    ApplyProductionLayeredBands(
+                        item.Model,
+                        item.Fit);
+                continue;
+            }
+
+            changed +=
+                LeafPetalArcRasterizer.Apply(
+                    source,
+                    destination,
+                    item.Model,
+                    item.Fit,
+                    protectedStrokeColors,
+                    restrictToFittedSweep:
+                        scopedMainArc);
+            changed +=
+                ApplyProductionLayeredBands(
+                    item.Model,
+                    item.Fit);
+        }
+
+        return new RibbonArcRefinementDiagnostics(
+            Regions: regions.Count,
+            Classified: classified,
+            AxisBuilt: axisBuilt,
+            MaxSkeletonPixels: maxSkeletonPixels,
+            MaxEndpoints: maxEndpoints,
+            MaxPrincipalPathPixels: maxPrincipalPathPixels,
+            MaxPrincipalPathCoverage: maxPrincipalPathCoverage,
+            LastCenterlineReason: lastCenterlineReason,
+            RibbonGeometryAccepted: ribbonGeometryAccepted,
+            FitSafe: fitSafe,
+            SymmetryRecoveries: symmetryRecoveries,
+            MainArcExtractions: mainArcExtractions,
+            MaxSymmetrySampleShift: maxSymmetrySampleShift,
+            MirrorSourceFusions: mirrorSourceFusions,
+            BestMirrorSourceAgreement: bestMirrorSourceAgreement,
+            MaxMirrorSourceFusionShift: maxMirrorSourceFusionShift,
+            CompoundFits: compoundFits,
+            CompoundAttempts: compoundAttempts,
+            MaxCompoundP95Deviation: maxCompoundP95Deviation,
+            MaxCompoundDeviation: maxCompoundDeviation,
+            LastCompoundReason: lastCompoundReason,
+            CurveToolFits: curveToolFits,
+            CurveToolThroughPointsFits: curveToolThroughPointsFits,
+            CurveToolSplineFits: curveToolSplineFits,
+            CurveToolBezierFits: curveToolBezierFits,
+            MeanCurveToolRoundness:
+                curveToolFits == 0
+                    ? 0d
+                    : curveToolRoundnessSum /
+                      curveToolFits,
+            GeometricThroughFits: geometricThroughFits,
+            GeometricThroughAttempts: geometricThroughAttempts,
+            MaxGeometricThroughDeviation: maxGeometricThroughDeviation,
+            MaxGeometricThroughP95Deviation: maxGeometricThroughP95Deviation,
+            LastGeometricThroughReason: lastGeometricThroughReason,
+            MeanGeometricThroughRoundness:
+                geometricThroughFits == 0
+                    ? 0d
+                    : geometricThroughRoundnessSum /
+                      geometricThroughFits,
+            BroadOvalFits: broadOvalFits,
+            BroadOvalAttempts: broadOvalAttempts,
+            MaxBroadOvalDeviation: maxBroadOvalDeviation,
+            MaxBroadOvalP95Deviation: maxBroadOvalP95Deviation,
+            LastBroadOvalReason: lastBroadOvalReason,
+            CubicBezierFits: cubicBezierFits,
+            CubicAttempts: cubicAttempts,
+            MaxCubicDeviation: maxCubicDeviation,
+            MaxCubicP95Deviation: maxCubicP95Deviation,
+            MaxCubicHandleRatio: maxCubicHandleRatio,
+            LastCubicReason: lastCubicReason,
+            MaxFitDeviation: maxFitDeviation,
+            MaxFitCurvatureFlips: maxFitCurvatureFlips,
+            WidthRegularized: widthRegularized,
+            MaxWidthRegularizationShift: maxWidthRegularizationShift,
+            MaxWidthVariationReduction: maxWidthVariationReduction,
+            SelfSymmetryNormalizations: selfSymmetryNormalizations,
+            BestSelfSymmetryAgreement: bestSelfSymmetryAgreement,
+            MaxSelfSymmetryDeviation: maxSelfSymmetryDeviation,
+            MirrorPairs: mirrorPairDiagnostics.Pairs,
+            MirrorPairReplacements: mirrorPairDiagnostics.Replacements,
+            BestMirrorPairAgreement: mirrorPairDiagnostics.BestMirrorAgreement,
+            MaxMirrorPairDeviation: mirrorPairDiagnostics.MaximumMirroredDeviation,
+            Refined: accepted.Count,
+            OutlinedRefined: outlinedRefined,
+            BoundaryPixelsChanged: changed,
+            LayeredPreviewCandidates: layeredPreviewCandidates,
+            LayeredPreviewApplied: layeredPreviewApplied,
+            LastLayeredPreviewReason: lastLayeredPreviewReason,
+            LastLayeredSeparatorMaskPixels: lastLayeredSeparatorMaskPixels,
+            LastLayeredBandMaskPixels: lastLayeredBandMaskPixels,
+            LastLayeredAuthorityMaskPixels: lastLayeredAuthorityMaskPixels);
+    }
+
+    internal static IReadOnlyList<RibbonArcCandidateStage> AnalyzeCandidateStages(
+        DesignDocument source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        var protectedStrokeColors =
+            ToolFaithfulPixelCordOverlay.DetectStrokePaletteRoles(
+                source);
+        var regions =
+            LeafPetalRegionExtractor.Extract(
+                source);
+        var result =
+            new List<RibbonArcCandidateStage>();
+
+        foreach (var region in regions)
+        {
+            if (protectedStrokeColors.Contains(
+                    region.Color) ||
+                !LeafPetalArcClassifier.TryClassify(
+                    region,
+                    source.Width,
+                    out var candidate))
+            {
+                continue;
+            }
+
+            var boundingFillRatio =
+                region.Area /
+                (double)Math.Max(
+                    1,
+                    region.Width *
+                    region.Height);
+            var broadSparseArch =
+                candidate.Elongation >=
+                    MinimumBroadArchElongation &&
+                boundingFillRatio <=
+                    MaximumBroadArchBoundingFill &&
+                candidate.BoundaryRatio <=
+                    MaximumBroadArchBoundaryRatio;
+            var prefilterAccepted =
+                (candidate.Elongation >=
+                     MinimumRibbonElongation ||
+                 broadSparseArch) &&
+                candidate.BoundaryRatio <=
+                    MaximumBoundaryRatio;
+
+            // Diagnostic-only probe for compact spiral ribbons. These shapes can have low PCA
+            // elongation because the curve wraps around itself, even though the medial path is a
+            // genuine long designer sweep. Do NOT grant production redraw authority here yet;
+            // first collect width/terminal/bend/fitter evidence in the real C069 audit.
+            var compactSpiralProbe =
+                !prefilterAccepted &&
+                candidate.Elongation >=
+                    1.25 &&
+                boundingFillRatio <=
+                    0.58 &&
+                candidate.BoundaryRatio <=
+                    0.32;
+            var analysisEligible =
+                prefilterAccepted ||
+                compactSpiralProbe;
+
+            var centerlineBuilt = false;
+            var designerRibbon = false;
+            var symmetryRecovered = false;
+            var symmetryAxis = "none";
+            var mirrorAgreement = 0d;
+            var symmetryMeanShift = 0d;
+            var symmetryMaxShift = 0d;
+            var mirrorSourceRecovered = false;
+            var mirrorSourceReason = "not-attempted";
+            var mirrorSourceAgreement = 0d;
+            var mirrorSourceMeanShift = 0d;
+            var mirrorSourceMaxShift = 0d;
+            var mainArcExtracted = false;
+            var mainArcReason = "not-attempted";
+            var mainArcStart = 0;
+            var mainArcEnd = 0;
+            var mainArcKeptFraction = 0d;
+            var fitSafe = false;
+            var accepted = false;
+            var compoundAttempted = false;
+            var compoundReason = "not-attempted";
+            var compoundP95Deviation = 0d;
+            var compoundMaximumDeviation = 0d;
+            var compoundSelectedRoughness = 0d;
+            var compoundSelectedAnchors = 0;
+            var compoundSelectedSmoothingPasses = 0;
+            var compoundSmoothestSafeRoughness = 0d;
+            var compoundSmoothestSafeAnchors = 0;
+            var compoundSmoothestSafeSmoothingPasses = 0;
+            var compoundSmoothestSafeP95Deviation = 0d;
+            var compoundSmoothestSafeMaximumDeviation = 0d;
+            var compoundSmoothestCurvatureValidRoughness = 0d;
+            var compoundSmoothestCurvatureValidAnchors = 0;
+            var compoundSmoothestCurvatureValidSmoothingPasses = 0;
+            var compoundSmoothestCurvatureValidP95Deviation = 0d;
+            var compoundSmoothestCurvatureValidMaximumDeviation = 0d;
+            var compoundSelectedLobeFairness = 0d;
+            var compoundFairestSafeLobeFairness = 0d;
+            var compoundFairestSafeRoughness = 0d;
+            var compoundFairestSafeAnchors = 0;
+            var compoundFairestSafeSmoothingPasses = 0;
+            var compoundFairestSafeP95Deviation = 0d;
+            var compoundFairestSafeMaximumDeviation = 0d;
+            var fitKind = "none";
+            var curveFamily = "none";
+            var status =
+                prefilterAccepted
+                    ? "centerline"
+                    : compactSpiralProbe
+                        ? "compact-probe-centerline"
+                        : "prefilter";
+            var roundness = 0d;
+            var maximumDeviation = 0d;
+            var curvatureFlips = 0;
+            var selectedSmoothness = double.PositiveInfinity;
+            var sourceCurvatureFairness = 0d;
+            var fitCurvatureFairness = 0d;
+            var sourceCurvatureInflections = 0;
+            var fitCurvatureInflections = 0;
+            var sourceCurvatureMaximumVariation = 0d;
+            var fitCurvatureMaximumVariation = 0d;
+            var alternativeThroughSafe = false;
+            var alternativeThroughSmoothness = double.PositiveInfinity;
+            var alternativeThroughMaximumDeviation = 0d;
+            var alternativeThroughP95Deviation = 0d;
+            var alternativeThroughRoundness = 0d;
+            var piecewiseSCurveSafe = false;
+            var piecewiseSCurveSplitIndex = 0;
+            var piecewiseSCurveSmoothness = double.PositiveInfinity;
+            var piecewiseSCurveMaximumDeviation = 0d;
+            var piecewiseSCurveP95Deviation = 0d;
+            var piecewiseSCurveCurvatureFlips = 0;
+            var piecewiseSCurveJoinAngleDegrees = 0d;
+            var constrainedFairingSafe = false;
+            var constrainedFairingReason = "not-attempted";
+            var constrainedFairingBeforeRoughness = 0d;
+            var constrainedFairingAfterRoughness = double.PositiveInfinity;
+            var constrainedFairingMaximumDeviation = 0d;
+            var constrainedFairingP95Deviation = 0d;
+            var constrainedFairingMaximumShift = 0d;
+            var constrainedFairingBeforeCurvatureFlips = 0;
+            var constrainedFairingAfterCurvatureFlips = 0;
+            var widthRegularizerApplied = false;
+            var widthSourceCoefficientVariation = 0d;
+            var widthTerminalRatio = 0d;
+            var widthVariationBefore = 0d;
+            var widthVariationAfter = 0d;
+            var widthMaximumShift = 0d;
+            var variableWidthProfileApplied = false;
+            var variableWidthSourceCoefficientVariation = 0d;
+            var variableWidthMappedCoefficientVariation = 0d;
+            var variableWidthSourceMinimum = 0d;
+            var variableWidthSourceMaximum = 0d;
+            var variableWidthMappedMinimum = 0d;
+            var variableWidthMappedMaximum = 0d;
+            var variableWidthMaximumAdjacentVariation = 0d;
+            var skeletonPixels = 0;
+            var endpoints = 0;
+            var principalPathPixels = 0;
+            var principalPathCoverage = 0d;
+            var ribbonShapeReason = "not-attempted";
+            var ribbonMeanWidth = 0d;
+            var ribbonWidthCoefficientVariation = 0d;
+            var ribbonTerminalRatio = 0d;
+            var ribbonMaximumBend = 0d;
+            var ribbonRequiredBend = 0d;
+            var layeredRibbonDetected = false;
+            var layeredRibbonSide = "none";
+            var layeredRibbonSequence = string.Empty;
+            var layeredRibbonCoverage = 0d;
+            var layeredRibbonBracketedCoverage = 0d;
+            var layeredRibbonExteriorColor = string.Empty;
+            var layeredRibbonExteriorCoverage = 0d;
+            var layeredRibbonMeanWidths = string.Empty;
+
+            if (analysisEligible)
+            {
+                centerlineBuilt =
+                    CurveFillRibbonCenterlineBuilder.TryBuild(
+                        candidate,
+                        source.Width,
+                        out var model,
+                        out var centerlineDiagnostics);
+                skeletonPixels =
+                    centerlineDiagnostics.SkeletonPixels;
+                endpoints =
+                    centerlineDiagnostics.Endpoints;
+                principalPathPixels =
+                    centerlineDiagnostics.PrincipalPathPixels;
+                principalPathCoverage =
+                    centerlineDiagnostics.PrincipalPathCoverage;
+
+                if (!centerlineBuilt)
+                {
+                    status =
+                        compactSpiralProbe
+                            ? "compact-probe-centerline-" +
+                              centerlineDiagnostics.Reason
+                            : "centerline-" +
+                              centerlineDiagnostics.Reason;
+                }
+                else
+                {
+                    var layeredDiagnostics =
+                        CurveFillLayeredRibbonAnalyzer.Analyze(
+                            source,
+                            model,
+                            protectedStrokeColors);
+                    layeredRibbonDetected =
+                        layeredDiagnostics.Detected;
+                    layeredRibbonSide =
+                        layeredDiagnostics.Side;
+                    layeredRibbonSequence =
+                        layeredDiagnostics.Sequence;
+                    layeredRibbonCoverage =
+                        layeredDiagnostics.Coverage;
+                    layeredRibbonBracketedCoverage =
+                        layeredDiagnostics.BracketedCoverage;
+                    layeredRibbonExteriorColor =
+                        layeredDiagnostics.ExteriorColor;
+                    layeredRibbonExteriorCoverage =
+                        layeredDiagnostics.ExteriorCoverage;
+                    layeredRibbonMeanWidths =
+                        string.Join(
+                            "|",
+                            layeredDiagnostics.MeanRunWidths
+                                .Select(width =>
+                                    width.ToString(
+                                        "0.000",
+                                        System.Globalization.CultureInfo.InvariantCulture)));
+
+                    designerRibbon =
+                        LooksLikeDesignerRibbon(
+                            model,
+                            out var ribbonShapeDiagnostics);
+                    var sparseTaperSweep =
+                        string.Equals(
+                            ribbonShapeDiagnostics.Reason,
+                            "ok-sparse-taper",
+                            StringComparison.Ordinal);
+                    var compactSpiralSweep =
+                        string.Equals(
+                            ribbonShapeDiagnostics.Reason,
+                            "ok-compact-spiral",
+                            StringComparison.Ordinal);
+                    ribbonShapeReason =
+                        ribbonShapeDiagnostics.Reason;
+                    ribbonMeanWidth =
+                        ribbonShapeDiagnostics.MeanWidth;
+                    ribbonWidthCoefficientVariation =
+                        ribbonShapeDiagnostics.WidthCoefficientVariation;
+                    ribbonTerminalRatio =
+                        ribbonShapeDiagnostics.TerminalRatio;
+                    ribbonMaximumBend =
+                        ribbonShapeDiagnostics.MaximumBend;
+                    ribbonRequiredBend =
+                        ribbonShapeDiagnostics.RequiredBend;
+
+                    // Short tapered hooks are a separately gated production family. Reuse the
+                    // exact same source-evidence predicate as runtime so audit/CI cannot drift.
+                    var taperedHookSweep =
+                        !designerRibbon &&
+                        LooksLikeTaperedHook(
+                            model,
+                            centerlineDiagnostics,
+                            ribbonShapeDiagnostics);
+                    var variableWidthSweepProbe =
+                        !designerRibbon &&
+                        LooksLikeVariableWidthSweep(
+                            model,
+                            centerlineDiagnostics,
+                            ribbonShapeDiagnostics);
+
+                    if (taperedHookSweep)
+                    {
+                        ribbonShapeReason =
+                            "ok-tapered-hook";
+                    }
+                    else if (variableWidthSweepProbe)
+                    {
+                        ribbonShapeReason =
+                            "ok-variable-width-sweep";
+                    }
+
+                    if (!designerRibbon &&
+                        !taperedHookSweep &&
+                        !variableWidthSweepProbe)
+                    {
+                        status =
+                            compactSpiralProbe
+                                ? "compact-probe-ribbon-shape"
+                                : "ribbon-shape";
+                    }
+                    else
+                    {
+                        if (broadSparseArch &&
+                            centerlineDiagnostics.Endpoints > 2 &&
+                            CurveFillRibbonSymmetryRecovery.TryRecover(
+                                model,
+                                source.Width,
+                                out var symmetricModel,
+                                out var symmetryDiagnostics))
+                        {
+                            model =
+                                symmetricModel;
+                            symmetryRecovered = true;
+                            symmetryAxis =
+                                symmetryDiagnostics.Axis;
+                            mirrorAgreement =
+                                symmetryDiagnostics.MirrorAgreement;
+                            symmetryMeanShift =
+                                symmetryDiagnostics.MeanSampleShift;
+                            symmetryMaxShift =
+                                symmetryDiagnostics.MaximumSampleShift;
+
+                            var selfMainArcExtracted =
+                                CurveFillRibbonMainArcExtractor.TryExtract(
+                                    model,
+                                    out var mainArcModel,
+                                    out var mainArcDiagnostics);
+                            mainArcReason =
+                                mainArcDiagnostics.Reason;
+                            mainArcStart =
+                                mainArcDiagnostics.StartIndex;
+                            mainArcEnd =
+                                mainArcDiagnostics.EndIndex;
+                            mainArcKeptFraction =
+                                mainArcDiagnostics.KeptFraction;
+
+                            if (selfMainArcExtracted)
+                            {
+                                model =
+                                    mainArcModel;
+                                mainArcExtracted = true;
+                            }
+                        }
+
+                        var mirrorSourceFused = false;
+
+                        if (broadSparseArch)
+                        {
+                            mirrorSourceFused =
+                                CurveFillRibbonMirrorPairRecovery.TryRecover(
+                                    model,
+                                    regions,
+                                    source.Width,
+                                    out var mirrorFusedModel,
+                                    out var mirrorSourceDiagnostics);
+                            mirrorSourceRecovered =
+                                mirrorSourceFused;
+                            mirrorSourceReason =
+                                mirrorSourceDiagnostics.Reason;
+                            mirrorSourceAgreement =
+                                mirrorSourceDiagnostics.MirrorAgreement;
+                            mirrorSourceMeanShift =
+                                mirrorSourceDiagnostics.MeanFusionShift;
+                            mirrorSourceMaxShift =
+                                mirrorSourceDiagnostics.MaximumFusionShift;
+
+                            if (mirrorSourceFused)
+                            {
+                                model =
+                                    mirrorFusedModel;
+
+                                if (!mainArcExtracted &&
+                                    centerlineDiagnostics.Endpoints > 2)
+                                {
+                                    var mirrorMainArcExtracted =
+                                        CurveFillRibbonMainArcExtractor.TryExtractMirrorFusedSweep(
+                                            model,
+                                            out var mirrorMainArcModel,
+                                            out var mirrorMainArcDiagnostics);
+                                    mainArcReason =
+                                        mirrorMainArcDiagnostics.Reason;
+                                    mainArcStart =
+                                        mirrorMainArcDiagnostics.StartIndex;
+                                    mainArcEnd =
+                                        mirrorMainArcDiagnostics.EndIndex;
+                                    mainArcKeptFraction =
+                                        mirrorMainArcDiagnostics.KeptFraction;
+
+                                    if (mirrorMainArcExtracted)
+                                    {
+                                        model =
+                                            mirrorMainArcModel;
+                                        mainArcExtracted = true;
+                                    }
+                                }
+                            }
+                        }
+
+                        if (sparseTaperSweep &&
+                            !mainArcExtracted &&
+                            centerlineDiagnostics.Endpoints > 2)
+                        {
+                            var sparseTaperMainArcExtracted =
+                                CurveFillRibbonMainArcExtractor.TryExtractSparseTaperSweep(
+                                    model,
+                                    out var sparseTaperMainArcModel,
+                                    out var sparseTaperMainArcDiagnostics);
+
+                            mainArcReason =
+                                sparseTaperMainArcDiagnostics.Reason;
+                            mainArcStart =
+                                sparseTaperMainArcDiagnostics.StartIndex;
+                            mainArcEnd =
+                                sparseTaperMainArcDiagnostics.EndIndex;
+                            mainArcKeptFraction =
+                                sparseTaperMainArcDiagnostics.KeptFraction;
+
+                            if (sparseTaperMainArcExtracted)
+                            {
+                                model =
+                                    sparseTaperMainArcModel;
+                                mainArcExtracted = true;
+                            }
+                        }
+
+                        // Variable-width sweeps need one repeat-consistent dominant
+                        // path before their fit quality is meaningful. Unlike the normal broad
+                        // ribbon logic, probe the one-sided extractor even when the raw skeleton
+                        // has only two endpoints; a mirrored copy must not switch to a whole-
+                        // component compound model merely because a tiny branch merged away.
+                        if (variableWidthSweepProbe &&
+                            !mainArcExtracted)
+                        {
+                            var variableWidthMainArcExtracted =
+                                CurveFillRibbonMainArcExtractor.TryExtractOneSidedSweep(
+                                    model,
+                                    out var variableWidthMainArcModel,
+                                    out var variableWidthMainArcDiagnostics);
+
+                            mainArcReason =
+                                variableWidthMainArcDiagnostics.Reason;
+                            mainArcStart =
+                                variableWidthMainArcDiagnostics.StartIndex;
+                            mainArcEnd =
+                                variableWidthMainArcDiagnostics.EndIndex;
+                            mainArcKeptFraction =
+                                variableWidthMainArcDiagnostics.KeptFraction;
+
+                            if (variableWidthMainArcExtracted)
+                            {
+                                model =
+                                    variableWidthMainArcModel;
+                                mainArcExtracted = true;
+                            }
+                        }
+
+                        var sparseTaperCompoundAuthority =
+                            sparseTaperSweep &&
+                            (centerlineDiagnostics.Endpoints <= 2 ||
+                             mainArcExtracted);
+
+                        ElegantArcFit fit;
+
+                        if (variableWidthSweepProbe)
+                        {
+                            if (CurveFillRibbonThroughPointsFitter.TryFit(
+                                    model,
+                                    out var variableWidthThroughFit,
+                                    out var variableWidthThroughDiagnostics))
+                            {
+                                fit =
+                                    variableWidthThroughFit;
+                            }
+                            else
+                            {
+                                fit =
+                                    variableWidthThroughFit;
+                            }
+
+                            fitKind =
+                                "variable-width-through";
+                            curveFamily =
+                                CurveType.SplineThroughPoints.ToString();
+                            roundness =
+                                variableWidthThroughDiagnostics.Roundness;
+                        }
+                        else if (taperedHookSweep)
+                        {
+                            // Production is deliberately compound-only. Audit the same candidate
+                            // even when unsafe; there is no Through-Points/macro fallback that could
+                            // make CI report a different authority than runtime.
+                            compoundAttempted = true;
+
+                            _ =
+                                CurveFillRibbonCompoundFitter.TryFit(
+                                    model,
+                                    out var hookCompoundFit,
+                                    out var hookCompoundDiagnostics);
+                            fit =
+                                hookCompoundFit;
+                            fitKind =
+                                "tapered-hook-compound";
+                            curveFamily =
+                                "CompoundSpline";
+
+                            compoundReason =
+                                hookCompoundDiagnostics.Reason;
+                            compoundP95Deviation =
+                                hookCompoundDiagnostics.Percentile95Deviation;
+                            compoundMaximumDeviation =
+                                hookCompoundDiagnostics.MaximumDeviation;
+                            compoundSelectedRoughness =
+                                hookCompoundDiagnostics.Roughness;
+                            compoundSelectedAnchors =
+                                hookCompoundDiagnostics.Anchors;
+                            compoundSelectedSmoothingPasses =
+                                hookCompoundDiagnostics.SmoothingPasses;
+                            compoundSmoothestSafeRoughness =
+                                hookCompoundDiagnostics.SmoothestSafeRoughness;
+                            compoundSmoothestSafeAnchors =
+                                hookCompoundDiagnostics.SmoothestSafeAnchors;
+                            compoundSmoothestSafeSmoothingPasses =
+                                hookCompoundDiagnostics.SmoothestSafeSmoothingPasses;
+                            compoundSmoothestSafeP95Deviation =
+                                hookCompoundDiagnostics.SmoothestSafeP95Deviation;
+                            compoundSmoothestSafeMaximumDeviation =
+                                hookCompoundDiagnostics.SmoothestSafeMaximumDeviation;
+                            compoundSmoothestCurvatureValidRoughness =
+                                hookCompoundDiagnostics.SmoothestCurvatureValidRoughness;
+                            compoundSmoothestCurvatureValidAnchors =
+                                hookCompoundDiagnostics.SmoothestCurvatureValidAnchors;
+                            compoundSmoothestCurvatureValidSmoothingPasses =
+                                hookCompoundDiagnostics.SmoothestCurvatureValidSmoothingPasses;
+                            compoundSmoothestCurvatureValidP95Deviation =
+                                hookCompoundDiagnostics.SmoothestCurvatureValidP95Deviation;
+                            compoundSmoothestCurvatureValidMaximumDeviation =
+                                hookCompoundDiagnostics.SmoothestCurvatureValidMaximumDeviation;
+                            compoundSelectedLobeFairness =
+                                hookCompoundDiagnostics.SelectedLobeFairness;
+                            compoundFairestSafeLobeFairness =
+                                hookCompoundDiagnostics.FairestSafeLobeFairness;
+                            compoundFairestSafeRoughness =
+                                hookCompoundDiagnostics.FairestSafeRoughness;
+                            compoundFairestSafeAnchors =
+                                hookCompoundDiagnostics.FairestSafeAnchors;
+                            compoundFairestSafeSmoothingPasses =
+                                hookCompoundDiagnostics.FairestSafeSmoothingPasses;
+                            compoundFairestSafeP95Deviation =
+                                hookCompoundDiagnostics.FairestSafeP95Deviation;
+                            compoundFairestSafeMaximumDeviation =
+                                hookCompoundDiagnostics.FairestSafeMaximumDeviation;
+                        }
+                        else if (compactSpiralSweep)
+                        {
+                            // Diagnostic routing only: compact spirals are multi-turn shapes, so a
+                            // single cubic or generic 8-anchor macro spline is the wrong first
+                            // model. Test source-faithful Through-Points first, then the
+                            // low-frequency compound fitter. Production prefilter still excludes
+                            // this family until one of these models proves safe on real raster.
+                            if (CurveFillRibbonThroughPointsFitter.TryFit(
+                                    model,
+                                    out var compactThroughFit,
+                                    out var compactThroughDiagnostics))
+                            {
+                                fit =
+                                    compactThroughFit;
+                                fitKind =
+                                    "compact-through";
+                                curveFamily =
+                                    CurveType.SplineThroughPoints.ToString();
+                                roundness =
+                                    compactThroughDiagnostics.Roundness;
+                            }
+                            else
+                            {
+                                compoundAttempted = true;
+
+                                if (CurveFillRibbonCompoundFitter.TryFit(
+                                        model,
+                                        out var compactCompoundFit,
+                                        out var compactCompoundDiagnostics))
+                                {
+                                    fit =
+                                        compactCompoundFit;
+                                    fitKind =
+                                        "compact-compound";
+                                    curveFamily =
+                                        "CompoundSpline";
+                                }
+                                else
+                                {
+                                    fit =
+                                        ElegantArcFitter.Fit(
+                                            model,
+                                            taperApex: false,
+                                            maximumAnchors: 8,
+                                            smoothingPasses: 2);
+                                    fitKind =
+                                        "compact-macro-fallback";
+                                    curveFamily =
+                                        CurveType.Spline.ToString();
+                                }
+
+                                compoundReason =
+                                    compactCompoundDiagnostics.Reason;
+                                compoundP95Deviation =
+                                    compactCompoundDiagnostics.Percentile95Deviation;
+                                compoundMaximumDeviation =
+                                    compactCompoundDiagnostics.MaximumDeviation;
+                                compoundSelectedRoughness =
+                                    compactCompoundDiagnostics.Roughness;
+                                compoundSelectedAnchors =
+                                    compactCompoundDiagnostics.Anchors;
+                                compoundSelectedSmoothingPasses =
+                                    compactCompoundDiagnostics.SmoothingPasses;
+                                compoundSmoothestSafeRoughness =
+                                    compactCompoundDiagnostics.SmoothestSafeRoughness;
+                                compoundSmoothestSafeAnchors =
+                                    compactCompoundDiagnostics.SmoothestSafeAnchors;
+                                compoundSmoothestSafeSmoothingPasses =
+                                    compactCompoundDiagnostics.SmoothestSafeSmoothingPasses;
+                                compoundSmoothestSafeP95Deviation =
+                                    compactCompoundDiagnostics.SmoothestSafeP95Deviation;
+                                compoundSmoothestSafeMaximumDeviation =
+                                    compactCompoundDiagnostics.SmoothestSafeMaximumDeviation;
+                                compoundSmoothestCurvatureValidRoughness =
+                                    compactCompoundDiagnostics.SmoothestCurvatureValidRoughness;
+                                compoundSmoothestCurvatureValidAnchors =
+                                    compactCompoundDiagnostics.SmoothestCurvatureValidAnchors;
+                                compoundSmoothestCurvatureValidSmoothingPasses =
+                                    compactCompoundDiagnostics.SmoothestCurvatureValidSmoothingPasses;
+                                compoundSmoothestCurvatureValidP95Deviation =
+                                    compactCompoundDiagnostics.SmoothestCurvatureValidP95Deviation;
+                                compoundSmoothestCurvatureValidMaximumDeviation =
+                                    compactCompoundDiagnostics.SmoothestCurvatureValidMaximumDeviation;
+                            compoundSelectedLobeFairness =
+                                compactCompoundDiagnostics.SelectedLobeFairness;
+                            compoundFairestSafeLobeFairness =
+                                compactCompoundDiagnostics.FairestSafeLobeFairness;
+                            compoundFairestSafeRoughness =
+                                compactCompoundDiagnostics.FairestSafeRoughness;
+                            compoundFairestSafeAnchors =
+                                compactCompoundDiagnostics.FairestSafeAnchors;
+                            compoundFairestSafeSmoothingPasses =
+                                compactCompoundDiagnostics.FairestSafeSmoothingPasses;
+                            compoundFairestSafeP95Deviation =
+                                compactCompoundDiagnostics.FairestSafeP95Deviation;
+                            compoundFairestSafeMaximumDeviation =
+                                compactCompoundDiagnostics.FairestSafeMaximumDeviation;
+                            }
+                        }
+                        else if (CurveFillRibbonToolFitter.TryFit(
+                                model,
+                                out var toolFit,
+                                out var toolStyle))
+                        {
+                            fit =
+                                toolFit;
+                            fitKind =
+                                "curve-tool";
+                            curveFamily =
+                                toolStyle.Type.ToString();
+                            roundness =
+                                toolStyle.Roundness;
+
+                            if (broadSparseArch &&
+                                mainArcExtracted &&
+                                CurveFillRibbonThroughPointsFitter.TryFit(
+                                    model,
+                                    out var preferredThroughFit,
+                                    out var preferredThroughDiagnostics))
+                            {
+                                var toolRoughness =
+                                    CurveFillRibbonSmoothness.Measure(
+                                        toolFit.Points);
+                                var throughRoughness =
+                                    CurveFillRibbonSmoothness.Measure(
+                                        preferredThroughFit.Points);
+
+                                if (CurveFillRibbonFitSelector.PreferGeometricThroughPoints(
+                                        toolFit,
+                                        toolRoughness,
+                                        preferredThroughFit,
+                                        throughRoughness))
+                                {
+                                    fit =
+                                        preferredThroughFit;
+                                    fitKind =
+                                        "through-geometry-preferred";
+                                    curveFamily =
+                                        CurveType.SplineThroughPoints.ToString();
+                                    roundness =
+                                        preferredThroughDiagnostics.Roundness;
+                                }
+                            }
+                        }
+                        else if (broadSparseArch)
+                        {
+                            if (CurveFillRibbonThroughPointsFitter.TryFit(
+                                    model,
+                                    out var throughFit,
+                                    out var throughDiagnostics))
+                            {
+                                fit =
+                                    throughFit;
+                                fitKind =
+                                    "through-geometry";
+                                curveFamily =
+                                    CurveType.SplineThroughPoints.ToString();
+                                roundness =
+                                    throughDiagnostics.Roundness;
+                            }
+                            else if (CurveFillBroadOvalArcFitter.TryFit(
+                                         model,
+                                         out var ovalFit,
+                                         out _))
+                            {
+                                fit =
+                                    ovalFit;
+                                fitKind =
+                                    "half-ellipse";
+                                curveFamily =
+                                    "Ellipse";
+                            }
+                            else if (CurveFillRibbonBezierFitter.TryFit(
+                                         model,
+                                         out var bezierFit,
+                                         out _))
+                            {
+                                fit =
+                                    bezierFit;
+                                fitKind =
+                                    "cubic";
+                                curveFamily =
+                                    CurveType.Bezier.ToString();
+                            }
+                            else if (mirrorSourceFused ||
+                                     sparseTaperCompoundAuthority)
+                            {
+                                compoundAttempted = true;
+
+                                if (CurveFillRibbonCompoundFitter.TryFit(
+                                        model,
+                                        out var compoundFit,
+                                        out var compoundDiagnostics))
+                                {
+                                    fit =
+                                        compoundFit;
+                                    fitKind =
+                                        "compound";
+                                    curveFamily =
+                                        "CompoundSpline";
+                                }
+                                else
+                                {
+                                    fit =
+                                        ElegantArcFitter.Fit(
+                                            model,
+                                            taperApex: false,
+                                            maximumAnchors: 8,
+                                            smoothingPasses: 2);
+                                    fitKind =
+                                        "macro-spline";
+                                    curveFamily =
+                                        CurveType.Spline.ToString();
+                                }
+
+                                compoundReason =
+                                    compoundDiagnostics.Reason;
+                                compoundP95Deviation =
+                                    compoundDiagnostics.Percentile95Deviation;
+                                compoundMaximumDeviation =
+                                    compoundDiagnostics.MaximumDeviation;
+                                compoundSelectedRoughness =
+                                    compoundDiagnostics.Roughness;
+                                compoundSelectedAnchors =
+                                    compoundDiagnostics.Anchors;
+                                compoundSelectedSmoothingPasses =
+                                    compoundDiagnostics.SmoothingPasses;
+                                compoundSmoothestSafeRoughness =
+                                    compoundDiagnostics.SmoothestSafeRoughness;
+                                compoundSmoothestSafeAnchors =
+                                    compoundDiagnostics.SmoothestSafeAnchors;
+                                compoundSmoothestSafeSmoothingPasses =
+                                    compoundDiagnostics.SmoothestSafeSmoothingPasses;
+                                compoundSmoothestSafeP95Deviation =
+                                    compoundDiagnostics.SmoothestSafeP95Deviation;
+                                compoundSmoothestSafeMaximumDeviation =
+                                    compoundDiagnostics.SmoothestSafeMaximumDeviation;
+                                compoundSmoothestCurvatureValidRoughness =
+                                    compoundDiagnostics.SmoothestCurvatureValidRoughness;
+                                compoundSmoothestCurvatureValidAnchors =
+                                    compoundDiagnostics.SmoothestCurvatureValidAnchors;
+                                compoundSmoothestCurvatureValidSmoothingPasses =
+                                    compoundDiagnostics.SmoothestCurvatureValidSmoothingPasses;
+                                compoundSmoothestCurvatureValidP95Deviation =
+                                    compoundDiagnostics.SmoothestCurvatureValidP95Deviation;
+                                compoundSmoothestCurvatureValidMaximumDeviation =
+                                    compoundDiagnostics.SmoothestCurvatureValidMaximumDeviation;
+                            compoundSelectedLobeFairness =
+                                compoundDiagnostics.SelectedLobeFairness;
+                            compoundFairestSafeLobeFairness =
+                                compoundDiagnostics.FairestSafeLobeFairness;
+                            compoundFairestSafeRoughness =
+                                compoundDiagnostics.FairestSafeRoughness;
+                            compoundFairestSafeAnchors =
+                                compoundDiagnostics.FairestSafeAnchors;
+                            compoundFairestSafeSmoothingPasses =
+                                compoundDiagnostics.FairestSafeSmoothingPasses;
+                            compoundFairestSafeP95Deviation =
+                                compoundDiagnostics.FairestSafeP95Deviation;
+                            compoundFairestSafeMaximumDeviation =
+                                compoundDiagnostics.FairestSafeMaximumDeviation;
+                            }
+                            else
+                            {
+                                fit =
+                                    ElegantArcFitter.Fit(
+                                        model,
+                                        taperApex: false,
+                                        maximumAnchors: 8,
+                                        smoothingPasses: 2);
+                                fitKind =
+                                    "macro-spline";
+                                curveFamily =
+                                    CurveType.Spline.ToString();
+                            }
+                        }
+                        else if (CurveFillRibbonBezierFitter.TryFit(
+                                     model,
+                                     out var bezierFit,
+                                     out _))
+                        {
+                            fit =
+                                bezierFit;
+                            fitKind =
+                                "cubic";
+                            curveFamily =
+                                CurveType.Bezier.ToString();
+                        }
+                        else
+                        {
+                            fit =
+                                ElegantArcFitter.Fit(
+                                    model,
+                                    taperApex: false,
+                                    maximumAnchors: 8,
+                                    smoothingPasses: 2);
+                            fitKind =
+                                "macro-spline";
+                            curveFamily =
+                                CurveType.Spline.ToString();
+                        }
+
+                        var maximumAllowedFlips =
+                            fitKind.EndsWith(
+                                "compound",
+                                StringComparison.Ordinal)
+                                ? 2
+                                : 1;
+                        fitSafe =
+                            fit.IsSafe &&
+                            fit.CurvatureSignFlips <=
+                                maximumAllowedFlips;
+                        accepted =
+                            fitSafe &&
+                            (prefilterAccepted ||
+                             compactSpiralSweep ||
+                             taperedHookSweep ||
+                             variableWidthSweepProbe);
+                        maximumDeviation =
+                            fit.MaximumCenterlineDeviation;
+                        curvatureFlips =
+                            fit.CurvatureSignFlips;
+                        selectedSmoothness =
+                            CurveFillRibbonSmoothness.Measure(
+                                fit.Points);
+
+                        if (fitSafe &&
+                            !variableWidthSweepProbe)
+                        {
+                            _ =
+                                CurveFillRibbonWidthProfileRegularizer.Regularize(
+                                    model,
+                                    fit,
+                                    out var widthAuditDiagnostics);
+                            widthRegularizerApplied =
+                                widthAuditDiagnostics.Applied;
+                            widthSourceCoefficientVariation =
+                                widthAuditDiagnostics.SourceWidthCoefficientVariation;
+                            widthTerminalRatio =
+                                widthAuditDiagnostics.TerminalWidthRatio;
+                            widthVariationBefore =
+                                widthAuditDiagnostics.BeforeAdjacentVariation;
+                            widthVariationAfter =
+                                widthAuditDiagnostics.AfterAdjacentVariation;
+                            widthMaximumShift =
+                                widthAuditDiagnostics.MaximumHalfWidthShift;
+                        }
+
+                        if (fitSafe &&
+                            (variableWidthSweepProbe ||
+                             taperedHookSweep))
+                        {
+                            var mappedWidthFit =
+                                CurveFillVariableWidthProfileMapper.Apply(
+                                    model,
+                                    fit,
+                                    out var variableWidthDiagnostics);
+                            variableWidthProfileApplied =
+                                variableWidthDiagnostics.Applied;
+                            variableWidthSourceCoefficientVariation =
+                                variableWidthDiagnostics.SourceCoefficientVariation;
+                            variableWidthMappedCoefficientVariation =
+                                variableWidthDiagnostics.MappedCoefficientVariation;
+                            variableWidthSourceMinimum =
+                                variableWidthDiagnostics.SourceMinimum;
+                            variableWidthSourceMaximum =
+                                variableWidthDiagnostics.SourceMaximum;
+                            variableWidthMappedMinimum =
+                                variableWidthDiagnostics.MappedMinimum;
+                            variableWidthMappedMaximum =
+                                variableWidthDiagnostics.MappedMaximum;
+                            variableWidthMaximumAdjacentVariation =
+                                variableWidthDiagnostics.MaximumAdjacentVariation;
+
+                            if (variableWidthSweepProbe ||
+                                taperedHookSweep)
+                            {
+                                fit =
+                                    mappedWidthFit;
+
+                                var maximumAdjacentVariation =
+                                    variableWidthSweepProbe
+                                        ? 0.20
+                                        : 0.45;
+                                var profileFaithful =
+                                    variableWidthDiagnostics.Applied &&
+                                    variableWidthDiagnostics.SourceCoefficientVariation >
+                                        1e-9 &&
+                                    variableWidthDiagnostics.MappedCoefficientVariation >=
+                                        variableWidthDiagnostics.SourceCoefficientVariation *
+                                        0.90 &&
+                                    variableWidthDiagnostics.MappedCoefficientVariation <=
+                                        variableWidthDiagnostics.SourceCoefficientVariation *
+                                        1.05 &&
+                                    variableWidthDiagnostics.MaximumAdjacentVariation <=
+                                        maximumAdjacentVariation;
+
+                                if (taperedHookSweep)
+                                {
+                                    profileFaithful =
+                                        profileFaithful &&
+                                        variableWidthDiagnostics.MappedMaximum >=
+                                            variableWidthDiagnostics.SourceMaximum *
+                                            0.85 &&
+                                        variableWidthDiagnostics.MappedMinimum <=
+                                            variableWidthDiagnostics.SourceMinimum *
+                                            1.25;
+                                }
+
+                                if (!profileFaithful)
+                                {
+                                    fitSafe = false;
+                                    accepted = false;
+                                }
+                            }
+                        }
+
+                        var probeHighRoughnessCompound =
+                            string.Equals(
+                                fitKind,
+                                "compound",
+                                StringComparison.Ordinal) &&
+                            selectedSmoothness >=
+                                0.20;
+
+                        if (probeHighRoughnessCompound)
+                        {
+                            var sourceFairnessDiagnostics =
+                                CurveFillRibbonCurvatureFairness.Measure(
+                                    model.Samples);
+                            var fitFairnessDiagnostics =
+                                CurveFillRibbonCurvatureFairness.Measure(
+                                    fit.Points);
+                            sourceCurvatureFairness =
+                                sourceFairnessDiagnostics.Score;
+                            fitCurvatureFairness =
+                                fitFairnessDiagnostics.Score;
+                            sourceCurvatureInflections =
+                                sourceFairnessDiagnostics.InflectionCount;
+                            fitCurvatureInflections =
+                                fitFairnessDiagnostics.InflectionCount;
+                            sourceCurvatureMaximumVariation =
+                                sourceFairnessDiagnostics.MaximumVariation;
+                            fitCurvatureMaximumVariation =
+                                fitFairnessDiagnostics.MaximumVariation;
+                        }
+
+                        if ((broadSparseArch &&
+                             mainArcExtracted ||
+                             probeHighRoughnessCompound) &&
+                            CurveFillRibbonThroughPointsFitter.TryFit(
+                                model,
+                                out var alternativeThroughFit,
+                                out var alternativeThroughDiagnostics))
+                        {
+                            alternativeThroughSafe = true;
+                            alternativeThroughSmoothness =
+                                CurveFillRibbonSmoothness.Measure(
+                                    alternativeThroughFit.Points);
+                            alternativeThroughMaximumDeviation =
+                                alternativeThroughDiagnostics.MaximumDeviation;
+                            alternativeThroughP95Deviation =
+                                alternativeThroughDiagnostics.Percentile95Deviation;
+                            alternativeThroughRoundness =
+                                alternativeThroughDiagnostics.Roundness;
+                        }
+
+                        if (probeHighRoughnessCompound)
+                        {
+                            piecewiseSCurveSafe =
+                                CurveFillRibbonPiecewiseSCurveFitter.TryFit(
+                                    model,
+                                    out var piecewiseSCurveFit,
+                                    out var piecewiseSCurveDiagnostics);
+                            piecewiseSCurveSplitIndex =
+                                piecewiseSCurveDiagnostics.SplitIndex;
+                            piecewiseSCurveSmoothness =
+                                piecewiseSCurveDiagnostics.Roughness;
+                            piecewiseSCurveMaximumDeviation =
+                                piecewiseSCurveDiagnostics.MaximumDeviation;
+                            piecewiseSCurveP95Deviation =
+                                piecewiseSCurveDiagnostics.Percentile95Deviation;
+                            piecewiseSCurveCurvatureFlips =
+                                piecewiseSCurveDiagnostics.CurvatureSignFlips;
+                            piecewiseSCurveJoinAngleDegrees =
+                                piecewiseSCurveDiagnostics.JoinAngleDegrees;
+
+                            constrainedFairingSafe =
+                                CurveFillRibbonConstrainedFairing.TryFair(
+                                    model,
+                                    fit,
+                                    out var constrainedFairingFit,
+                                    out var constrainedFairingDiagnostics);
+                            constrainedFairingReason =
+                                constrainedFairingDiagnostics.Reason;
+                            constrainedFairingBeforeRoughness =
+                                constrainedFairingDiagnostics.BeforeRoughness;
+                            constrainedFairingAfterRoughness =
+                                constrainedFairingDiagnostics.AfterRoughness;
+                            constrainedFairingMaximumDeviation =
+                                constrainedFairingDiagnostics.MaximumDeviation;
+                            constrainedFairingP95Deviation =
+                                constrainedFairingDiagnostics.Percentile95Deviation;
+                            constrainedFairingMaximumShift =
+                                constrainedFairingDiagnostics.MaximumShift;
+                            constrainedFairingBeforeCurvatureFlips =
+                                constrainedFairingDiagnostics.BeforeCurvatureSignFlips;
+                            constrainedFairingAfterCurvatureFlips =
+                                constrainedFairingDiagnostics.AfterCurvatureSignFlips;
+                        }
+
+                        status =
+                            accepted
+                                ? variableWidthSweepProbe
+                                    ? "accepted-variable-width-sweep"
+                                    : taperedHookSweep
+                                        ? "accepted-tapered-hook"
+                                        : compactSpiralSweep &&
+                                          !prefilterAccepted
+                                            ? "accepted-compact-spiral"
+                                            : "accepted"
+                                : variableWidthSweepProbe &&
+                                  fitSafe &&
+                                  accepted
+                                    ? "accepted-variable-width-sweep"
+                                    : variableWidthSweepProbe
+                                        ? "variable-width-fit-unsafe"
+                                        : taperedHookSweep
+                                            ? "tapered-hook-fit-unsafe"
+                                            : compactSpiralProbe &&
+                                          fitSafe
+                                            ? "compact-probe-safe"
+                                            : compactSpiralProbe
+                                                ? "compact-probe-fit-unsafe"
+                                                : "fit-unsafe";
+                    }
+                }
+            }
+
+            result.Add(
+                new RibbonArcCandidateStage(
+                    region.Color,
+                    region.MinX,
+                    region.MinY,
+                    region.MaxX,
+                    region.MaxY,
+                    region.Area,
+                    candidate.Elongation,
+                    candidate.BoundaryRatio,
+                    boundingFillRatio,
+                    broadSparseArch,
+                    prefilterAccepted,
+                    centerlineBuilt,
+                    skeletonPixels,
+                    endpoints,
+                    principalPathPixels,
+                    principalPathCoverage,
+                    designerRibbon,
+                    ribbonShapeReason,
+                    ribbonMeanWidth,
+                    ribbonWidthCoefficientVariation,
+                    ribbonTerminalRatio,
+                    ribbonMaximumBend,
+                    ribbonRequiredBend,
+                    layeredRibbonDetected,
+                    layeredRibbonSide,
+                    layeredRibbonSequence,
+                    layeredRibbonCoverage,
+                    layeredRibbonBracketedCoverage,
+                    layeredRibbonExteriorColor,
+                    layeredRibbonExteriorCoverage,
+                    layeredRibbonMeanWidths,
+                    symmetryRecovered,
+                    symmetryAxis,
+                    mirrorAgreement,
+                    symmetryMeanShift,
+                    symmetryMaxShift,
+                    mirrorSourceRecovered,
+                    mirrorSourceReason,
+                    mirrorSourceAgreement,
+                    mirrorSourceMeanShift,
+                    mirrorSourceMaxShift,
+                    mainArcExtracted,
+                    mainArcReason,
+                    mainArcStart,
+                    mainArcEnd,
+                    mainArcKeptFraction,
+                    compoundAttempted,
+                    compoundReason,
+                    compoundP95Deviation,
+                    compoundMaximumDeviation,
+                    compoundSelectedRoughness,
+                    compoundSelectedAnchors,
+                    compoundSelectedSmoothingPasses,
+                    compoundSmoothestSafeRoughness,
+                    compoundSmoothestSafeAnchors,
+                    compoundSmoothestSafeSmoothingPasses,
+                    compoundSmoothestSafeP95Deviation,
+                    compoundSmoothestSafeMaximumDeviation,
+                    compoundSmoothestCurvatureValidRoughness,
+                    compoundSmoothestCurvatureValidAnchors,
+                    compoundSmoothestCurvatureValidSmoothingPasses,
+                    compoundSmoothestCurvatureValidP95Deviation,
+                    compoundSmoothestCurvatureValidMaximumDeviation,
+                    compoundSelectedLobeFairness,
+                    compoundFairestSafeLobeFairness,
+                    compoundFairestSafeRoughness,
+                    compoundFairestSafeAnchors,
+                    compoundFairestSafeSmoothingPasses,
+                    compoundFairestSafeP95Deviation,
+                    compoundFairestSafeMaximumDeviation,
+                    fitKind,
+                    curveFamily,
+                    roundness,
+                    fitSafe,
+                    maximumDeviation,
+                    curvatureFlips,
+                    selectedSmoothness,
+                    sourceCurvatureFairness,
+                    fitCurvatureFairness,
+                    sourceCurvatureInflections,
+                    fitCurvatureInflections,
+                    sourceCurvatureMaximumVariation,
+                    fitCurvatureMaximumVariation,
+                    alternativeThroughSafe,
+                    alternativeThroughSmoothness,
+                    alternativeThroughMaximumDeviation,
+                    alternativeThroughP95Deviation,
+                    alternativeThroughRoundness,
+                    piecewiseSCurveSafe,
+                    piecewiseSCurveSplitIndex,
+                    piecewiseSCurveSmoothness,
+                    piecewiseSCurveMaximumDeviation,
+                    piecewiseSCurveP95Deviation,
+                    piecewiseSCurveCurvatureFlips,
+                    piecewiseSCurveJoinAngleDegrees,
+                    constrainedFairingSafe,
+                    constrainedFairingReason,
+                    constrainedFairingBeforeRoughness,
+                    constrainedFairingAfterRoughness,
+                    constrainedFairingMaximumDeviation,
+                    constrainedFairingP95Deviation,
+                    constrainedFairingMaximumShift,
+                    constrainedFairingBeforeCurvatureFlips,
+                    constrainedFairingAfterCurvatureFlips,
+                    widthRegularizerApplied,
+                    widthSourceCoefficientVariation,
+                    widthTerminalRatio,
+                    widthVariationBefore,
+                    widthVariationAfter,
+                    widthMaximumShift,
+                    variableWidthProfileApplied,
+                    variableWidthSourceCoefficientVariation,
+                    variableWidthMappedCoefficientVariation,
+                    variableWidthSourceMinimum,
+                    variableWidthSourceMaximum,
+                    variableWidthMappedMinimum,
+                    variableWidthMappedMaximum,
+                    variableWidthMaximumAdjacentVariation,
+                    accepted,
+                    status));
+        }
+
+        return result
+            .OrderBy(stage =>
+                stage.MinY)
+            .ThenBy(stage =>
+                stage.MinX)
+            .ToArray();
+    }
+
+    private static bool LooksLikeProductionLayeredRibbon(
+        LeafPetalArcModel model,
+        ElegantArcFit fit,
+        LayeredRibbonProfileDiagnostics profile,
+        IReadOnlySet<byte> protectedStrokeColors,
+        double redrawScale)
+    {
+        if (redrawScale <
+                MinimumLayeredRibbonRedrawScale ||
+            !fit.IsSafe ||
+            fit.CurvatureSignFlips != 2 ||
+            fit.MaximumCenterlineDeviation >
+                3.30 ||
+            !profile.Detected ||
+            profile.BracketedCoverage <
+                0.80 ||
+            profile.MeanRunWidths is null ||
+            profile.MeanRunWidths.Count <
+                3)
+        {
+            return false;
+        }
+
+        var candidate =
+            model.Candidate;
+        var region =
+            candidate.Region;
+        var boundingFillRatio =
+            region.Area /
+            (double)Math.Max(
+                1,
+                region.Width *
+                region.Height);
+
+        if (candidate.Elongation <
+                4.0 ||
+            candidate.Elongation >
+                5.75 ||
+            candidate.MajorExtent <
+                120d ||
+            boundingFillRatio >
+                0.20)
+        {
+            return false;
+        }
+
+        var parts =
+            profile.Sequence
+                .Split(
+                    '>',
+                    StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length < 3 ||
+            !string.Equals(
+                parts[0],
+                parts[2],
+                StringComparison.Ordinal) ||
+            !byte.TryParse(
+                parts[0],
+                out var separatorColor) ||
+            !protectedStrokeColors.Contains(
+                separatorColor))
+        {
+            return false;
+        }
+
+        var innerSeparatorWidth =
+            profile.MeanRunWidths[0];
+        var bandWidth =
+            profile.MeanRunWidths[1];
+        var outerSeparatorWidth =
+            profile.MeanRunWidths[2];
+
+        return
+            innerSeparatorWidth >=
+                0.65 &&
+            innerSeparatorWidth <=
+                1.65 &&
+            outerSeparatorWidth >=
+                0.65 &&
+            outerSeparatorWidth <=
+                1.65 &&
+            bandWidth >=
+                1.75 &&
+            bandWidth <=
+                8.0;
+    }
+
+    private static bool LooksLikeVariableWidthSweep(
+        LeafPetalArcModel model,
+        RibbonCenterlineBuildDiagnostics centerline,
+        RibbonShapeDiagnostics shape)
+    {
+        var candidate =
+            model.Candidate;
+        var region =
+            candidate.Region;
+        var boundingFillRatio =
+            region.Area /
+            (double)Math.Max(
+                1,
+                region.Width *
+                region.Height);
+
+        return
+            string.Equals(
+                shape.Reason,
+                "width-variation",
+                StringComparison.Ordinal) &&
+            centerline.Endpoints >= 2 &&
+            centerline.Endpoints <= 4 &&
+            centerline.PrincipalPathCoverage >=
+                0.90 &&
+            candidate.Elongation >=
+                3.0 &&
+            boundingFillRatio <=
+                0.16 &&
+            candidate.BoundaryRatio <=
+                0.35 &&
+            shape.MeanWidth >=
+                1.5 &&
+            shape.WidthCoefficientVariation >
+                MaximumWidthCoefficientVariation &&
+            shape.WidthCoefficientVariation <=
+                0.80;
+    }
+
+    private static bool LooksLikeTaperedHook(
+        LeafPetalArcModel model,
+        RibbonCenterlineBuildDiagnostics centerline,
+        RibbonShapeDiagnostics shape)
+    {
+        var candidate =
+            model.Candidate;
+        var region =
+            candidate.Region;
+        var boundingFillRatio =
+            region.Area /
+            (double)Math.Max(
+                1,
+                region.Width *
+                region.Height);
+
+        return
+            string.Equals(
+                shape.Reason,
+                "terminal-width-ratio",
+                StringComparison.Ordinal) &&
+            centerline.Endpoints == 2 &&
+            centerline.PrincipalPathCoverage >=
+                0.95 &&
+            candidate.Elongation >=
+                1.75 &&
+            candidate.Elongation <=
+                2.40 &&
+            boundingFillRatio >=
+                0.15 &&
+            boundingFillRatio <=
+                0.32 &&
+            candidate.BoundaryRatio <=
+                0.46 &&
+            shape.WidthCoefficientVariation <=
+                0.55 &&
+            shape.TerminalRatio >=
+                0.10 &&
+            shape.TerminalRatio <=
+                0.25 &&
+            shape.MaximumBend >=
+                shape.RequiredBend *
+                2.0;
+    }
+
+    private static bool LooksLikeDesignerRibbon(
+        LeafPetalArcModel model,
+        out RibbonShapeDiagnostics diagnostics)
+    {
+        var samples =
+            model.Samples;
+
+        diagnostics =
+            new RibbonShapeDiagnostics(
+                "not-evaluated",
+                0d,
+                0d,
+                0d,
+                0d,
+                0d);
+
+        if (samples.Count < 8)
+        {
+            diagnostics =
+                diagnostics with
+                {
+                    Reason = "too-few-samples",
+                };
+            return false;
+        }
+
+        var widths =
+            samples
+                .Select(sample =>
+                    Math.Max(
+                        0.45,
+                        sample.HalfWidth))
+                .ToArray();
+        var meanWidth =
+            widths.Average();
+
+        if (meanWidth <= 0.60)
+        {
+            diagnostics =
+                new RibbonShapeDiagnostics(
+                    "mean-width",
+                    meanWidth,
+                    0d,
+                    0d,
+                    0d,
+                    0d);
+            return false;
+        }
+
+        var variance =
+            widths.Average(width =>
+            {
+                var delta =
+                    width -
+                    meanWidth;
+
+                return delta *
+                       delta;
+            });
+        var coefficientVariation =
+            Math.Sqrt(
+                variance) /
+            meanWidth;
+
+        if (coefficientVariation >
+            MaximumWidthCoefficientVariation)
+        {
+            diagnostics =
+                new RibbonShapeDiagnostics(
+                    "width-variation",
+                    meanWidth,
+                    coefficientVariation,
+                    0d,
+                    0d,
+                    0d);
+            return false;
+        }
+
+        var terminalWindow =
+            Math.Clamp(
+                samples.Count /
+                8,
+                2,
+                5);
+        var firstWidth =
+            widths
+                .Take(
+                    terminalWindow)
+                .Average();
+        var lastWidth =
+            widths
+                .TakeLast(
+                    terminalWindow)
+                .Average();
+        var terminalRatio =
+            Math.Min(
+                firstWidth,
+                lastWidth) /
+            Math.Max(
+                firstWidth,
+                lastWidth);
+
+        var region =
+            model.Candidate.Region;
+        var boundingFillRatio =
+            region.Area /
+            (double)Math.Max(
+                1,
+                region.Width *
+                region.Height);
+        var sparseTaperSweep =
+            terminalRatio >=
+                MinimumSparseTaperTerminalWidthRatio &&
+            model.Candidate.Elongation >=
+                MinimumSparseTaperElongation &&
+            boundingFillRatio <=
+                MaximumSparseTaperBoundingFill &&
+            model.Candidate.BoundaryRatio <=
+                MaximumBroadArchBoundaryRatio &&
+            model.SkeletonCoverage >=
+                MinimumSparseTaperPathCoverage;
+
+        // A compact spiral can look nearly square to PCA because the path wraps around itself.
+        // Admit a tiny terminal-ratio tolerance ONLY when every other source measurement says
+        // "stable compact ribbon": high principal-path coverage, low boundary ratio, stable width
+        // and a medium-density annular fill. Production prefilter still excludes this family until
+        // its fitter quality is validated by the diagnostic probe.
+        var compactSpiral =
+            terminalRatio >=
+                MinimumCompactSpiralTerminalWidthRatio &&
+            model.Candidate.Elongation >=
+                MinimumCompactSpiralElongation &&
+            model.Candidate.Elongation <=
+                MaximumCompactSpiralElongation &&
+            boundingFillRatio >=
+                MinimumCompactSpiralBoundingFill &&
+            boundingFillRatio <=
+                MaximumCompactSpiralBoundingFill &&
+            model.Candidate.BoundaryRatio <=
+                MaximumCompactSpiralBoundaryRatio &&
+            model.SkeletonCoverage >=
+                MinimumCompactSpiralPathCoverage &&
+            coefficientVariation <=
+                MaximumCompactSpiralWidthCoefficientVariation;
+
+        var first =
+            samples[0];
+        var last =
+            samples[^1];
+        var chordX =
+            last.X -
+            first.X;
+        var chordY =
+            last.Y -
+            first.Y;
+        var chordLength =
+            Math.Sqrt(
+                chordX *
+                    chordX +
+                chordY *
+                    chordY);
+
+        if (chordLength <= 1e-9)
+        {
+            diagnostics =
+                new RibbonShapeDiagnostics(
+                    "degenerate-chord",
+                    meanWidth,
+                    coefficientVariation,
+                    terminalRatio,
+                    0d,
+                    0d);
+            return false;
+        }
+
+        var maximumBend = 0d;
+
+        foreach (var sample in samples)
+        {
+            var cross =
+                Math.Abs(
+                    chordX *
+                    (sample.Y - first.Y) -
+                    chordY *
+                    (sample.X - first.X));
+            var distance =
+                cross /
+                chordLength;
+
+            maximumBend =
+                Math.Max(
+                    maximumBend,
+                    distance);
+        }
+
+        var requiredBend =
+            Math.Max(
+                MinimumAbsoluteBend,
+                model.Candidate.MajorExtent *
+                MinimumRelativeBend);
+        var terminalAccepted =
+            terminalRatio >=
+                MinimumTerminalWidthRatio ||
+            sparseTaperSweep ||
+            compactSpiral;
+        var bendAccepted =
+            maximumBend >=
+            requiredBend;
+        var accepted =
+            terminalAccepted &&
+            bendAccepted;
+
+        var reason =
+            accepted
+                ? compactSpiral &&
+                  terminalRatio <
+                  MinimumTerminalWidthRatio
+                    ? "ok-compact-spiral"
+                    : sparseTaperSweep &&
+                      terminalRatio <
+                      MinimumTerminalWidthRatio
+                        ? "ok-sparse-taper"
+                        : "ok"
+                : !terminalAccepted
+                    ? "terminal-width-ratio"
+                    : "insufficient-bend";
+
+        diagnostics =
+            new RibbonShapeDiagnostics(
+                reason,
+                meanWidth,
+                coefficientVariation,
+                terminalRatio,
+                maximumBend,
+                requiredBend);
+
+        return accepted;
+    }
+}
+
+
+internal readonly record struct RibbonShapeDiagnostics(
+    string Reason,
+    double MeanWidth,
+    double WidthCoefficientVariation,
+    double TerminalRatio,
+    double MaximumBend,
+    double RequiredBend);
+
+internal readonly record struct RibbonArcCandidateStage(
+    byte Color,
+    int MinX,
+    int MinY,
+    int MaxX,
+    int MaxY,
+    int Area,
+    double Elongation,
+    double BoundaryRatio,
+    double BoundingFillRatio,
+    bool BroadSparseArch,
+    bool PrefilterAccepted,
+    bool CenterlineBuilt,
+    int SkeletonPixels,
+    int Endpoints,
+    int PrincipalPathPixels,
+    double PrincipalPathCoverage,
+    bool DesignerRibbon,
+    string RibbonShapeReason,
+    double RibbonMeanWidth,
+    double RibbonWidthCoefficientVariation,
+    double RibbonTerminalRatio,
+    double RibbonMaximumBend,
+    double RibbonRequiredBend,
+    bool LayeredRibbonDetected,
+    string LayeredRibbonSide,
+    string LayeredRibbonSequence,
+    double LayeredRibbonCoverage,
+    double LayeredRibbonBracketedCoverage,
+    string LayeredRibbonExteriorColor,
+    double LayeredRibbonExteriorCoverage,
+    string LayeredRibbonMeanWidths,
+    bool SymmetryRecovered,
+    string SymmetryAxis,
+    double MirrorAgreement,
+    double SymmetryMeanShift,
+    double SymmetryMaxShift,
+    bool MirrorSourceRecovered,
+    string MirrorSourceReason,
+    double MirrorSourceAgreement,
+    double MirrorSourceMeanShift,
+    double MirrorSourceMaxShift,
+    bool MainArcExtracted,
+    string MainArcReason,
+    int MainArcStart,
+    int MainArcEnd,
+    double MainArcKeptFraction,
+    bool CompoundAttempted,
+    string CompoundReason,
+    double CompoundP95Deviation,
+    double CompoundMaximumDeviation,
+    double CompoundSelectedRoughness,
+    int CompoundSelectedAnchors,
+    int CompoundSelectedSmoothingPasses,
+    double CompoundSmoothestSafeRoughness,
+    int CompoundSmoothestSafeAnchors,
+    int CompoundSmoothestSafeSmoothingPasses,
+    double CompoundSmoothestSafeP95Deviation,
+    double CompoundSmoothestSafeMaximumDeviation,
+    double CompoundSmoothestCurvatureValidRoughness,
+    int CompoundSmoothestCurvatureValidAnchors,
+    int CompoundSmoothestCurvatureValidSmoothingPasses,
+    double CompoundSmoothestCurvatureValidP95Deviation,
+    double CompoundSmoothestCurvatureValidMaximumDeviation,
+    double CompoundSelectedLobeFairness,
+    double CompoundFairestSafeLobeFairness,
+    double CompoundFairestSafeRoughness,
+    int CompoundFairestSafeAnchors,
+    int CompoundFairestSafeSmoothingPasses,
+    double CompoundFairestSafeP95Deviation,
+    double CompoundFairestSafeMaximumDeviation,
+    string FitKind,
+    string CurveFamily,
+    double Roundness,
+    bool FitSafe,
+    double MaximumDeviation,
+    int CurvatureSignFlips,
+    double SelectedSmoothness,
+    double SourceCurvatureFairness,
+    double FitCurvatureFairness,
+    int SourceCurvatureInflections,
+    int FitCurvatureInflections,
+    double SourceCurvatureMaximumVariation,
+    double FitCurvatureMaximumVariation,
+    bool AlternativeThroughSafe,
+    double AlternativeThroughSmoothness,
+    double AlternativeThroughMaximumDeviation,
+    double AlternativeThroughP95Deviation,
+    double AlternativeThroughRoundness,
+    bool PiecewiseSCurveSafe,
+    int PiecewiseSCurveSplitIndex,
+    double PiecewiseSCurveSmoothness,
+    double PiecewiseSCurveMaximumDeviation,
+    double PiecewiseSCurveP95Deviation,
+    int PiecewiseSCurveCurvatureFlips,
+    double PiecewiseSCurveJoinAngleDegrees,
+    bool ConstrainedFairingSafe,
+    string ConstrainedFairingReason,
+    double ConstrainedFairingBeforeRoughness,
+    double ConstrainedFairingAfterRoughness,
+    double ConstrainedFairingMaximumDeviation,
+    double ConstrainedFairingP95Deviation,
+    double ConstrainedFairingMaximumShift,
+    int ConstrainedFairingBeforeCurvatureFlips,
+    int ConstrainedFairingAfterCurvatureFlips,
+    bool WidthRegularizerApplied,
+    double WidthSourceCoefficientVariation,
+    double WidthTerminalRatio,
+    double WidthVariationBefore,
+    double WidthVariationAfter,
+    double WidthMaximumShift,
+    bool VariableWidthProfileApplied,
+    double VariableWidthSourceCoefficientVariation,
+    double VariableWidthMappedCoefficientVariation,
+    double VariableWidthSourceMinimum,
+    double VariableWidthSourceMaximum,
+    double VariableWidthMappedMinimum,
+    double VariableWidthMappedMaximum,
+    double VariableWidthMaximumAdjacentVariation,
+    bool Accepted,
+    string Status);
+
+internal readonly record struct RibbonArcRefinementDiagnostics(
+    int Regions,
+    int Classified,
+    int AxisBuilt,
+    int MaxSkeletonPixels,
+    int MaxEndpoints,
+    int MaxPrincipalPathPixels,
+    double MaxPrincipalPathCoverage,
+    string LastCenterlineReason,
+    int RibbonGeometryAccepted,
+    int FitSafe,
+    int SymmetryRecoveries,
+    int MainArcExtractions,
+    double MaxSymmetrySampleShift,
+    int MirrorSourceFusions,
+    double BestMirrorSourceAgreement,
+    double MaxMirrorSourceFusionShift,
+    int CompoundFits,
+    int CompoundAttempts,
+    double MaxCompoundP95Deviation,
+    double MaxCompoundDeviation,
+    string LastCompoundReason,
+    int CurveToolFits,
+    int CurveToolThroughPointsFits,
+    int CurveToolSplineFits,
+    int CurveToolBezierFits,
+    double MeanCurveToolRoundness,
+    int GeometricThroughFits,
+    int GeometricThroughAttempts,
+    double MaxGeometricThroughDeviation,
+    double MaxGeometricThroughP95Deviation,
+    string LastGeometricThroughReason,
+    double MeanGeometricThroughRoundness,
+    int BroadOvalFits,
+    int BroadOvalAttempts,
+    double MaxBroadOvalDeviation,
+    double MaxBroadOvalP95Deviation,
+    string LastBroadOvalReason,
+    int CubicBezierFits,
+    int CubicAttempts,
+    double MaxCubicDeviation,
+    double MaxCubicP95Deviation,
+    double MaxCubicHandleRatio,
+    string LastCubicReason,
+    double MaxFitDeviation,
+    int MaxFitCurvatureFlips,
+    int WidthRegularized,
+    double MaxWidthRegularizationShift,
+    double MaxWidthVariationReduction,
+    int SelfSymmetryNormalizations,
+    double BestSelfSymmetryAgreement,
+    double MaxSelfSymmetryDeviation,
+    int MirrorPairs,
+    int MirrorPairReplacements,
+    double BestMirrorPairAgreement,
+    double MaxMirrorPairDeviation,
+    int Refined,
+    int OutlinedRefined,
+    int BoundaryPixelsChanged,
+    int LayeredPreviewCandidates,
+    int LayeredPreviewApplied,
+    string LastLayeredPreviewReason,
+    int LastLayeredSeparatorMaskPixels,
+    int LastLayeredBandMaskPixels,
+    int LastLayeredAuthorityMaskPixels);

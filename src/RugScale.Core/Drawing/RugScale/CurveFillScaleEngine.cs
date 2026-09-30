@@ -262,6 +262,17 @@ internal static class CurveFillScaleEngine
                 source,
                 destination);
 
+        // Long filled oval/ribbon arcs need a different authority than the Pixel-Cord learner:
+        // they are categorical regions, not 1x1 strokes. Refine only high-confidence, stable-width
+        // curved ribbons as a smooth centreline + paired boundaries. The specialist rasterizer
+        // protects separator palette roles and only moves the local two-colour boundary band, so
+        // do not run the global ownership guard again afterwards (that would undo the aesthetic
+        // correction by snapping it back onto the source staircase).
+        var ribbonArc =
+            CurveFillRibbonArcRefiner.ApplyWithDiagnostics(
+                source,
+                destination);
+
         PreserveExactSourceSymmetry(
             source,
             destination);
@@ -274,6 +285,66 @@ internal static class CurveFillScaleEngine
             BarrierCrossingCorrections =
                 ownership.BarrierCrossingCorrections +
                 finalOwnership.BarrierCrossingCorrections,
+            RibbonArcCandidates =
+                ribbonArc.RibbonGeometryAccepted,
+            RibbonArcRefined =
+                ribbonArc.Refined,
+            RibbonArcPixelsChanged =
+                ribbonArc.BoundaryPixelsChanged,
+            RibbonArcCurveToolFits =
+                ribbonArc.CurveToolFits,
+            RibbonArcCurveToolThroughPointsFits =
+                ribbonArc.CurveToolThroughPointsFits,
+            RibbonArcCurveToolSplineFits =
+                ribbonArc.CurveToolSplineFits,
+            RibbonArcCurveToolBezierFits =
+                ribbonArc.CurveToolBezierFits,
+            RibbonArcCurveToolMeanRoundness =
+                ribbonArc.MeanCurveToolRoundness,
+            RibbonArcGeometricThroughFits =
+                ribbonArc.GeometricThroughFits,
+            RibbonArcGeometricThroughAttempts =
+                ribbonArc.GeometricThroughAttempts,
+            RibbonArcGeometricThroughMeanRoundness =
+                ribbonArc.MeanGeometricThroughRoundness,
+            RibbonArcGeometricThroughMaxP95Deviation =
+                ribbonArc.MaxGeometricThroughP95Deviation,
+            RibbonArcBroadOvalFits =
+                ribbonArc.BroadOvalFits,
+            RibbonArcBroadOvalAttempts =
+                ribbonArc.BroadOvalAttempts,
+            RibbonArcCubicBezierFits =
+                ribbonArc.CubicBezierFits,
+            RibbonArcOutlinedRefined =
+                ribbonArc.OutlinedRefined,
+            RibbonArcMirrorPairs =
+                ribbonArc.MirrorPairs,
+            RibbonArcMirrorPairReplacements =
+                ribbonArc.MirrorPairReplacements,
+            RibbonArcBestMirrorPairAgreement =
+                ribbonArc.BestMirrorPairAgreement,
+            RibbonArcMaxMirrorPairDeviation =
+                ribbonArc.MaxMirrorPairDeviation,
+            RibbonArcMirrorSourceFusions =
+                ribbonArc.MirrorSourceFusions,
+            RibbonArcBestMirrorSourceAgreement =
+                ribbonArc.BestMirrorSourceAgreement,
+            RibbonArcMaxMirrorSourceFusionShift =
+                ribbonArc.MaxMirrorSourceFusionShift,
+            RibbonArcCompoundFits =
+                ribbonArc.CompoundFits,
+            RibbonArcCompoundAttempts =
+                ribbonArc.CompoundAttempts,
+            RibbonArcCompoundMaxP95Deviation =
+                ribbonArc.MaxCompoundP95Deviation,
+            RibbonArcCompoundMaxDeviation =
+                ribbonArc.MaxCompoundDeviation,
+            RibbonArcWidthRegularized =
+                ribbonArc.WidthRegularized,
+            RibbonArcMaxWidthRegularizationShift =
+                ribbonArc.MaxWidthRegularizationShift,
+            RibbonArcMaxWidthVariationReduction =
+                ribbonArc.MaxWidthVariationReduction,
         };
     }
 

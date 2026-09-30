@@ -196,6 +196,7 @@ See:
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Engine notes](docs/RUGSCALE_ENGINE.md)
+- [Curve / oval training continuation log](docs/CURVE_OVAL_TRAINING_LOG.md)
 - [Migration gate](docs/MIGRATION_FROM_RUGCAD.md)
 - [Host integration boundary](docs/HOST_INTEGRATION.md)
 - [Migration inventory](docs/MIGRATION_INVENTORY.md)

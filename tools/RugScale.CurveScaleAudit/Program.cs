@@ -34,6 +34,28 @@ internal static class Program
                 Environment.CurrentDirectory,
                 "curve-scale-audit");
 
+        var fixtureName =
+            GetArg(
+                args,
+                "--fixture");
+        var selectedFixtures =
+            string.IsNullOrWhiteSpace(
+                fixtureName)
+                ? Fixtures
+                : Fixtures
+                    .Where(fixture =>
+                        string.Equals(
+                            fixture.Name,
+                            fixtureName,
+                            StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+        if (selectedFixtures.Length == 0)
+        {
+            throw new ArgumentException(
+                $"Unknown --fixture '{fixtureName}'. Expected one of: {string.Join(", ", Fixtures.Select(fixture => fixture.Name))}.");
+        }
+
         Directory.CreateDirectory(outputDir);
 
         var styleTraining =
@@ -42,7 +64,7 @@ internal static class Program
 
         var rows = new List<DesignAuditRow>();
 
-        foreach (var fixture in Fixtures)
+        foreach (var fixture in selectedFixtures)
         {
             var input =
                 Path.Combine(
@@ -133,18 +155,23 @@ internal static class Program
         IReadOnlyList<CurveStyleTrainingRow> rows,
         out string failure)
     {
-        var throughAccepted =
+        var throughRows =
             rows
                 .Where(row =>
                     row.SourceType ==
-                    CurveType.SplineThroughPoints &&
+                    CurveType.SplineThroughPoints)
+                .ToArray();
+
+        var throughAccepted =
+            throughRows
+                .Where(row =>
                     row.Accepted)
                 .ToArray();
 
         if (throughAccepted.Length < 20)
         {
             failure =
-                $"Through-Points coverage fell to {throughAccepted.Length}/30.";
+                $"Through-Points coverage fell to {throughAccepted.Length}/{throughRows.Length}.";
             return false;
         }
 
@@ -178,6 +205,88 @@ internal static class Program
         {
             failure =
                 $"Through-Points roundness MAE rose to {roundnessMae:0.000}.";
+            return false;
+        }
+
+        var ovalRows =
+            rows
+                .Where(row =>
+                    row.SourceType ==
+                    CurveType.SplineThroughPoints &&
+                    row.Shape.Contains(
+                        "oval",
+                        StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+        var ovalAccepted =
+            ovalRows
+                .Where(row =>
+                    row.Accepted)
+                .ToArray();
+
+        if (ovalRows.Length == 0 ||
+            ovalAccepted.Length <
+            Math.Ceiling(
+                ovalRows.Length * 0.90))
+        {
+            failure =
+                $"Oval training coverage is too low: {ovalAccepted.Length}/{ovalRows.Length}.";
+            return false;
+        }
+
+        var ovalFamilyPrecision =
+            ovalAccepted.Count(row =>
+                row.FamilyCorrect) /
+            (double)Math.Max(
+                1,
+                ovalAccepted.Length);
+
+        if (ovalFamilyPrecision < 0.98)
+        {
+            failure =
+                $"Oval family precision fell to {ovalFamilyPrecision:P2}.";
+            return false;
+        }
+
+        var ovalLearnedExact =
+            ovalRows.Average(row =>
+                row.TargetExactF1);
+        var ovalGraphExact =
+            ovalRows.Average(row =>
+                row.FallbackTargetExactF1);
+
+        if (ovalLearnedExact < 0.90)
+        {
+            failure =
+                $"Oval target exact F1 fell to {ovalLearnedExact:P2}.";
+            return false;
+        }
+
+        if (ovalLearnedExact <
+            ovalGraphExact + 0.24)
+        {
+            failure =
+                $"Oval target exact F1 gain is too small: learned={ovalLearnedExact:P2}, graph={ovalGraphExact:P2}.";
+            return false;
+        }
+
+        var ovalRoundnessErrors =
+            ovalAccepted
+                .Where(row =>
+                    row.FamilyCorrect &&
+                    row.RoundnessError.HasValue)
+                .Select(row =>
+                    row.RoundnessError!.Value)
+                .ToArray();
+        var ovalRoundnessMae =
+            ovalRoundnessErrors.Length == 0
+                ? double.PositiveInfinity
+                : ovalRoundnessErrors.Average();
+
+        if (ovalRoundnessMae > 0.05)
+        {
+            failure =
+                $"Oval roundness MAE rose to {ovalRoundnessMae:0.000}.";
             return false;
         }
 
@@ -249,6 +358,33 @@ internal static class Program
                     (32, 9),
                     (49, 23),
                     (58, 41),
+                ],
+                // Oval-specific training cohort. RugScale curve redraw is expected to preserve
+                // the broad, continuous curvature of these motifs instead of collapsing them
+                // into polygonal/scalloped chains when the physical carpet size changes.
+                ["oval-wide"] =
+                [
+                    (4, 34),
+                    (10, 16),
+                    (29, 7),
+                    (50, 15),
+                    (60, 34),
+                ],
+                ["oval-tall-side"] =
+                [
+                    (42, 5),
+                    (22, 8),
+                    (8, 24),
+                    (15, 46),
+                    (38, 59),
+                ],
+                ["oval-soft"] =
+                [
+                    (6, 39),
+                    (13, 17),
+                    (28, 8),
+                    (46, 12),
+                    (59, 32),
                 ],
             };
 
@@ -482,17 +618,26 @@ internal static class Program
                     expectedTarget);
         }
 
+        var expectedTargetPath =
+            ConsecutiveDistinct(
+                expectedTarget)
+                .ToArray();
         var expectedTargetSet =
-            expectedTarget
+            expectedTargetPath
                 .ToHashSet();
 
-        var fallbackTargetSet =
-            RenderMappedTrainingGraph(
+        var fallbackTargetPath =
+            ConsecutiveDistinct(
+                RenderMappedTrainingGraph(
                     chain,
                     TargetScale,
-                    pixelCord)
+                    pixelCord))
+                .ToArray();
+        var fallbackTargetSet =
+            fallbackTargetPath
                 .ToHashSet();
 
+        IReadOnlyList<(int X, int Y)> learnedTargetPath;
         HashSet<(int X, int Y)> learnedTargetSet;
 
         if (accepted)
@@ -518,12 +663,18 @@ internal static class Program
                         learnedTarget);
             }
 
+            learnedTargetPath =
+                ConsecutiveDistinct(
+                    learnedTarget)
+                    .ToArray();
             learnedTargetSet =
-                learnedTarget
+                learnedTargetPath
                     .ToHashSet();
         }
         else
         {
+            learnedTargetPath =
+                fallbackTargetPath;
             learnedTargetSet =
                 fallbackTargetSet;
         }
@@ -546,6 +697,18 @@ internal static class Program
                 fallbackTargetSet,
                 expectedTargetSet,
                 radius: 1);
+        var targetCadenceSimilarity =
+            CurvePixelCadence.Measure(
+                learnedTargetPath,
+                expectedTargetPath);
+        var fallbackCadenceSimilarity =
+            CurvePixelCadence.Measure(
+                fallbackTargetPath,
+                expectedTargetPath);
+        var learnedGraphCadenceSimilarity =
+            CurvePixelCadence.Measure(
+                learnedTargetPath,
+                fallbackTargetPath);
 
         return new CurveStyleTrainingRow(
             shape,
@@ -570,7 +733,12 @@ internal static class Program
             fallbackExactF1,
             fallbackNearF1,
             targetNearF1 -
-            fallbackNearF1);
+            fallbackNearF1,
+            targetCadenceSimilarity,
+            fallbackCadenceSimilarity,
+            targetCadenceSimilarity -
+            fallbackCadenceSimilarity,
+            learnedGraphCadenceSimilarity);
     }
 
     private static (int X, int Y) MapTrainingPoint(
@@ -761,7 +929,7 @@ internal static class Program
                 new UTF8Encoding(false));
 
         writer.WriteLine(
-            "shape,sourceType,sourceRoundness,pixelCord,sourcePixels,accepted,predictedType,predictedRoundness,familyCorrect,roundnessError,rawScore,modelMargin,controlCount,targetExactF1,targetNearF1,fallbackTargetExactF1,fallbackTargetNearF1,targetNearGain");
+            "shape,sourceType,sourceRoundness,pixelCord,sourcePixels,accepted,predictedType,predictedRoundness,familyCorrect,roundnessError,rawScore,modelMargin,controlCount,targetExactF1,targetNearF1,fallbackTargetExactF1,fallbackTargetNearF1,targetNearGain,targetCadenceSimilarity,fallbackCadenceSimilarity,cadenceGain,learnedGraphCadenceSimilarity");
 
         foreach (var row in rows)
         {
@@ -785,7 +953,11 @@ internal static class Program
                     row.TargetNearF1.ToString("0.0000", CultureInfo.InvariantCulture),
                     row.FallbackTargetExactF1.ToString("0.0000", CultureInfo.InvariantCulture),
                     row.FallbackTargetNearF1.ToString("0.0000", CultureInfo.InvariantCulture),
-                    row.TargetNearGain.ToString("0.0000", CultureInfo.InvariantCulture)));
+                    row.TargetNearGain.ToString("0.0000", CultureInfo.InvariantCulture),
+                    row.TargetCadenceSimilarity.ToString("0.0000", CultureInfo.InvariantCulture),
+                    row.FallbackCadenceSimilarity.ToString("0.0000", CultureInfo.InvariantCulture),
+                    row.CadenceGain.ToString("0.0000", CultureInfo.InvariantCulture),
+                    row.LearnedGraphCadenceSimilarity.ToString("0.0000", CultureInfo.InvariantCulture)));
         }
     }
 
@@ -805,9 +977,9 @@ internal static class Program
         sb.AppendLine();
 
         sb.AppendLine(
-            "| Source family | Samples | Accepted | Family correct | Family accuracy | Mean raw | Model margin | Target exact F1 | Graph exact F1 | Exact gain | Target ±1px F1 | Graph ±1px F1 | Near gain |");
+            "| Source family | Samples | Accepted | Family correct | Family accuracy | Mean raw | Model margin | Target exact F1 | Graph exact F1 | Exact gain | Target ±1px F1 | Graph ±1px F1 | Near gain | Curve cadence | Graph cadence | Cadence gain  Curve↔graph cadence |");
         sb.AppendLine(
-            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
 
         foreach (var group in rows
                      .GroupBy(row =>
@@ -839,7 +1011,11 @@ internal static class Program
                 $"{learnedExact:P2} | {graphExact:P2} | {(learnedExact - graphExact):+0.0000;-0.0000;0.0000} | " +
                 $"{group.Average(row => row.TargetNearF1):P2} | " +
                 $"{group.Average(row => row.FallbackTargetNearF1):P2} | " +
-                $"{group.Average(row => row.TargetNearGain):+0.0000;-0.0000;0.0000} |");
+                $"{group.Average(row => row.TargetNearGain):+0.0000;-0.0000;0.0000} | " +
+                $"{group.Average(row => row.TargetCadenceSimilarity):P2} | " +
+                $"{group.Average(row => row.FallbackCadenceSimilarity):P2} | " +
+                $"{group.Average(row => row.CadenceGain):+0.0000;-0.0000;0.0000} | " +
+                $"{group.Average(row => row.LearnedGraphCadenceSimilarity):P2} |");
         }
 
         var throughRoundness =
@@ -965,6 +1141,88 @@ internal static class Program
 
         var directSeconds =
             watch.Elapsed.TotalSeconds;
+
+        if (string.Equals(
+                fixture.Name,
+                "C069A_CREAM_N69",
+                StringComparison.Ordinal))
+        {
+            // Deep per-region inverse fitting is diagnostic-only and intentionally scoped to the
+            // real design currently under curve training. Running it for all four fixtures nearly
+            // doubles audit time without adding information to the aggregate quality gates.
+            var ribbonStages =
+                CurveFillRibbonArcRefiner.AnalyzeCandidateStages(
+                    source);
+
+            WriteRibbonCandidateAudit(
+                Path.Combine(
+                    outputDir,
+                    fixture.Name +
+                    "_ribbon_candidates.csv"),
+                ribbonStages);
+
+            foreach (var stage in ribbonStages
+                         .Where(stage =>
+                             stage.MinX <= 440 &&
+                             stage.MaxX >= 200 &&
+                             stage.MinY <= 190)
+                         .Take(24))
+            {
+                Console.WriteLine(
+                    $"[ribbon-candidate] C069 color={stage.Color}, " +
+                    $"bbox=({stage.MinX},{stage.MinY})-({stage.MaxX},{stage.MaxY}), " +
+                    $"area={stage.Area}, elong={stage.Elongation:0.000}, fill={stage.BoundingFillRatio:0.000}, " +
+                    $"broad={stage.BroadSparseArch}, centerline={stage.CenterlineBuilt}, " +
+                    $"coverage={stage.PrincipalPathCoverage:0.000}, ribbon={stage.DesignerRibbon}, " +
+                    $"shape={stage.RibbonShapeReason} width={stage.RibbonMeanWidth:0.000} " +
+                    $"cv={stage.RibbonWidthCoefficientVariation:0.000} terminal={stage.RibbonTerminalRatio:0.000} " +
+                    $"bend={stage.RibbonMaximumBend:0.000}/{stage.RibbonRequiredBend:0.000}, " +
+                    $"layers={stage.LayeredRibbonDetected}/{stage.LayeredRibbonSide} " +
+                    $"seq={stage.LayeredRibbonSequence} cov={stage.LayeredRibbonCoverage:0.000} " +
+                    $"bracket={stage.LayeredRibbonBracketedCoverage:0.000} " +
+                    $"exterior={stage.LayeredRibbonExteriorColor}/{stage.LayeredRibbonExteriorCoverage:0.000} " +
+                    $"w={stage.LayeredRibbonMeanWidths}, " +
+                    $"sym={stage.SymmetryRecovered}/{stage.SymmetryAxis} " +
+                    $"match={stage.MirrorAgreement:0.000} shift={stage.SymmetryMeanShift:0.000}/{stage.SymmetryMaxShift:0.000}, " +
+                    $"sourceMirror={stage.MirrorSourceRecovered}/{stage.MirrorSourceReason} " +
+                    $"match={stage.MirrorSourceAgreement:0.000} shift={stage.MirrorSourceMeanShift:0.000}/{stage.MirrorSourceMaxShift:0.000}, " +
+                    $"mainArc={stage.MainArcExtracted}/{stage.MainArcReason} " +
+                    $"{stage.MainArcStart}-{stage.MainArcEnd} keep={stage.MainArcKeptFraction:0.000}, " +
+                    $"compound={stage.CompoundAttempted}/{stage.CompoundReason} " +
+                    $"p95={stage.CompoundP95Deviation:0.000} max={stage.CompoundMaximumDeviation:0.000} " +
+                    $"rough={stage.CompoundSelectedRoughness:0.000000} " +
+                    $"cfg={stage.CompoundSelectedAnchors}a/{stage.CompoundSelectedSmoothingPasses}s " +
+                    $"smoothest={stage.CompoundSmoothestSafeRoughness:0.000000} " +
+                    $"cfg2={stage.CompoundSmoothestSafeAnchors}a/{stage.CompoundSmoothestSafeSmoothingPasses}s " +
+                    $"p95/max2={stage.CompoundSmoothestSafeP95Deviation:0.000}/{stage.CompoundSmoothestSafeMaximumDeviation:0.000}, " +
+                    $"lobe={stage.CompoundSelectedLobeFairness:0.000000} " +
+                    $"fairest={stage.CompoundFairestSafeLobeFairness:0.000000} " +
+                    $"cfgF={stage.CompoundFairestSafeAnchors}a/{stage.CompoundFairestSafeSmoothingPasses}s " +
+                    $"roughF={stage.CompoundFairestSafeRoughness:0.000000} " +
+                    $"p95/maxF={stage.CompoundFairestSafeP95Deviation:0.000}/{stage.CompoundFairestSafeMaximumDeviation:0.000}, " +
+                    $"fit={stage.FitKind}/{stage.CurveFamily}, r={stage.Roundness:0.000}, " +
+                    $"safe={stage.FitSafe}, dev={stage.MaximumDeviation:0.000}, rough={stage.SelectedSmoothness:0.000000}, " +
+                    $"lobeFair={stage.SourceCurvatureFairness:0.000000}->{stage.FitCurvatureFairness:0.000000} " +
+                    $"infl={stage.SourceCurvatureInflections}->{stage.FitCurvatureInflections} " +
+                    $"maxVar={stage.SourceCurvatureMaximumVariation:0.000000}->{stage.FitCurvatureMaximumVariation:0.000000}, " +
+                    $"altThrough={stage.AlternativeThroughSafe} r={stage.AlternativeThroughRoundness:0.000} " +
+                    $"p95={stage.AlternativeThroughP95Deviation:0.000} max={stage.AlternativeThroughMaximumDeviation:0.000} " +
+                    $"rough={stage.AlternativeThroughSmoothness:0.000000}, " +
+                    $"pieceS={stage.PiecewiseSCurveSafe} split={stage.PiecewiseSCurveSplitIndex} " +
+                    $"p95={stage.PiecewiseSCurveP95Deviation:0.000} max={stage.PiecewiseSCurveMaximumDeviation:0.000} " +
+                    $"rough={stage.PiecewiseSCurveSmoothness:0.000000} flips={stage.PiecewiseSCurveCurvatureFlips} " +
+                    $"join={stage.PiecewiseSCurveJoinAngleDegrees:0.000}deg, " +
+                    $"fair={stage.ConstrainedFairingSafe}/{stage.ConstrainedFairingReason} " +
+                    $"rough={stage.ConstrainedFairingBeforeRoughness:0.000000}->{stage.ConstrainedFairingAfterRoughness:0.000000} " +
+                    $"p95/max={stage.ConstrainedFairingP95Deviation:0.000}/{stage.ConstrainedFairingMaximumDeviation:0.000} " +
+                    $"shift={stage.ConstrainedFairingMaximumShift:0.000} " +
+                    $"flips={stage.ConstrainedFairingBeforeCurvatureFlips}->{stage.ConstrainedFairingAfterCurvatureFlips}, " +
+                    $"widthReg={stage.WidthRegularizerApplied} cv={stage.WidthSourceCoefficientVariation:0.000} " +
+                    $"terminal={stage.WidthTerminalRatio:0.000} dv={stage.WidthVariationBefore:0.000}->{stage.WidthVariationAfter:0.000} " +
+                    $"shift={stage.WidthMaximumShift:0.000}, " +
+                    $"flips={stage.CurvatureSignFlips}, accepted={stage.Accepted}, status={stage.Status}");
+            }
+        }
 
         if (string.Equals(
                 fixture.Name,
@@ -1208,6 +1466,362 @@ internal static class Program
                 directHeight,
                 ScaleMode.NearestNeighbor);
 
+        DesignDocument? layeredRibbonPreview = null;
+
+        if (string.Equals(
+                fixture.Name,
+                "C069A_CREAM_N69",
+                StringComparison.Ordinal))
+        {
+            layeredRibbonPreview =
+                CloneDocument(
+                    direct);
+            var layeredDiagnostics =
+                CurveFillRibbonArcRefiner.ApplyWithDiagnostics(
+                    source,
+                    layeredRibbonPreview,
+                    layeredBandsOnly: true);
+
+            Console.WriteLine(
+                $"[layered-ribbon-preview] changed={layeredDiagnostics.BoundaryPixelsChanged:N0}, " +
+                $"diff-vs-production={PixelDifferenceCount(direct, layeredRibbonPreview):N0}, " +
+                $"candidates={layeredDiagnostics.LayeredPreviewCandidates}, " +
+                $"applied={layeredDiagnostics.LayeredPreviewApplied}, " +
+                $"reason={layeredDiagnostics.LastLayeredPreviewReason}, " +
+                $"masks={layeredDiagnostics.LastLayeredSeparatorMaskPixels}/" +
+                $"{layeredDiagnostics.LastLayeredBandMaskPixels}/" +
+                $"{layeredDiagnostics.LastLayeredAuthorityMaskPixels}");
+
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069A_CREAM_N69_enlarge_160_layered_preview.bmp"),
+                layeredRibbonPreview,
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            // Persistent visual calibration crop for the user-reported ugly left oval/spiral
+            // region. Keep source + RugScale + Nearest together in every C069 artifact so future
+            // training sessions can judge the same local geometry without rediscovering the area.
+            const int FocusSourceX = 70;
+            const int FocusSourceY = 120;
+            const int FocusSourceWidth = 160;
+            const int FocusSourceHeight = 300;
+
+            var focusSource =
+                Crop(
+                    source,
+                    FocusSourceX,
+                    FocusSourceY,
+                    FocusSourceWidth,
+                    FocusSourceHeight);
+            var focusTargetX =
+                (int)Math.Floor(
+                    FocusSourceX *
+                    direct.Width /
+                    (double)source.Width);
+            var focusTargetY =
+                (int)Math.Floor(
+                    FocusSourceY *
+                    direct.Height /
+                    (double)source.Height);
+            var focusTargetRight =
+                (int)Math.Ceiling(
+                    (FocusSourceX +
+                     FocusSourceWidth) *
+                    direct.Width /
+                    (double)source.Width);
+            var focusTargetBottom =
+                (int)Math.Ceiling(
+                    (FocusSourceY +
+                     FocusSourceHeight) *
+                    direct.Height /
+                    (double)source.Height);
+            var focusWidth =
+                focusTargetRight -
+                focusTargetX;
+            var focusHeight =
+                focusTargetBottom -
+                focusTargetY;
+            var focusDirect =
+                Crop(
+                    direct,
+                    focusTargetX,
+                    focusTargetY,
+                    focusWidth,
+                    focusHeight);
+            var focusNearest =
+                Crop(
+                    directNearest,
+                    focusTargetX,
+                    focusTargetY,
+                    focusWidth,
+                    focusHeight);
+
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_left_spiral_source.bmp"),
+                focusSource,
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_left_spiral_rugscale.bmp"),
+                focusDirect,
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_left_spiral_nearest.bmp"),
+                focusNearest,
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+
+            // Smaller persistent crop for the short navy tapered hook currently under dedicated
+            // curve training. This keeps the exact same visual checkpoint available after future
+            // classifier/fitter changes without relying on remembered screen coordinates.
+            const int HookSourceX = 88;
+            const int HookSourceY = 198;
+            const int HookSourceWidth = 64;
+            const int HookSourceHeight = 56;
+
+            var hookSource =
+                Crop(
+                    source,
+                    HookSourceX,
+                    HookSourceY,
+                    HookSourceWidth,
+                    HookSourceHeight);
+            var hookTargetX =
+                (int)Math.Floor(
+                    HookSourceX *
+                    direct.Width /
+                    (double)source.Width);
+            var hookTargetY =
+                (int)Math.Floor(
+                    HookSourceY *
+                    direct.Height /
+                    (double)source.Height);
+            var hookTargetRight =
+                (int)Math.Ceiling(
+                    (HookSourceX +
+                     HookSourceWidth) *
+                    direct.Width /
+                    (double)source.Width);
+            var hookTargetBottom =
+                (int)Math.Ceiling(
+                    (HookSourceY +
+                     HookSourceHeight) *
+                    direct.Height /
+                    (double)source.Height);
+            var hookWidth =
+                hookTargetRight -
+                hookTargetX;
+            var hookHeight =
+                hookTargetBottom -
+                hookTargetY;
+
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_navy_tapered_hook_source.bmp"),
+                hookSource,
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_navy_tapered_hook_rugscale.bmp"),
+                Crop(
+                    direct,
+                    hookTargetX,
+                    hookTargetY,
+                    hookWidth,
+                    hookHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_navy_tapered_hook_nearest.bmp"),
+                Crop(
+                    directNearest,
+                    hookTargetX,
+                    hookTargetY,
+                    hookWidth,
+                    hookHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+
+            // Persistent checkpoint for the long gold variable-width designer sweep. This crop is
+            // intentionally tighter than the general spiral focus so taper quality and parallel
+            // boundary flow can be judged directly after future width-profile changes.
+            const int VariableWidthSourceX = 75;
+            const int VariableWidthSourceY = 115;
+            const int VariableWidthSourceWidth = 120;
+            const int VariableWidthSourceHeight = 230;
+
+            var variableWidthTargetX =
+                (int)Math.Floor(
+                    VariableWidthSourceX *
+                    direct.Width /
+                    (double)source.Width);
+            var variableWidthTargetY =
+                (int)Math.Floor(
+                    VariableWidthSourceY *
+                    direct.Height /
+                    (double)source.Height);
+            var variableWidthTargetRight =
+                (int)Math.Ceiling(
+                    (VariableWidthSourceX +
+                     VariableWidthSourceWidth) *
+                    direct.Width /
+                    (double)source.Width);
+            var variableWidthTargetBottom =
+                (int)Math.Ceiling(
+                    (VariableWidthSourceY +
+                     VariableWidthSourceHeight) *
+                    direct.Height /
+                    (double)source.Height);
+            var variableWidthTargetWidth =
+                variableWidthTargetRight -
+                variableWidthTargetX;
+            var variableWidthTargetHeight =
+                variableWidthTargetBottom -
+                variableWidthTargetY;
+
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_gold_variable_width_source.bmp"),
+                Crop(
+                    source,
+                    VariableWidthSourceX,
+                    VariableWidthSourceY,
+                    VariableWidthSourceWidth,
+                    VariableWidthSourceHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_gold_variable_width_rugscale.bmp"),
+                Crop(
+                    direct,
+                    variableWidthTargetX,
+                    variableWidthTargetY,
+                    variableWidthTargetWidth,
+                    variableWidthTargetHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_gold_variable_width_nearest.bmp"),
+                Crop(
+                    directNearest,
+                    variableWidthTargetX,
+                    variableWidthTargetY,
+                    variableWidthTargetWidth,
+                    variableWidthTargetHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+
+            // Persistent checkpoint for the long lower S-shaped sweep currently under
+            // piecewise-curvature training. Keep enough margin around the source bbox so a join
+            // kink, radius jump or nearby ownership cut is visible without inspecting the full
+            // 1024x2208 enlargement.
+            const int SSweepSourceX = 92;
+            const int SSweepSourceY = 548;
+            const int SSweepSourceWidth = 92;
+            const int SSweepSourceHeight = 282;
+
+            var sSweepTargetX =
+                (int)Math.Floor(
+                    SSweepSourceX *
+                    direct.Width /
+                    (double)source.Width);
+            var sSweepTargetY =
+                (int)Math.Floor(
+                    SSweepSourceY *
+                    direct.Height /
+                    (double)source.Height);
+            var sSweepTargetRight =
+                (int)Math.Ceiling(
+                    (SSweepSourceX +
+                     SSweepSourceWidth) *
+                    direct.Width /
+                    (double)source.Width);
+            var sSweepTargetBottom =
+                (int)Math.Ceiling(
+                    (SSweepSourceY +
+                     SSweepSourceHeight) *
+                    direct.Height /
+                    (double)source.Height);
+            var sSweepTargetWidth =
+                sSweepTargetRight -
+                sSweepTargetX;
+            var sSweepTargetHeight =
+                sSweepTargetBottom -
+                sSweepTargetY;
+
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_long_s_sweep_source.bmp"),
+                Crop(
+                    source,
+                    SSweepSourceX,
+                    SSweepSourceY,
+                    SSweepSourceWidth,
+                    SSweepSourceHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_long_s_sweep_rugscale.bmp"),
+                Crop(
+                    direct,
+                    sSweepTargetX,
+                    sSweepTargetY,
+                    sSweepTargetWidth,
+                    sSweepTargetHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+
+            if (layeredRibbonPreview is not null)
+            {
+                IndexedBmp.Write(
+                    Path.Combine(
+                        outputDir,
+                        "C069_focus_long_s_sweep_layered_preview.bmp"),
+                    Crop(
+                        layeredRibbonPreview,
+                        sSweepTargetX,
+                        sSweepTargetY,
+                        sSweepTargetWidth,
+                        sSweepTargetHeight),
+                    bmp.XPixelsPerMeter,
+                    bmp.YPixelsPerMeter);
+            }
+
+            IndexedBmp.Write(
+                Path.Combine(
+                    outputDir,
+                    "C069_focus_long_s_sweep_nearest.bmp"),
+                Crop(
+                    directNearest,
+                    sSweepTargetX,
+                    sSweepTargetY,
+                    sSweepTargetWidth,
+                    sSweepTargetHeight),
+                bmp.XPixelsPerMeter,
+                bmp.YPixelsPerMeter);
+        }
+
         var roundTripAgreement =
             PixelAgreement(
                 source,
@@ -1400,6 +2014,27 @@ internal static class Program
             $"E {directStyleDiagnostics.LearnedEllipses:N0}), fallback={directStyleDiagnostics.GraphFallbacks:N0}, " +
             $"safety={directStyleDiagnostics.CurveSafetyFallbacks:N0}, clipped={directStyleDiagnostics.CorridorClippedPixels:N0}, " +
             $"ownership={directStyleDiagnostics.RegionOwnershipCorrections:N0}, barriers={directStyleDiagnostics.BarrierCrossingCorrections:N0}, " +
+            $"ribbons={directStyleDiagnostics.RibbonArcRefined:N0}/{directStyleDiagnostics.RibbonArcCandidates:N0} " +
+            $"({directStyleDiagnostics.RibbonArcPixelsChanged:N0}px; tool={directStyleDiagnostics.RibbonArcCurveToolFits:N0} " +
+            $"[TP={directStyleDiagnostics.RibbonArcCurveToolThroughPointsFits:N0}, S={directStyleDiagnostics.RibbonArcCurveToolSplineFits:N0}, " +
+            $"B={directStyleDiagnostics.RibbonArcCurveToolBezierFits:N0}, r={directStyleDiagnostics.RibbonArcCurveToolMeanRoundness:0.000}], " +
+            $"throughGeo={directStyleDiagnostics.RibbonArcGeometricThroughFits:N0}/{directStyleDiagnostics.RibbonArcGeometricThroughAttempts:N0} " +
+            $"r={directStyleDiagnostics.RibbonArcGeometricThroughMeanRoundness:0.000} " +
+            $"p95={directStyleDiagnostics.RibbonArcGeometricThroughMaxP95Deviation:0.000}, " +
+            $"oval={directStyleDiagnostics.RibbonArcBroadOvalFits:N0}/{directStyleDiagnostics.RibbonArcBroadOvalAttempts:N0}, " +
+            $"cubic={directStyleDiagnostics.RibbonArcCubicBezierFits:N0}, outlined={directStyleDiagnostics.RibbonArcOutlinedRefined:N0}, " +
+            $"mirror={directStyleDiagnostics.RibbonArcMirrorPairReplacements:N0}/{directStyleDiagnostics.RibbonArcMirrorPairs:N0} " +
+            $"match={directStyleDiagnostics.RibbonArcBestMirrorPairAgreement:0.000} " +
+            $"dev={directStyleDiagnostics.RibbonArcMaxMirrorPairDeviation:0.000}, " +
+            $"sourceMirror={directStyleDiagnostics.RibbonArcMirrorSourceFusions:N0} " +
+            $"match={directStyleDiagnostics.RibbonArcBestMirrorSourceAgreement:0.000} " +
+            $"shift={directStyleDiagnostics.RibbonArcMaxMirrorSourceFusionShift:0.000}, " +
+            $"compound={directStyleDiagnostics.RibbonArcCompoundFits:N0}/{directStyleDiagnostics.RibbonArcCompoundAttempts:N0} " +
+            $"p95={directStyleDiagnostics.RibbonArcCompoundMaxP95Deviation:0.000} " +
+            $"max={directStyleDiagnostics.RibbonArcCompoundMaxDeviation:0.000}, " +
+            $"widthLP={directStyleDiagnostics.RibbonArcWidthRegularized:N0} " +
+            $"shift={directStyleDiagnostics.RibbonArcMaxWidthRegularizationShift:0.000} " +
+            $"dv={directStyleDiagnostics.RibbonArcMaxWidthVariationReduction:0.000}), " +
             $"cache={directStyleDiagnostics.StyleFitCacheHits:N0}, round={directStyleDiagnostics.MeanLearnedRoundness:0.000}");
 
         return row;
@@ -1431,6 +2066,145 @@ internal static class Program
                 targetWeft);
 
         return result;
+    }
+
+    private static void WriteRibbonCandidateAudit(
+        string path,
+        IReadOnlyList<RibbonArcCandidateStage> stages)
+    {
+        var sb =
+            new StringBuilder();
+
+        sb.AppendLine(
+            "color,min_x,min_y,max_x,max_y,area,elongation,boundary_ratio,bounding_fill,broad_sparse_arch,prefilter,centerline,skeleton_pixels,endpoints,principal_path_pixels,path_coverage,designer_ribbon,ribbon_shape_reason,ribbon_mean_width,ribbon_width_cv,ribbon_terminal_ratio,ribbon_max_bend,ribbon_required_bend,layered_ribbon_detected,layered_ribbon_side,layered_ribbon_sequence,layered_ribbon_coverage,layered_ribbon_bracketed_coverage,layered_ribbon_exterior_color,layered_ribbon_exterior_coverage,layered_ribbon_mean_widths,symmetry_recovered,symmetry_axis,mirror_agreement,symmetry_mean_shift,symmetry_max_shift,mirror_source_recovered,mirror_source_reason,mirror_source_agreement,mirror_source_mean_shift,mirror_source_max_shift,main_arc_extracted,main_arc_reason,main_arc_start,main_arc_end,main_arc_kept_fraction,compound_attempted,compound_reason,compound_p95_deviation,compound_max_deviation,compound_selected_roughness,compound_selected_anchors,compound_selected_smoothing_passes,compound_smoothest_safe_roughness,compound_smoothest_safe_anchors,compound_smoothest_safe_smoothing_passes,compound_smoothest_safe_p95_deviation,compound_smoothest_safe_max_deviation,compound_smoothest_curvature_valid_roughness,compound_smoothest_curvature_valid_anchors,compound_smoothest_curvature_valid_smoothing_passes,compound_smoothest_curvature_valid_p95_deviation,compound_smoothest_curvature_valid_max_deviation,compound_selected_lobe_fairness,compound_fairest_safe_lobe_fairness,compound_fairest_safe_roughness,compound_fairest_safe_anchors,compound_fairest_safe_smoothing_passes,compound_fairest_safe_p95_deviation,compound_fairest_safe_max_deviation,fit_kind,curve_family,roundness,fit_safe,max_deviation,curvature_flips,selected_smoothness,source_curvature_fairness,fit_curvature_fairness,source_curvature_inflections,fit_curvature_inflections,source_curvature_max_variation,fit_curvature_max_variation,alt_through_safe,alt_through_smoothness,alt_through_max_deviation,alt_through_p95_deviation,alt_through_roundness,piecewise_s_safe,piecewise_s_split_index,piecewise_s_smoothness,piecewise_s_max_deviation,piecewise_s_p95_deviation,piecewise_s_curvature_flips,piecewise_s_join_angle_deg,fairing_safe,fairing_reason,fairing_before_roughness,fairing_after_roughness,fairing_max_deviation,fairing_p95_deviation,fairing_max_shift,fairing_before_flips,fairing_after_flips,width_reg_applied,width_source_cv,width_terminal_ratio,width_variation_before,width_variation_after,width_max_shift,variable_width_profile_applied,variable_width_source_cv,variable_width_mapped_cv,variable_width_source_min,variable_width_source_max,variable_width_mapped_min,variable_width_mapped_max,variable_width_max_adjacent_delta,accepted,status");
+
+        foreach (var stage in stages)
+        {
+            sb.Append(stage.Color).Append(',');
+            sb.Append(stage.MinX).Append(',');
+            sb.Append(stage.MinY).Append(',');
+            sb.Append(stage.MaxX).Append(',');
+            sb.Append(stage.MaxY).Append(',');
+            sb.Append(stage.Area).Append(',');
+            sb.Append(stage.Elongation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.BoundaryRatio.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.BoundingFillRatio.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.BroadSparseArch ? 1 : 0).Append(',');
+            sb.Append(stage.PrefilterAccepted ? 1 : 0).Append(',');
+            sb.Append(stage.CenterlineBuilt ? 1 : 0).Append(',');
+            sb.Append(stage.SkeletonPixels).Append(',');
+            sb.Append(stage.Endpoints).Append(',');
+            sb.Append(stage.PrincipalPathPixels).Append(',');
+            sb.Append(stage.PrincipalPathCoverage.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.DesignerRibbon ? 1 : 0).Append(',');
+            sb.Append(stage.RibbonShapeReason).Append(',');
+            sb.Append(stage.RibbonMeanWidth.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.RibbonWidthCoefficientVariation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.RibbonTerminalRatio.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.RibbonMaximumBend.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.RibbonRequiredBend.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.LayeredRibbonDetected ? 1 : 0).Append(',');
+            sb.Append(stage.LayeredRibbonSide).Append(',');
+            sb.Append(stage.LayeredRibbonSequence).Append(',');
+            sb.Append(stage.LayeredRibbonCoverage.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.LayeredRibbonBracketedCoverage.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.LayeredRibbonExteriorColor).Append(',');
+            sb.Append(stage.LayeredRibbonExteriorCoverage.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.LayeredRibbonMeanWidths).Append(',');
+            sb.Append(stage.SymmetryRecovered ? 1 : 0).Append(',');
+            sb.Append(stage.SymmetryAxis).Append(',');
+            sb.Append(stage.MirrorAgreement.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.SymmetryMeanShift.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.SymmetryMaxShift.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.MirrorSourceRecovered ? 1 : 0).Append(',');
+            sb.Append(stage.MirrorSourceReason).Append(',');
+            sb.Append(stage.MirrorSourceAgreement.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.MirrorSourceMeanShift.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.MirrorSourceMaxShift.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.MainArcExtracted ? 1 : 0).Append(',');
+            sb.Append(stage.MainArcReason).Append(',');
+            sb.Append(stage.MainArcStart).Append(',');
+            sb.Append(stage.MainArcEnd).Append(',');
+            sb.Append(stage.MainArcKeptFraction.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundAttempted ? 1 : 0).Append(',');
+            sb.Append(stage.CompoundReason).Append(',');
+            sb.Append(stage.CompoundP95Deviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundMaximumDeviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundSelectedRoughness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundSelectedAnchors).Append(',');
+            sb.Append(stage.CompoundSelectedSmoothingPasses).Append(',');
+            sb.Append(stage.CompoundSmoothestSafeRoughness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundSmoothestSafeAnchors).Append(',');
+            sb.Append(stage.CompoundSmoothestSafeSmoothingPasses).Append(',');
+            sb.Append(stage.CompoundSmoothestSafeP95Deviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundSmoothestSafeMaximumDeviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundSmoothestCurvatureValidRoughness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundSmoothestCurvatureValidAnchors).Append(',');
+            sb.Append(stage.CompoundSmoothestCurvatureValidSmoothingPasses).Append(',');
+            sb.Append(stage.CompoundSmoothestCurvatureValidP95Deviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundSmoothestCurvatureValidMaximumDeviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundSelectedLobeFairness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundFairestSafeLobeFairness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundFairestSafeRoughness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundFairestSafeAnchors).Append(',');
+            sb.Append(stage.CompoundFairestSafeSmoothingPasses).Append(',');
+            sb.Append(stage.CompoundFairestSafeP95Deviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CompoundFairestSafeMaximumDeviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.FitKind).Append(',');
+            sb.Append(stage.CurveFamily).Append(',');
+            sb.Append(stage.Roundness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.FitSafe ? 1 : 0).Append(',');
+            sb.Append(stage.MaximumDeviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.CurvatureSignFlips).Append(',');
+            sb.Append(stage.SelectedSmoothness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.SourceCurvatureFairness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.FitCurvatureFairness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.SourceCurvatureInflections).Append(',');
+            sb.Append(stage.FitCurvatureInflections).Append(',');
+            sb.Append(stage.SourceCurvatureMaximumVariation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.FitCurvatureMaximumVariation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.AlternativeThroughSafe ? 1 : 0).Append(',');
+            sb.Append(stage.AlternativeThroughSmoothness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.AlternativeThroughMaximumDeviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.AlternativeThroughP95Deviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.AlternativeThroughRoundness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.PiecewiseSCurveSafe ? 1 : 0).Append(',');
+            sb.Append(stage.PiecewiseSCurveSplitIndex).Append(',');
+            sb.Append(stage.PiecewiseSCurveSmoothness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.PiecewiseSCurveMaximumDeviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.PiecewiseSCurveP95Deviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.PiecewiseSCurveCurvatureFlips).Append(',');
+            sb.Append(stage.PiecewiseSCurveJoinAngleDegrees.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.ConstrainedFairingSafe ? 1 : 0).Append(',');
+            sb.Append(stage.ConstrainedFairingReason).Append(',');
+            sb.Append(stage.ConstrainedFairingBeforeRoughness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.ConstrainedFairingAfterRoughness.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.ConstrainedFairingMaximumDeviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.ConstrainedFairingP95Deviation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.ConstrainedFairingMaximumShift.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.ConstrainedFairingBeforeCurvatureFlips).Append(',');
+            sb.Append(stage.ConstrainedFairingAfterCurvatureFlips).Append(',');
+            sb.Append(stage.WidthRegularizerApplied ? 1 : 0).Append(',');
+            sb.Append(stage.WidthSourceCoefficientVariation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.WidthTerminalRatio.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.WidthVariationBefore.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.WidthVariationAfter.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.WidthMaximumShift.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.VariableWidthProfileApplied ? 1 : 0).Append(',');
+            sb.Append(stage.VariableWidthSourceCoefficientVariation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.VariableWidthMappedCoefficientVariation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.VariableWidthSourceMinimum.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.VariableWidthSourceMaximum.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.VariableWidthMappedMinimum.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.VariableWidthMappedMaximum.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.VariableWidthMaximumAdjacentVariation.ToString("0.000000", CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(stage.Accepted ? 1 : 0).Append(',');
+            sb.Append(stage.Status).AppendLine();
+        }
+
+        File.WriteAllText(
+            path,
+            sb.ToString());
     }
 
     private static void WriteLeafPetalRawLobeAudit(
@@ -1552,6 +2326,35 @@ internal static class Program
             "All final pixels still pass Curve & Fill indexed-region ownership and RugCAD Pixel-Cord outline replay.");
 
         return sb.ToString();
+    }
+
+    private static DesignDocument CloneDocument(
+        DesignDocument source)
+    {
+        var result =
+            new DesignDocument(
+                source.Width,
+                source.Height,
+                source.Palette);
+
+        for (var y = 0;
+             y < source.Height;
+             y++)
+        {
+            for (var x = 0;
+                 x < source.Width;
+                 x++)
+            {
+                result.SetPixel(
+                    x,
+                    y,
+                    source.GetPixel(
+                        x,
+                        y));
+            }
+        }
+
+        return result;
     }
 
     private static DesignDocument Crop(
@@ -2398,7 +3201,11 @@ internal static class Program
         double TargetNearF1,
         double FallbackTargetExactF1,
         double FallbackTargetNearF1,
-        double TargetNearGain);
+        double TargetNearGain,
+        double TargetCadenceSimilarity,
+        double FallbackCadenceSimilarity,
+        double CadenceGain,
+        double LearnedGraphCadenceSimilarity);
 
     private sealed record ThinStructureStats(
         int AllComponents,

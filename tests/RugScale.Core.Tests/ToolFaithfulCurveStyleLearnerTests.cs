@@ -146,4 +146,102 @@ public sealed class ToolFaithfulCurveStyleLearnerTests
             fit.HasValue,
             "A deliberate L corner must remain edge-for-edge / polyline, not be rounded by training.");
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Learner_PreservesWideOvalThroughPointsFamily(bool pixelCord)
+    {
+        (int X, int Y)[] controls =
+        [
+            (4, 34),
+            (10, 16),
+            (29, 7),
+            (50, 15),
+            (60, 34),
+        ];
+
+        IEnumerable<(int X, int Y)> rendered =
+            CurveRasterizer.Draw(
+                controls,
+                CurveType.SplineThroughPoints,
+                0.85);
+
+        if (pixelCord)
+        {
+            rendered =
+                Rasterizer.ConnectDiagonalSteps(
+                    rendered);
+        }
+
+        var source =
+            rendered
+                .Distinct()
+                .ToArray();
+
+        var fit =
+            ToolFaithfulCurveStyleLearner.Fit(
+                source,
+                pixelCord);
+
+        Assert.True(
+            fit.HasValue,
+            "A clean wide oval Curve-tool raster should be learned instead of falling back to polygonal graph replay.");
+        Assert.Equal(
+            CurveType.SplineThroughPoints,
+            fit.Value.Type);
+        Assert.InRange(
+            fit.Value.Roundness,
+            0.70,
+            1.00);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Learner_PreservesTallSideOvalThroughPointsFamily(bool pixelCord)
+    {
+        (int X, int Y)[] controls =
+        [
+            (42, 5),
+            (22, 8),
+            (8, 24),
+            (15, 46),
+            (38, 59),
+        ];
+
+        IEnumerable<(int X, int Y)> rendered =
+            CurveRasterizer.Draw(
+                controls,
+                CurveType.SplineThroughPoints,
+                0.78);
+
+        if (pixelCord)
+        {
+            rendered =
+                Rasterizer.ConnectDiagonalSteps(
+                    rendered);
+        }
+
+        var source =
+            rendered
+                .Distinct()
+                .ToArray();
+
+        var fit =
+            ToolFaithfulCurveStyleLearner.Fit(
+                source,
+                pixelCord);
+
+        Assert.True(
+            fit.HasValue,
+            "A tall side-oval Curve-tool raster should remain a smooth learned curve.");
+        Assert.Equal(
+            CurveType.SplineThroughPoints,
+            fit.Value.Type);
+        Assert.InRange(
+            fit.Value.Roundness,
+            0.60,
+            0.92);
+    }
+
 }
