@@ -1834,6 +1834,285 @@ public sealed class CurveOvalTrainingTests
             });
     }
 
+    [Fact]
+    public void LayeredRibbonPreview_BracketedStackRedrawsOuterCordAndCleansStaleBandToExterior()
+    {
+        var palette =
+            new Palette(
+                new[]
+                {
+                    new RugColor(0, 0, 0),
+                    new RugColor(255, 255, 255),
+                    new RugColor(230, 224, 218),
+                    new RugColor(120, 120, 120),
+                    new RugColor(0, 0, 102),
+                    new RugColor(216, 185, 124),
+                    new RugColor(44, 128, 166),
+                });
+        var source =
+            new DesignDocument(
+                64,
+                48,
+                palette);
+
+        for (var y = 0;
+             y < source.Height;
+             y++)
+        {
+            for (var x = 0;
+                 x < source.Width;
+                 x++)
+            {
+                source.SetPixel(
+                    x,
+                    y,
+                    2);
+            }
+        }
+
+        var regionPixels =
+            new List<int>();
+
+        for (var x = 8;
+             x <= 55;
+             x++)
+        {
+            for (var y = 18;
+                 y <= 22;
+                 y++)
+            {
+                source.SetPixel(
+                    x,
+                    y,
+                    6);
+                regionPixels.Add(
+                    y *
+                        source.Width +
+                    x);
+            }
+
+            source.SetPixel(x, 23, 1);
+            source.SetPixel(x, 24, 4);
+            source.SetPixel(x, 25, 4);
+            source.SetPixel(x, 26, 4);
+            source.SetPixel(x, 27, 1);
+        }
+
+        var region =
+            new LeafPetalRegion(
+                6,
+                regionPixels.ToArray(),
+                regionPixels.ToArray(),
+                8,
+                18,
+                55,
+                22);
+        var candidate =
+            new LeafPetalArcCandidate(
+                region,
+                31.5,
+                20,
+                1,
+                0,
+                0,
+                1,
+                47,
+                4,
+                10,
+                0.15);
+        var samples =
+            Enumerable.Range(
+                    0,
+                    48)
+                .Select(index =>
+                    new LeafPetalAxisSample(
+                        8d +
+                        index,
+                        20d,
+                        2.25,
+                        index /
+                        47d))
+                .ToArray();
+        var model =
+            new LeafPetalArcModel(
+                candidate,
+                samples,
+                ReversedForApex: false,
+                BaseWidth: 2.25,
+                ApexWidth: 2.25,
+                SkeletonCoverage: 1d);
+        var fit =
+            new ElegantArcFit(
+                samples
+                    .Select(sample =>
+                        new ElegantArcPoint(
+                            sample.X,
+                            sample.Y -
+                            0.55,
+                            sample.HalfWidth))
+                    .ToArray(),
+                IsSafe: true,
+                IsMonotonic: true,
+                CurvatureSignFlips: 0,
+                MaximumCenterlineDeviation: 0.55);
+        var destination =
+            DesignResizer.Scale(
+                source,
+                128,
+                96,
+                ScaleMode.NearestNeighbor);
+        var before =
+            Enumerable.Range(
+                    0,
+                    destination.Width *
+                    destination.Height)
+                .Select(key =>
+                {
+                    var x =
+                        key %
+                        destination.Width;
+                    var y =
+                        key /
+                        destination.Width;
+
+                    return destination.GetPixel(
+                        x,
+                        y);
+                })
+                .ToArray();
+        var profile =
+            new LayeredRibbonProfileDiagnostics(
+                Detected: true,
+                Side: "positive",
+                Sequence: "1>4>1>2",
+                Coverage: 0.92,
+                BracketedCoverage: 0.96,
+                ExteriorColor: "2",
+                ExteriorCoverage: 0.94,
+                SampleCount: 40,
+                MatchingSamples: 38,
+                MeanRunWidths:
+                    new[]
+                    {
+                        1.0,
+                        3.0,
+                        1.0,
+                        8.0,
+                    });
+
+        var applied =
+            CurveFillLayeredRibbonRasterizer.TryApplySecondProtectedBandPreview(
+                source,
+                destination,
+                model,
+                fit,
+                profile,
+                new HashSet<byte>
+                {
+                    1,
+                },
+                out var changed);
+
+        Assert.True(
+            applied);
+        Assert.True(
+            changed > 0);
+
+        const double Scale = 2d;
+        var innerSeparator =
+            CurveFillLayeredRibbonRasterizer.BuildOneSidedBandMask(
+                fit.Points,
+                side: 1d,
+                scaleX: Scale,
+                scaleY: Scale,
+                targetWidth: destination.Width,
+                targetHeight: destination.Height,
+                innerAdditionalTargetPixels: 0d,
+                sourceBandWidth: 0d,
+                fixedBandWidthTargetPixels: 1d);
+        var band =
+            CurveFillLayeredRibbonRasterizer.BuildOneSidedBandMask(
+                fit.Points,
+                side: 1d,
+                scaleX: Scale,
+                scaleY: Scale,
+                targetWidth: destination.Width,
+                targetHeight: destination.Height,
+                innerAdditionalTargetPixels: 1d,
+                sourceBandWidth: 3d);
+        var outerSeparator =
+            CurveFillLayeredRibbonRasterizer.BuildOneSidedBandMask(
+                fit.Points,
+                side: 1d,
+                scaleX: Scale,
+                scaleY: Scale,
+                targetWidth: destination.Width,
+                targetHeight: destination.Height,
+                innerAdditionalTargetPixels: 1d,
+                sourceBandWidth: 0d,
+                fixedBandWidthTargetPixels: 1d,
+                innerAdditionalSourceWidth: 3d);
+        var authority =
+            CurveFillLayeredRibbonRasterizer.BuildOneSidedBandMask(
+                fit.Points,
+                side: 1d,
+                scaleX: Scale,
+                scaleY: Scale,
+                targetWidth: destination.Width,
+                targetHeight: destination.Height,
+                innerAdditionalTargetPixels: 0d,
+                sourceBandWidth: 6d);
+
+        Assert.NotEmpty(
+            outerSeparator);
+        Assert.True(
+            outerSeparator.Count(key =>
+            {
+                var x =
+                    key %
+                    destination.Width;
+                var y =
+                    key /
+                    destination.Width;
+
+                return destination.GetPixel(
+                           x,
+                           y) ==
+                       1;
+            }) >
+            outerSeparator.Count *
+                0.75,
+            "The outer Pixel-Cord separator must be redrawn around the broad band.");
+
+        var staleCleaned =
+            authority.Count(key =>
+            {
+                if (innerSeparator.Contains(key) ||
+                    band.Contains(key) ||
+                    outerSeparator.Contains(key) ||
+                    before[key] != 4)
+                {
+                    return false;
+                }
+
+                var x =
+                    key %
+                    destination.Width;
+                var y =
+                    key /
+                    destination.Width;
+
+                return destination.GetPixel(
+                           x,
+                           y) ==
+                       2;
+            });
+
+        Assert.True(
+            staleCleaned > 0,
+            "At least one stale nearest-neighbour navy pixel should be restored to the source-proven exterior colour.");
+    }
+
     private static LeafPetalArcModel Model(
         IReadOnlyList<LeafPetalAxisSample> samples,
         int width,
