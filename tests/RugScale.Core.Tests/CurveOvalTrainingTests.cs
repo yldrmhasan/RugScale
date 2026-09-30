@@ -1987,8 +1987,8 @@ public sealed class CurveOvalTrainingTests
                 Sequence: "1>4>1>2",
                 Coverage: 0.92,
                 BracketedCoverage: 0.96,
-                ExteriorColor: "2",
-                ExteriorCoverage: 0.94,
+                ExteriorColor: string.Empty,
+                ExteriorCoverage: 0d,
                 SampleCount: 40,
                 MatchingSamples: 38,
                 MeanRunWidths:
@@ -2110,7 +2110,7 @@ public sealed class CurveOvalTrainingTests
 
         Assert.True(
             staleCleaned > 0,
-            "At least one stale nearest-neighbour navy pixel should be restored to the source-proven exterior colour.");
+            "Local source-normal bracketing should restore at least one stale navy pixel even when the profile has no global exterior colour.");
     }
 
     private static LeafPetalArcModel Model(
