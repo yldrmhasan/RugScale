@@ -305,13 +305,14 @@ internal static class CurveFillLayeredRibbonRasterizer
                 StringComparison.Ordinal) &&
             profile.BracketedCoverage >=
                 0.80;
+        byte exteriorColor = 0;
         var hasExterior =
             bracketed &&
             profile.ExteriorCoverage >=
                 0.60 &&
             byte.TryParse(
                 profile.ExteriorColor,
-                out var exteriorColor) &&
+                out exteriorColor) &&
             exteriorColor !=
                 separatorColor &&
             exteriorColor !=
