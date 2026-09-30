@@ -362,6 +362,17 @@ internal static class CurveFillLayeredRibbonRasterizer
             return false;
         }
 
+        var localExteriorProfile =
+            bracketed
+                ? CurveFillLayeredRibbonAnalyzer.BuildLocalBracketedExteriorProfile(
+                    source,
+                    model,
+                    protectedStrokeColors,
+                    profile.Side,
+                    separatorColor,
+                    bandColor)
+                : Array.Empty<byte?>();
+
         var scaleX =
             destination.Width /
             (double)source.Width;
@@ -446,7 +457,10 @@ internal static class CurveFillLayeredRibbonRasterizer
         var regionColor =
             model.Candidate.Region.Color;
         var allowStaleCleanup =
-            hasExterior;
+            bracketed &&
+            (hasExterior ||
+             localExteriorProfile.Any(value =>
+                 value.HasValue));
 
         foreach (var key in authorityMask)
         {
@@ -552,10 +566,27 @@ internal static class CurveFillLayeredRibbonRasterizer
                 continue;
             }
 
+            var localExterior =
+                ResolveLocalExterior(
+                    model.Samples,
+                    localExteriorProfile,
+                    sourceX,
+                    sourceY);
+
+            if (!localExterior.HasValue &&
+                hasExterior)
+            {
+                localExterior =
+                    exteriorColor;
+            }
+
+            if (!localExterior.HasValue)
+                continue;
+
             destination.SetPixel(
                 x,
                 y,
-                exteriorColor);
+                localExterior.Value);
             changed++;
         }
 
@@ -571,6 +602,86 @@ internal static class CurveFillLayeredRibbonRasterizer
             };
 
         return changed > 0;
+    }
+
+    private static byte? ResolveLocalExterior(
+        IReadOnlyList<LeafPetalAxisSample> samples,
+        IReadOnlyList<byte?> localExteriorProfile,
+        double sourceX,
+        double sourceY)
+    {
+        if (samples.Count == 0 ||
+            localExteriorProfile.Count !=
+                samples.Count)
+        {
+            return null;
+        }
+
+        var nearestIndex = -1;
+        var nearestDistanceSquared =
+            double.PositiveInfinity;
+
+        for (var index = 0;
+             index < samples.Count;
+             index++)
+        {
+            var dx =
+                samples[index].X -
+                sourceX;
+            var dy =
+                samples[index].Y -
+                sourceY;
+            var distanceSquared =
+                dx *
+                    dx +
+                dy *
+                    dy;
+
+            if (distanceSquared <
+                nearestDistanceSquared)
+            {
+                nearestDistanceSquared =
+                    distanceSquared;
+                nearestIndex =
+                    index;
+            }
+        }
+
+        if (nearestIndex < 0)
+            return null;
+
+        if (localExteriorProfile[nearestIndex].HasValue)
+            return localExteriorProfile[nearestIndex];
+
+        // Source bracketing can be interrupted for one or two samples by raster phase. Borrow only
+        // from a very small axial neighbourhood; never use a distant global exterior just to fill
+        // a local evidence gap.
+        for (var radius = 1;
+             radius <= 3;
+             radius++)
+        {
+            var left =
+                nearestIndex -
+                radius;
+            var right =
+                nearestIndex +
+                radius;
+
+            if (left >= 0 &&
+                localExteriorProfile[left].HasValue)
+            {
+                return localExteriorProfile[left];
+            }
+
+            if (right <
+                    localExteriorProfile.Count &&
+                localExteriorProfile[right].HasValue)
+            {
+                return localExteriorProfile[right];
+            }
+        }
+
+        return null;
     }
 
 }
