@@ -111,6 +111,123 @@ internal static class CurveFillLayeredRibbonAnalyzer
             chosen.MeanRunWidths);
     }
 
+    internal static IReadOnlyList<byte?> BuildLocalBracketedExteriorProfile(
+        DesignDocument source,
+        LeafPetalArcModel model,
+        IReadOnlySet<byte> protectedStrokeColors,
+        string sideName,
+        byte separatorColor,
+        byte bandColor)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(protectedStrokeColors);
+
+        var result =
+            new byte?[
+                model.Samples.Count];
+        var side =
+            string.Equals(
+                sideName,
+                "positive",
+                StringComparison.Ordinal)
+                ? 1d
+                : string.Equals(
+                    sideName,
+                    "negative",
+                    StringComparison.Ordinal)
+                    ? -1d
+                    : 0d;
+
+        if (Math.Abs(
+                side) <
+            0.5)
+        {
+            return result;
+        }
+
+        for (var index = 0;
+             index < model.Samples.Count;
+             index++)
+        {
+            var previous =
+                model.Samples[
+                    Math.Max(
+                        0,
+                        index - 3)];
+            var current =
+                model.Samples[index];
+            var next =
+                model.Samples[
+                    Math.Min(
+                        model.Samples.Count - 1,
+                        index + 3)];
+            var tx =
+                next.X -
+                previous.X;
+            var ty =
+                next.Y -
+                previous.Y;
+            var length =
+                Math.Sqrt(
+                    tx *
+                        tx +
+                    ty *
+                        ty);
+
+            if (length <= 1e-9)
+                continue;
+
+            var nx =
+                -ty /
+                length *
+                side;
+            var ny =
+                tx /
+                length *
+                side;
+            var runs =
+                SampleRuns(
+                    source,
+                    current,
+                    nx,
+                    ny,
+                    model.Candidate.Region.Color,
+                    protectedStrokeColors);
+
+            if (runs.Count < 4 ||
+                runs[0].Color !=
+                    separatorColor ||
+                runs[1].Color !=
+                    bandColor ||
+                runs[2].Color !=
+                    separatorColor)
+            {
+                continue;
+            }
+
+            var exterior =
+                runs[3].Color;
+
+            if (exterior ==
+                    model.Candidate.Region.Color ||
+                exterior ==
+                    separatorColor ||
+                exterior ==
+                    bandColor ||
+                protectedStrokeColors.Contains(
+                    exterior))
+            {
+                continue;
+            }
+
+            result[index] =
+                exterior;
+        }
+
+        return result;
+    }
+
     private static SideProfile AnalyzeSide(
         DesignDocument source,
         LeafPetalArcModel model,
