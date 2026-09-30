@@ -126,6 +126,71 @@ jobs:
                       f"{key}: tapered-hook roughness regressed to {row['selected_smoothness']}"
                   )
 
+          layered_s_targets = {
+              (105, 566, 156, 812): "negative",
+              (484, 566, 535, 812): "positive",
+          }
+          layered_s = {}
+          for row in rows:
+              key = tuple(int(row[name]) for name in ("min_x", "min_y", "max_x", "max_y"))
+              if key in layered_s_targets:
+                  layered_s[key] = row
+
+          missing_layered_s = layered_s_targets.keys() - layered_s.keys()
+          if missing_layered_s:
+              raise SystemExit(
+                  f"Missing layered S-sweep audit rows: {sorted(missing_layered_s)}"
+              )
+
+          for key, expected_side in layered_s_targets.items():
+              row = layered_s[key]
+              if row["layered_ribbon_detected"] != "1":
+                  raise SystemExit(f"{key}: layered S-sweep detection was lost")
+              if row["layered_ribbon_side"] != expected_side:
+                  raise SystemExit(
+                      f"{key}: layered side changed to {row['layered_ribbon_side']}, "
+                      f"expected {expected_side}"
+                  )
+              if not row["layered_ribbon_sequence"].startswith("1>4>1"):
+                  raise SystemExit(
+                      f"{key}: layered sequence changed to {row['layered_ribbon_sequence']}"
+                  )
+              if float(row["layered_ribbon_bracketed_coverage"]) < 0.85:
+                  raise SystemExit(
+                      f"{key}: bracketed layered coverage regressed to "
+                      f"{row['layered_ribbon_bracketed_coverage']}"
+                  )
+              if row["fit_safe"] != "1" or row["accepted"] != "1":
+                  raise SystemExit(f"{key}: layered S centreline is no longer accepted/safe")
+              if row["curve_family"] != "CompoundSpline":
+                  raise SystemExit(
+                      f"{key}: layered S family changed to {row['curve_family']}"
+                  )
+              if int(row["curvature_flips"]) != 2:
+                  raise SystemExit(
+                      f"{key}: expected two real S inflections, got {row['curvature_flips']}"
+                  )
+              if float(row["max_deviation"]) > 3.30:
+                  raise SystemExit(
+                      f"{key}: layered S source deviation regressed to "
+                      f"{row['max_deviation']} px"
+                  )
+
+              widths = [
+                  float(value)
+                  for value in row["layered_ribbon_mean_widths"].split("|")
+                  if value
+              ]
+              if len(widths) < 3:
+                  raise SystemExit(f"{key}: layered S no longer exposes 3 source bands")
+              inner, band, outer = widths[:3]
+              if not (0.65 <= inner <= 1.65):
+                  raise SystemExit(f"{key}: inner separator width regressed to {inner}")
+              if not (1.75 <= band <= 8.0):
+                  raise SystemExit(f"{key}: middle band width regressed to {band}")
+              if not (0.65 <= outer <= 1.65):
+                  raise SystemExit(f"{key}: outer separator width regressed to {outer}")
+
           variable_width_targets = {
               (83, 128, 178, 331),
               (462, 128, 557, 331),
