@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** `20bc22d1ecb11839046b0eda9d8cb879b3efd731` — bracketed layered-ribbon exterior ownership + synchronized inner/outer separator preview; CI/audit running at this documentation point.
+**Last documented experiment:** `e5a7d98bc17d23be6d007cc95bcdc7f9a84b2d91` — local source-normal exterior ownership for bracketed layered-ribbon cleanup; CI/audit queued at this documentation point.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1426,6 +1426,61 @@ Acceptance gate before any production routing:
 
 If one mirrored repeat still lacks exterior ownership, remain diagnostic/overlay-only; do not lower
 the cleanup evidence thresholds simply to force symmetry.
+
+### 4.41 Local exterior ownership for layered cleanup — CURRENT EXPERIMENT
+
+Problem exposed by real C069:
+the long S repeats share a strong `white > navy > white` bracket, but one global exterior colour is
+not equally dominant along the complete sweep.
+
+Exterior-aware C069 evidence at commit `20bc22d...`:
+
+Left long S:
+- exact `1>4>1>2` coverage: **0.591623**,
+- bracketed `1>4>1` coverage: **0.884817**,
+- global exterior colour: **2**,
+- global exterior coverage: **0.591623**.
+
+Right mirror:
+- exact `1>4>1>2` coverage: **0.603175**,
+- bracketed coverage: **0.888889**,
+- global exterior colour: **2**,
+- global exterior coverage: **0.603175**.
+
+Interpretation:
+the bracket is highly stable, but exterior context legitimately changes along the ornament because
+other motifs approach it. Lowering the global exterior threshold just to make the left/right pair
+symmetric would erase valid neighbouring ownership.
+
+Decision:
+**do not lower the global cleanup threshold.**
+
+Commits:
+- `38143fcb38af8cde16282560ab1b3bec20b66e3b` — source analyzer exposes a local bracketed-exterior
+  profile for every centreline sample,
+- `e650abec3db572ea15e7e48c9a6827b19e06263a` — layered preview cleanup resolves exterior from the
+  nearest source centreline sample, borrowing only within a tiny +/-3 sample axial neighbourhood,
+- `e5a7d98bc17d23be6d007cc95bcdc7f9a84b2d91` — regression proves stale navy cleanup works even
+  when global exterior ownership is intentionally absent from the supplied profile.
+
+Local evidence rule:
+- require local `separator > band > separator > exterior`,
+- exterior may not be candidate fill, separator, band or another protected stroke role,
+- if one local sample lacks evidence, borrow only from +/-3 neighbouring source samples,
+- if still unknown, leave the stale target pixel untouched,
+- a globally proven exterior remains only a fallback, never a reason to override contradictory local
+  evidence.
+
+Why this matters:
+the coupled layered redraw can now move the white/navy/white stack while respecting nearby leaf,
+motif or background ownership changes along the same long S sweep.
+
+Status:
+core/C069/four-design/B163A validation pending at this documentation point.
+
+Production rule remains unchanged:
+layered-band work is still preview/diagnostic until the local-ownership artifact is visually checked
+and all regression suites are green.
 
 ## 5. Do-not-repeat rules
 
