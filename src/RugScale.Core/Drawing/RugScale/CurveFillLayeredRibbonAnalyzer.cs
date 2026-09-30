@@ -59,13 +59,25 @@ internal static class CurveFillLayeredRibbonAnalyzer
                 protectedStrokeColors,
                 side: -1d);
 
+        var positiveAuthority =
+            Math.Max(
+                positive.Coverage,
+                positive.BracketedCoverage);
+        var negativeAuthority =
+            Math.Max(
+                negative.Coverage,
+                negative.BracketedCoverage);
         var chosen =
-            positive.Coverage >=
-            negative.Coverage
+            positiveAuthority >=
+            negativeAuthority
                 ? positive
                 : negative;
+        var chosenAuthority =
+            Math.Max(
+                chosen.Coverage,
+                chosen.BracketedCoverage);
 
-        if (chosen.Coverage <
+        if (chosenAuthority <
                 MinimumDominantCoverage ||
             chosen.Sequence.Length == 0)
         {
@@ -272,7 +284,7 @@ internal static class CurveFillLayeredRibbonAnalyzer
                         '>',
                         StringSplitOptions.RemoveEmptyEntries);
 
-                if (parts.Length < 3 ||
+                if (parts.Length < 4 ||
                     !string.Equals(
                         parts[0],
                         dominantParts[0],
@@ -281,8 +293,12 @@ internal static class CurveFillLayeredRibbonAnalyzer
                         parts[1],
                         dominantParts[1],
                         StringComparison.Ordinal) ||
-                    !byte.TryParse(
+                    !string.Equals(
                         parts[2],
+                        dominantParts[0],
+                        StringComparison.Ordinal) ||
+                    !byte.TryParse(
+                        parts[3],
                         out var outerColor) ||
                     protectedStrokeColors.Contains(
                         outerColor))
