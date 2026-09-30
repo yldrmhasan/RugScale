@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** `38cef5fbfe2f35815fd495392a44452a97e3bd78` — compact spiral production route + C069 regression gate; latest validation described below.
+**Last documented experiment:** `20bc22d1ecb11839046b0eda9d8cb879b3efd731` — bracketed layered-ribbon exterior ownership + synchronized inner/outer separator preview; CI/audit running at this documentation point.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1332,6 +1332,100 @@ Next gate:
 - infer robust white/navy band widths from immutable source evidence,
 - create a diagnostic-only layered redraw preview using the already accepted compound centreline,
 - only then consider production routing.
+
+### 4.39 Layered-ribbon preview evolution — DIAGNOSTIC / KEEP INFRASTRUCTURE
+
+Reason:
+after centreline tuning for the long color-6 S sweep was exhausted, source cross-sections proved the
+ornament is not one cyan ribbon. It carries a coupled side stack. Redrawing only cyan leaves the
+white/navy neighbouring layers on baseline geometry and makes the complete ornament look non-parallel.
+
+Commits in this diagnostic sequence:
+- `3fa371d8e2bf...` — one-sided layered band masks,
+- `8105e139d7bc...` — layered target-band geometry tests,
+- `60844959a41d...` — diagnostic layered protected-band redraw,
+- `26e07aefbdea...` — isolated preview mode,
+- `f5119ae5d3ec...` — C069 long-S preview artifact,
+- `035e7278b2e4...` / `8c93034f0ed7...` / `98b4a98f9ce2...` / `73a6fc9226d6...` — exterior/source-ownership diagnostics,
+- `4c67bdcb6677...` / `5e1383702cd4...` — overlay-only preview path when cleanup authority is absent,
+- `4eb01b70e6f4...` / `27a3c8c24eb7...` / `83ac48f5c6c8...` — preview gate diagnostics,
+- `5231ab271784...` / `16841da1d8dc...` / `c3bfb721d611...` / `76294c5c992e...` — permit a filled middle band and scan through it to recover full bracketing.
+
+Persistent preview artifact:
+- `C069_focus_long_s_sweep_layered_preview.bmp`.
+
+Visual result:
+the preview moves the broad navy layer with the accepted cyan compound centreline and visibly
+improves parallelism versus leaving navy on nearest/baseline geometry. This validates the
+**coupled-layer redraw direction**, but it is still diagnostic-only.
+
+Important source result at commit `76294c5...`:
+the recovered cross-section became a four-run stack:
+
+`white(1) -> navy(4) -> white(1) -> background(2)`
+
+Long-S evidence:
+- left: exact full-sequence coverage **0.591623**, bracketed coverage **0.884817**,
+- right: exact full-sequence coverage **0.603175**, bracketed coverage **0.888889**,
+- first white band mean width about **1.26-1.28 source px**,
+- navy band mean width about **4.02-4.07 source px**,
+- outer white band mean width about **1.27-1.30 source px**,
+- following background run about **10.84 source px** in the sampled normal window.
+
+Why exact sequence coverage is lower than bracketed coverage:
+the immutable source often reaches different exterior context after the same stable
+`1>4>1` bracket. The bracket itself is substantially more stable than any single complete
+four-run sequence.
+
+Decision:
+**KEEP the layered analyzer/mask/preview infrastructure.**
+Do not enable production cleanup until exterior ownership is explicitly proven; overlay-only is safer
+than erasing a protected band to an assumed background.
+
+### 4.40 Bracketed exterior ownership + two-separator redraw — CURRENT EXPERIMENT
+
+Commits:
+- `dc48eb6fe4994fda9e3dbf4d5bd3027ca28618b6` — choose side using bracketed evidence and parse the
+  exterior after `separator > band > separator` correctly,
+- `173117488467e2269f221f9780f1fb790fe70296` — preview now draws:
+  - inner 1-target-pixel separator,
+  - source-scaled broad middle band,
+  - outer 1-target-pixel separator,
+  and permits stale-layer cleanup only with source-proven exterior ownership,
+- `2362b3e1cc183bcfb2c022d0efb1a2447032b384` — regression requires the synthetic
+  `1>4>1>2` stack to report exterior colour **2** with high coverage,
+- `20bc22d1ecb11839046b0eda9d8cb879b3efd731` — C# definite-assignment fix for the gated exterior
+  cleanup branch.
+
+Architectural correction:
+the earlier preview could clean stale navy pixels to white because it knew bracketing but had not
+proved which colour actually owned the exterior. That is insufficient for production.
+
+New rule:
+- strong `1>4>1` bracket evidence may establish the layered side even if one exact complete
+  sequence is just below the ordinary 0.60 dominance threshold,
+- exterior ownership is read from the **fourth run** in
+  `separator > band > separator > exterior`,
+- stale white/navy ownership may be erased only when:
+  - bracketed coverage >= **0.80**,
+  - exterior coverage >= **0.60**,
+  - exterior is neither separator, band nor candidate fill,
+- cleanup writes the source-proven exterior colour, never an assumed separator colour,
+- other protected third-colour roles remain barriers.
+
+Status at documentation point:
+- prior layered-preview branch baseline: all CI/workflows green,
+- current exterior-aware regression/audit: running after the compile-only definite-assignment fix.
+
+Acceptance gate before any production routing:
+1. core test proves exterior parsing,
+2. both mirrored C069 S sweeps report the same `1>4>1` bracket with mirrored side direction,
+3. both report source-proven exterior ownership strongly enough for cleanup,
+4. the new layered preview visually removes stale band doubling without cutting intersections,
+5. C069/four-design/B163A gates remain green.
+
+If one mirrored repeat still lacks exterior ownership, remain diagnostic/overlay-only; do not lower
+the cleanup evidence thresholds simply to force symmetry.
 
 ## 5. Do-not-repeat rules
 
