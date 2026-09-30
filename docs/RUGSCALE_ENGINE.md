@@ -25,6 +25,38 @@ Bu kayıt özellikle şu bilgileri kalıcı tutar:
 işlenmeden bir sonraki hipoteze geçilmemelidir. Böylece yeni bir oturum aynı başarısız yaklaşımı
 yeniden denemez.
 
+## Layered ribbon / coupled-band redraw (Eylül 2026)
+
+Curve-heavy halı desenlerinde bazı bölgeler tek bir dolgu renginden ibaret değildir. C069 uzun
+S-sweep eğitimi source kesitlerinde şu tip kararlı katman yapısını gösterdi:
+
+`fill -> 1 px separator -> geniş yan band -> 1 px separator -> exterior`
+
+Bu sınıfta yalnız fill centerline'ını yeniden çizmek yeterli değildir; komşu bantlar baseline
+geometrisinde kalırsa tüm motif paralelliğini kaybeder.
+
+Güncel mimari:
+
+- `CurveFillLayeredRibbonAnalyzer`
+  - immutable source centerline normalleri boyunca colour-run ölçer,
+  - tam sekans coverage'ını ve daha kararlı `separator > band > separator` bracket coverage'ını
+    ayrı raporlar,
+  - mirrored tekrarların side yönünü ayrı tutar,
+  - cleanup için exterior ownership'i açıkça kanıtlar.
+- `CurveFillLayeredRibbonRasterizer`
+  - accepted centerline etrafında one-sided target masks üretir,
+  - ilk/son separatorü target-grid Pixel-Cord kalınlığında tutabilir,
+  - geniş orta bandı source fiziksel genişliğine göre ölçekler,
+  - exterior kanıtı yoksa overlay-only çalışır,
+  - stale protected/fill ownership cleanup'ı yalnız güçlü bracket + exterior evidence ile yapabilir.
+
+**Güvenlik kuralı:** layered-ribbon yolu şu anda eğitim/preview ağırlıklıdır. Genel ribbon eşikleri
+gevşetilmez ve bir dış zemin rengi source tarafından kanıtlanmadan eski white/navy ownership
+silinmez.
+
+Ayrıntılı deney geçmişi ve KEEP/REJECT kararları:
+[`CURVE_OVAL_TRAINING_LOG.md`](CURVE_OVAL_TRAINING_LOG.md).
+
 ## Amaç
 
 RugScale fotoğraf küçültme algoritması değildir. Indexed-color halı desenlerini farklı üretim
