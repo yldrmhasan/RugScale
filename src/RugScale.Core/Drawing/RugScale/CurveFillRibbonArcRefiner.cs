@@ -41,6 +41,7 @@ internal static class CurveFillRibbonArcRefiner
     private const double MinimumAbsoluteBend = 1.35;
     private const double MinimumRelativeBend = 0.035;
     private const double MinimumVariableWidthRedrawScale = 1.50;
+    private const double MinimumLayeredRibbonRedrawScale = 1.50;
 
     public static int Apply(
         DesignDocument source,
@@ -382,8 +383,17 @@ internal static class CurveFillRibbonArcRefiner
                 (centerlineDiagnostics.Endpoints <= 2 ||
                  mainArcExtractedForRegion);
 
+            var layeredProductionProbe =
+                !layeredBandsOnly &&
+                redrawScale >=
+                    MinimumLayeredRibbonRedrawScale &&
+                candidate.Elongation >=
+                    4.0 &&
+                boundingFillRatio <=
+                    0.20;
             var layeredProfile =
-                layeredBandsOnly
+                layeredBandsOnly ||
+                layeredProductionProbe
                     ? CurveFillLayeredRibbonAnalyzer.Analyze(
                         source,
                         model,
@@ -887,8 +897,18 @@ internal static class CurveFillRibbonArcRefiner
             accepted.Add(
                 (model, fit));
 
-            if (layeredBandsOnly &&
-                layeredProfile.Detected)
+            var layeredProductionAuthorized =
+                !layeredBandsOnly &&
+                LooksLikeProductionLayeredRibbon(
+                    model,
+                    fit,
+                    layeredProfile,
+                    protectedStrokeColors,
+                    redrawScale);
+
+            if ((layeredBandsOnly &&
+                 layeredProfile.Detected) ||
+                layeredProductionAuthorized)
             {
                 layeredProfiles[
                     model.Candidate.Region] =
@@ -928,6 +948,49 @@ internal static class CurveFillRibbonArcRefiner
         var lastLayeredSeparatorMaskPixels = 0;
         var lastLayeredBandMaskPixels = 0;
         var lastLayeredAuthorityMaskPixels = 0;
+
+        int ApplyProductionLayeredBands(
+            LeafPetalArcModel model,
+            ElegantArcFit fit)
+        {
+            if (layeredBandsOnly ||
+                !layeredProfiles.TryGetValue(
+                    model.Candidate.Region,
+                    out var profile))
+            {
+                return 0;
+            }
+
+            layeredPreviewCandidates++;
+
+            var applied =
+                CurveFillLayeredRibbonRasterizer.TryApplySecondProtectedBandPreview(
+                    source,
+                    destination,
+                    model,
+                    fit,
+                    profile,
+                    protectedStrokeColors,
+                    out var localChanged,
+                    out var localDiagnostics);
+
+            lastLayeredPreviewReason =
+                localDiagnostics.Reason;
+            lastLayeredSeparatorMaskPixels =
+                localDiagnostics.SeparatorMaskPixels;
+            lastLayeredBandMaskPixels =
+                localDiagnostics.BandMaskPixels;
+            lastLayeredAuthorityMaskPixels =
+                localDiagnostics.AuthorityMaskPixels;
+
+            if (applied)
+            {
+                layeredPreviewApplied++;
+                return localChanged;
+            }
+
+            return 0;
+        }
 
         foreach (var item in accepted
                      .OrderByDescending(pair =>
@@ -1008,6 +1071,10 @@ internal static class CurveFillRibbonArcRefiner
                 outlinedRefined++;
                 changed +=
                     trueRedrawChanged;
+                changed +=
+                    ApplyProductionLayeredBands(
+                        item.Model,
+                        item.Fit);
                 continue;
             }
 
@@ -1024,6 +1091,10 @@ internal static class CurveFillRibbonArcRefiner
                 outlinedRefined++;
                 changed +=
                     outlinedChanged;
+                changed +=
+                    ApplyProductionLayeredBands(
+                        item.Model,
+                        item.Fit);
                 continue;
             }
 
@@ -1036,6 +1107,10 @@ internal static class CurveFillRibbonArcRefiner
                     protectedStrokeColors,
                     restrictToFittedSweep:
                         scopedMainArc);
+            changed +=
+                ApplyProductionLayeredBands(
+                    item.Model,
+                    item.Fit);
         }
 
         return new RibbonArcRefinementDiagnostics(
@@ -2329,6 +2404,94 @@ internal static class CurveFillRibbonArcRefiner
             .ThenBy(stage =>
                 stage.MinX)
             .ToArray();
+    }
+
+    private static bool LooksLikeProductionLayeredRibbon(
+        LeafPetalArcModel model,
+        ElegantArcFit fit,
+        LayeredRibbonProfileDiagnostics profile,
+        IReadOnlySet<byte> protectedStrokeColors,
+        double redrawScale)
+    {
+        if (redrawScale <
+                MinimumLayeredRibbonRedrawScale ||
+            !fit.IsSafe ||
+            fit.CurvatureSignFlips != 2 ||
+            fit.MaximumCenterlineDeviation >
+                3.30 ||
+            !profile.Detected ||
+            profile.BracketedCoverage <
+                0.80 ||
+            profile.MeanRunWidths is null ||
+            profile.MeanRunWidths.Count <
+                3)
+        {
+            return false;
+        }
+
+        var candidate =
+            model.Candidate;
+        var region =
+            candidate.Region;
+        var boundingFillRatio =
+            region.Area /
+            (double)Math.Max(
+                1,
+                region.Width *
+                region.Height);
+
+        if (candidate.Elongation <
+                4.0 ||
+            candidate.Elongation >
+                5.75 ||
+            candidate.MajorExtent <
+                120d ||
+            boundingFillRatio >
+                0.20)
+        {
+            return false;
+        }
+
+        var parts =
+            profile.Sequence
+                .Split(
+                    '>',
+                    StringSplitOptions.RemoveEmptyEntries);
+
+        if (parts.Length < 3 ||
+            !string.Equals(
+                parts[0],
+                parts[2],
+                StringComparison.Ordinal) ||
+            !byte.TryParse(
+                parts[0],
+                out var separatorColor) ||
+            !protectedStrokeColors.Contains(
+                separatorColor))
+        {
+            return false;
+        }
+
+        var innerSeparatorWidth =
+            profile.MeanRunWidths[0];
+        var bandWidth =
+            profile.MeanRunWidths[1];
+        var outerSeparatorWidth =
+            profile.MeanRunWidths[2];
+
+        return
+            innerSeparatorWidth >=
+                0.65 &&
+            innerSeparatorWidth <=
+                1.65 &&
+            outerSeparatorWidth >=
+                0.65 &&
+            outerSeparatorWidth <=
+                1.65 &&
+            bandWidth >=
+                1.75 &&
+            bandWidth <=
+                8.0;
     }
 
     private static bool LooksLikeVariableWidthSweep(
