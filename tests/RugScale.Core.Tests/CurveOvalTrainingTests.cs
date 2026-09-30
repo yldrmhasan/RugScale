@@ -1570,7 +1570,7 @@ public sealed class CurveOvalTrainingTests
             "positive",
             diagnostics.Side);
         Assert.StartsWith(
-            "1>4>1",
+            "1>4>1>2",
             diagnostics.Sequence,
             StringComparison.Ordinal);
         Assert.True(
@@ -1580,9 +1580,16 @@ public sealed class CurveOvalTrainingTests
             diagnostics.BracketedCoverage >=
             0.90,
             $"Expected white/navy/white bracketing, got {diagnostics.BracketedCoverage:0.000}.");
+        Assert.Equal(
+            "2",
+            diagnostics.ExteriorColor);
+        Assert.True(
+            diagnostics.ExteriorCoverage >=
+            0.90,
+            $"Expected source-proven background ownership after the outer white cord, got {diagnostics.ExteriorCoverage:0.000}.");
         Assert.True(
             diagnostics.MeanRunWidths.Count >=
-            3);
+            4);
     }
 
     [Fact]
