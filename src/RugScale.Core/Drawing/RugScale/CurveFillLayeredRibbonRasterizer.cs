@@ -18,7 +18,8 @@ internal static class CurveFillLayeredRibbonRasterizer
         int targetHeight,
         double innerAdditionalTargetPixels,
         double sourceBandWidth,
-        double fixedBandWidthTargetPixels = 0d)
+        double fixedBandWidthTargetPixels = 0d,
+        double innerAdditionalSourceWidth = 0d)
     {
         ArgumentNullException.ThrowIfNull(points);
 
@@ -139,14 +140,20 @@ internal static class CurveFillLayeredRibbonRasterizer
                 sourceNormalY *
                     points[index].HalfWidth *
                     scaleY;
+            var innerOffsetTarget =
+                innerAdditionalTargetPixels +
+                Math.Max(
+                    0d,
+                    innerAdditionalSourceWidth) *
+                normalScale;
             var innerX =
                 fillBoundaryX +
                 unitTargetNormalX *
-                    innerAdditionalTargetPixels;
+                    innerOffsetTarget;
             var innerY =
                 fillBoundaryY +
                 unitTargetNormalY *
-                    innerAdditionalTargetPixels;
+                    innerOffsetTarget;
             var bandWidthTarget =
                 fixedBandWidthTargetPixels >
                 0d
@@ -242,7 +249,9 @@ internal static class CurveFillLayeredRibbonRasterizer
         if (!fit.IsSafe ||
             fit.Points.Count < 8 ||
             !profile.Detected ||
-            profile.Coverage < 0.80 ||
+            Math.Max(
+                profile.Coverage,
+                profile.BracketedCoverage) < 0.80 ||
             profile.MeanRunWidths is null ||
             profile.MeanRunWidths.Count < 2)
         {
@@ -288,6 +297,27 @@ internal static class CurveFillLayeredRibbonRasterizer
             profile.MeanRunWidths[0];
         var bandSourceWidth =
             profile.MeanRunWidths[1];
+        var bracketed =
+            parts.Length >= 3 &&
+            string.Equals(
+                parts[0],
+                parts[2],
+                StringComparison.Ordinal) &&
+            profile.BracketedCoverage >=
+                0.80;
+        var hasExterior =
+            bracketed &&
+            profile.ExteriorCoverage >=
+                0.60 &&
+            byte.TryParse(
+                profile.ExteriorColor,
+                out var exteriorColor) &&
+            exteriorColor !=
+                separatorColor &&
+            exteriorColor !=
+                bandColor &&
+            exteriorColor !=
+                model.Candidate.Region.Color;
 
         // The first layer is treated as a 1x1 Pixel-Cord only when immutable source evidence says
         // it is genuinely thin. Wider first layers remain source-scaled and need a different model.
@@ -359,6 +389,21 @@ internal static class CurveFillLayeredRibbonRasterizer
                 innerAdditionalTargetPixels: 1d,
                 sourceBandWidth:
                     bandSourceWidth);
+        var outerSeparatorMask =
+            bracketed
+                ? BuildOneSidedBandMask(
+                    fit.Points,
+                    side,
+                    scaleX,
+                    scaleY,
+                    destination.Width,
+                    destination.Height,
+                    innerAdditionalTargetPixels: 1d,
+                    sourceBandWidth: 0d,
+                    fixedBandWidthTargetPixels: 1d,
+                    innerAdditionalSourceWidth:
+                        bandSourceWidth)
+                : new HashSet<int>();
         var authorityMask =
             BuildOneSidedBandMask(
                 fit.Points,
@@ -377,7 +422,8 @@ internal static class CurveFillLayeredRibbonRasterizer
             diagnostics with
             {
                 SeparatorMaskPixels =
-                    separatorMask.Count,
+                    separatorMask.Count +
+                    outerSeparatorMask.Count,
                 BandMaskPixels =
                     protectedBandMask.Count,
                 AuthorityMaskPixels =
@@ -399,8 +445,7 @@ internal static class CurveFillLayeredRibbonRasterizer
         var regionColor =
             model.Candidate.Region.Color;
         var allowStaleCleanup =
-            profile.BracketedCoverage >=
-            0.50;
+            hasExterior;
 
         foreach (var key in authorityMask)
         {
@@ -436,6 +481,8 @@ internal static class CurveFillLayeredRibbonRasterizer
                     sourceY);
 
             if (separatorMask.Contains(
+                    key) ||
+                outerSeparatorMask.Contains(
                     key))
             {
                 if (current ==
@@ -493,13 +540,13 @@ internal static class CurveFillLayeredRibbonRasterizer
             // exterior colour is actually proven by source evidence.
             if (!allowStaleCleanup ||
                 current !=
-                    bandColor ||
+                    bandColor &&
+                current !=
+                    separatorColor ||
                 sourceOwner !=
                     bandColor &&
                 sourceOwner !=
-                    separatorColor &&
-                sourceOwner !=
-                    regionColor)
+                    separatorColor)
             {
                 continue;
             }
@@ -507,7 +554,7 @@ internal static class CurveFillLayeredRibbonRasterizer
             destination.SetPixel(
                 x,
                 y,
-                separatorColor);
+                exteriorColor);
             changed++;
         }
 
