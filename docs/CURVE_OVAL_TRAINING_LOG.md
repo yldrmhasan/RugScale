@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** section 4.44 — drawing-fidelity guards (separator barriers, lost appendages, colour continuity) and 4-connected cord replay; stage diagnostics added.
+**Last documented experiment:** section 4.45 — curve mode rewritten as the neutral-first RugScale Curve engine; legacy ribbon/arc training frozen.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1684,6 +1684,47 @@ Still open:
 
 Decision: **KEEP.**
 
+### 4.45 Rewrite: neutral-first RugScale Curve engine — NEW DIRECTION
+
+User verdict after 4.44 (looking at the comparison images): a neutral (nearest) resize keeps the
+design better than the legacy Curve & Fill output; the ribbon/arc refitting path damages the design
+and then needs ever more repair guards. The user asked to rewrite the curve mode from scratch if
+needed. It was rewritten.
+
+New engine: `NeutralCurveScaleEngine` (`ScaleMode.CurveNeutral`, CLI `--mode curve`, Workbench
+"RugScale Curve — neutral-first"). About 900 lines, no fitting:
+1. fills — anisotropic exact signed distance field per colour (Felzenszwalb-Huttenlocher EDT),
+   bilinear sample at the target pixel centre, nearest colour gets `NeutralBias` = 0.15 source px,
+   candidates limited to the 4x4 source neighbourhood;
+2. cords — protected stroke colours are not resampled; every source cord cell is mapped to its
+   target centre and 4-adjacent cells are joined by straight target runs (diagonal-only joints by an
+   L), pen size = target/source quality ratio; genuinely wide cord areas stay in the fill layer;
+3. separators — a fill/fill 4-contact without local source evidence (2 px) is repaired by moving
+   the pixel to the other side, or drawing the cord;
+4. exact source symmetry copy.
+
+Results (four designs, 160% same quality, `CurveScaleAudit` default engine):
+
+| Design | Roundtrip exact nearest / legacy / neutral | ±1 px | Breaches | Cord weight | Cord parts src/out | Direct time |
+|---|---|---:|---:|---:|---|---:|
+| C071C | 89.54 / 90.21 / **94.98** | 99.93 | 0 | 1.66 | 41 / 41 | 0.72 s |
+| B996A | 90.84 / 92.35 / **95.69** | 99.94 | 0 | 1.65 | 5 / 5 | 0.71 s |
+| C004A | 92.95 / 93.27 / **96.85** | 99.97 | 0 | 1.63 | 5 / 5 | 0.69 s |
+| C069A | 90.59 / 92.81 / **95.31** | 99.90 | 0 | 1.66 | 33 / 33 | ~0.7 s |
+
+Visual: outputs read as the source enlarged; teeth, tips and band widths are where the source has
+them (B996A navy stripe keeps its width, C004A comb gone, C069 long-S teeth intact); cords are
+continuous one-pixel 4-connected staircases.
+
+Decisions:
+- `CurveScaleAudit` now audits the neutral engine by default; `--engine legacy` audits Curve & Fill.
+  The C069 training workflow runs with `--engine legacy` because its gates describe the legacy
+  ribbon refiner.
+- Legacy Curve & Fill, Leaf/Petal and all ribbon/layered training are **frozen**: keep for
+  comparison, do not extend. Removing them is the user's call.
+- New quality work starts from the neutral engine and must keep it neutral: any change has to stay
+  within sub-pixel boundary motion of the nearest resize unless the user asks otherwise.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
@@ -1700,6 +1741,8 @@ Decision: **KEEP.**
    (section 4.44). Peeling produces notched 8-connected lines.
 10. Judge every redraw stage with `--stage-diagnostics`: a stage that adds separator breaches or
     splits cords is not finished, whatever its pixel-F1.
+11. Do not add shape re-fitting (ribbon/arc/oval curve fits) to the neutral-first engine. The user
+    judged re-fitted curves as damaging the design (section 4.45).
 
 ## 6. Required continuation workflow
 
@@ -1728,15 +1771,16 @@ If an experiment fails, document it before reverting so a future session does no
 
 ## 7. Next technical priorities
 
-1. **Make the ribbon rasterizers appendage-aware** (`CurveFillOutlinedRibbonRasterizer` phase 1 and
-   `CurveFillTrueRibbonRasterizer` stale cleanup) so teeth and side lobes are never shaved in the
-   first place; the post-stage guard should then have little to repair. Measure with
-   `--stage-diagnostics` (breaches/cord parts at stage `5-ribbon-arc`).
-2. B996A: keep the navy stripe width when the teal ribbon is redrawn (band thickness fidelity).
-3. C004A: remove the hatched pattern on the outer green arcs.
-4. Thin spurs / doubled inner lines inside the C069 long-S cyan near the V and the lower hook.
-5. Compare large compound sweeps using visual curvature continuity, not only source deviation.
-6. Extend the production layered class only with new source-proven cross-section evidence.
+Neutral-first engine (section 4.45):
+1. User review of the neutral engine on real production files; collect any spot where it differs
+   visibly from a neutral resize in an unwanted way.
+2. Quality change (different target warp/weft): verify pen size and fill scaling on a real pair.
+3. Heavy shrink: measure thin-feature survival (cords are replayed, thin fills may vanish).
+4. Decide with the user whether to retire legacy Curve & Fill / Leaf-Petal code and their
+   training workflows.
+
+Legacy Curve & Fill items (frozen): appendage-aware ribbon rasterizers, B996A stripe width,
+C004A hatched arcs, C069 doubled inner lines.
 
 ## 8. Key implementation files
 
@@ -1753,4 +1797,5 @@ If an experiment fails, document it before reverting so a future session does no
 - `CurveFillRibbonSmoothness.cs` — aesthetic low-frequency roughness metric
 - `CurveOvalTrainingTests.cs` — focused training regression tests
 - `RugScale.CurveScaleAudit` — real-raster diagnostics and artifacts (`--stage-diagnostics` for per-stage breaches/cords)
-- `CurveFillRibbonFidelityGuard.cs` — separator barriers, lost appendages, colour continuity
+- `CurveFillRibbonFidelityGuard.cs` — separator barriers, lost appendages, colour continuity (legacy)
+- `NeutralCurveScaleEngine.cs` — the neutral-first RugScale Curve engine (current)

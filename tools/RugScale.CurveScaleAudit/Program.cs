@@ -23,8 +23,22 @@ internal static class Program
         new("C069A_CREAM_N69", "C069A_CREAM_N69.bmp", 40, 60),
     ];
 
+    /// <summary>Curve engine under audit: the neutral-first RugScale Curve (default) or legacy Curve &amp; Fill.</summary>
+    private static ScaleMode CurveMode = ScaleMode.CurveNeutral;
+
     private static int Main(string[] args)
     {
+        if (string.Equals(
+                GetArg(
+                    args,
+                    "--engine"),
+                "legacy",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            CurveMode =
+                ScaleMode.CurveFill;
+        }
+
         var inputDir =
             GetArg(args, "--input-dir") ??
             throw new ArgumentException("--input-dir <dir> is required.");
@@ -1187,7 +1201,7 @@ internal static class Program
                 source,
                 shrinkWidth,
                 shrinkHeight,
-                ScaleMode.CurveFill,
+                CurveMode,
                 fixture.Warp,
                 fixture.Weft,
                 fixture.Warp,
@@ -1203,7 +1217,7 @@ internal static class Program
                 small,
                 source.Width,
                 source.Height,
-                ScaleMode.CurveFill,
+                CurveMode,
                 fixture.Warp,
                 fixture.Weft,
                 fixture.Warp,
@@ -1340,7 +1354,7 @@ internal static class Program
                     source,
                     800,
                     1320,
-                    ScaleMode.CurveFill,
+                    CurveMode,
                     fixture.Warp,
                     fixture.Weft,
                     fixture.Warp,
@@ -1548,7 +1562,7 @@ internal static class Program
                     source,
                     800,
                     1800,
-                    ScaleMode.CurveFill,
+                    CurveMode,
                     fixture.Warp,
                     fixture.Weft,
                     fixture.Warp,
@@ -1573,7 +1587,8 @@ internal static class Program
 
         DesignDocument? layeredRibbonPreview = null;
 
-        if (string.Equals(
+        if (CurveMode == ScaleMode.CurveFill &&
+            string.Equals(
                 fixture.Name,
                 "C069A_CREAM_N69",
                 StringComparison.Ordinal))
@@ -2175,6 +2190,19 @@ internal static class Program
                 width,
                 height,
                 source.Palette);
+
+        if (CurveMode == ScaleMode.CurveNeutral)
+        {
+            NeutralCurveScaleEngine.ResizeWithDiagnostics(
+                source,
+                result,
+                sourceWarp,
+                sourceWeft,
+                targetWarp,
+                targetWeft);
+            diagnostics = default;
+            return result;
+        }
 
         diagnostics =
             CurveFillScaleEngine.ResizeWithDiagnostics(

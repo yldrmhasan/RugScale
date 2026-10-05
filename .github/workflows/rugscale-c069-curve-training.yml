@@ -49,7 +49,8 @@ jobs:
             -c Release --no-restore -- \
             --input-dir "$RUNNER_TEMP/rugscale-curves" \
             --output "$GITHUB_WORKSPACE/artifacts/rugscale-c069" \
-            --fixture C069A_CREAM_N69
+            --fixture C069A_CREAM_N69 \
+            --engine legacy
 
       - name: Enforce C069 specialist redraw gates
         shell: bash

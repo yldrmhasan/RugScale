@@ -9,7 +9,8 @@ RGB colours that do not exist in the source design.
 ## What lives here
 
 - **Motif & Topology RugScale** — motif families, branches, repeat/rapport, symmetry and topology.
-- **Curve & Fill** — source-guided indexed contour/fill reconstruction.
+- **RugScale Curve (neutral-first)** — reads like a neutral enlargement of the source; only removes block staircases and uneven Pixel-Cord weight.
+- **Curve & Fill (legacy)** — source-guided contour/fill reconstruction with ribbon/arc refitting.
 - **Leaf / Petal Arcs** — specialist floral-curve refinement with paired-boundary fitting.
 - **Tool-faithful redraw** — RugScale Curve, Pixel Cord and ellipse raster behaviour.
 - **Motif learning** — portable motif memory, source catalogue, candidate repair and feedback data.
@@ -107,7 +108,8 @@ Available CLI modes:
 | CLI mode | Engine mode | Use |
 |---|---|---|
 | `motif` | `ScaleMode.RugScale` | motif/topology designs |
-| `curve-fill` | `ScaleMode.CurveFill` | outlined curved filled designs |
+| `curve` | `ScaleMode.CurveNeutral` | **curve-heavy designs (recommended)**: neutral-first, faithful to the source |
+| `curve-fill` | `ScaleMode.CurveFill` | legacy curve redraw (ribbon/arc refitting), kept for comparison |
 | `leaf-petal` | `ScaleMode.LeafPetalArcs` | elongated floral leaf/petal curves |
 | `nearest` | `NearestNeighbor` | exact categorical nearest baseline |
 | `edge-smooth` | `EdgeSmooth` | pixel-art enlargement |

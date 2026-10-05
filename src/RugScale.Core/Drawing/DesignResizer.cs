@@ -86,6 +86,14 @@ public enum ScaleMode
     /// </summary>
     LeafPetalArcs,
 
+    /// <summary>
+    /// RugScale Curve (neutral-first): reads like a neutral nearest-neighbour enlargement of the
+    /// source and only removes block staircases on fill boundaries (bounded sub-pixel contour
+    /// interpolation) and uneven Pixel-Cord weight (cord graph replayed at the target pen size).
+    /// No curve fitting, no re-shaping.
+    /// </summary>
+    CurveNeutral,
+
     /// <summary>Bilinearly blends the 4 nearest source pixels' colors, then snaps the blend to the closest colour the design already uses — softer diagonal/curve edges than NearestNeighbor at the cost of some colour bleeding.</summary>
     Smooth,
 
@@ -218,6 +226,15 @@ public static class DesignResizer
                 break;
             case ScaleMode.LeafPetalArcs:
                 LeafPetalArcScaleEngine.Resize(
+                    source,
+                    result,
+                    sourceWarpDensity,
+                    sourceWeftDensity,
+                    targetWarpDensity,
+                    targetWeftDensity);
+                break;
+            case ScaleMode.CurveNeutral:
+                NeutralCurveScaleEngine.Resize(
                     source,
                     result,
                     sourceWarpDensity,

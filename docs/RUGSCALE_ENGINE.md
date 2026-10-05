@@ -7,7 +7,48 @@
 **Host:** UI bağımsız; manuel çalışma için `tools/RugScale.Cli`, entegrasyon için `RugScale.Core` API  
 **Testler:** `tests/RugScale.Core.Tests/DesignResizerTests.cs` + `MotifMemoryTests.cs`
 
-## Curve / oval eğitim devam durumu
+## RugScale Curve — neutral-first (Ekim 2026, yeniden yazım)
+
+Kullanıcı değerlendirmesi: eski Curve & Fill yolu (ribbon/arc yeniden oturtma, layered band redraw,
+Leaf/Petal) eğrileri "güzelleştirmeye" çalışırken deseni bozuyordu; nötr (nearest) büyütme desene
+daha sadıktı. Curve modu bu nedenle sıfırdan yazıldı: `NeutralCurveScaleEngine`,
+`ScaleMode.CurveNeutral`, CLI `--mode curve`, Workbench "RugScale Curve — neutral-first".
+
+Kural: çıktı kaynağın nötr büyütmesi gibi okunmalı. Hiçbir şekil yeniden oturtulmaz. Yalnız nötr
+non-integer büyütmenin iki sistematik kusuru düzeltilir:
+
+1. **Dolgu sınırlarındaki blok merdivenler.** Her kullanılan renk için kaynak gridinde tam
+   (warp/weft anizotropik) signed distance field hesaplanır. Hedef piksel, örnek noktasında alanı en
+   yüksek rengi alır; fakat nötr (nearest) renk `NeutralBias` = 0,15 kaynak px avantajla başlar.
+   Sınır en fazla piksel-altı kadar düzgün kontura doğru kayabilir; uçlar, dişler, ince detaylar
+   tasarımcının koyduğu yerde kalır.
+2. **Düzensiz Pixel-Cord kalınlığı.** 1,6x nötr büyütmede 1 px kordon 1-2 px arasında gidip gelir.
+   Korunan kordon renkleri yeniden örneklenmez: kaynak kordon grafiği hedefte tekrar çizilir. Her
+   kaynak kordon hücresi hedef merkezine taşınır, 4-komşu hücreler düz hedef koşularıyla birleştirilir;
+   sonuç kaynakla aynı 4-bağlantılı merdiven çizim dilidir. Kalite değişirse kalem boyutu
+   hedef/kaynak warp-weft oranıdır. Kaynakta gerçekten geniş (her yönde >= 2 px) kordon alanları
+   dolgu gibi işlenir.
+
+Sonra iki kesin kaynak gerçeği uygulanır: iki dolgu rengi yalnız kaynağın yerelde (2 px içinde)
+izin verdiği yerde temas edebilir (aksi halde eksik kordon çizilir veya piksel doğru tarafa
+alınır) ve kaynağın tam simetrisi aynen korunur. Çıktı yalnız kaynak renklerini kullanır.
+
+Dört N69 desende (160% aynı kalite) ölçüm:
+
+| Desen | Round-trip exact: nearest / legacy / neutral | Separator breach | Kordon ağırlığı (ideal 1,60) | Kordon parçası kaynak/çıktı |
+|---|---|---:|---:|---|
+| C071C | %89,5 / %90,2 / **%95,0** | 0 | 1,66 | 41 / 41 |
+| B996A | %90,8 / %92,4 / **%95,7** | 0 | 1,65 | 5 / 5 |
+| C004A | %93,0 / %93,3 / **%96,9** | 0 | 1,63 | 5 / 5 |
+| C069A | %90,6 / %92,8 / **%95,3** | 0 | 1,66 | 33 / 33 |
+
+Doğrudan 160% büyütme ~0,7 sn (legacy 35-70 sn).
+
+Legacy `ScaleMode.CurveFill` ve `LeafPetalArcs` karşılaştırma ve C069 eğitim kapıları için
+dondurulmuş halde duruyor (`CurveScaleAudit --engine legacy`). Yeni geliştirme neutral-first
+motor üzerinde yapılır.
+
+## Curve / oval eğitim devam durumu (legacy)
 
 Curve-heavy enlargement eğitiminin ayrıntılı, deney-bazlı devam kaydı artık
 [`CURVE_OVAL_TRAINING_LOG.md`](CURVE_OVAL_TRAINING_LOG.md) içinde tutulur.
