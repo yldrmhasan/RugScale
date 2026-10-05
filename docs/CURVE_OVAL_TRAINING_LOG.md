@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** section 4.47 — neutral engine: no cord knots, spikes or stranded pieces at junctions and tips.
+**Last documented experiment:** section 4.48 — neutral engine draws straight cord sides as exact digital lines with sharp corners.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1791,6 +1791,37 @@ Evidence:
   only), +-1 px 99.5-99.8 %; 150 tests pass.
 
 Decision: **KEEP**.
+
+### 4.48 Straight diagonal line designs: exact straight sides — KEEP
+
+User request: a study for designs drawn with straight diagonal lines (nested diamonds and chevrons
+outlined with a red Pixel-Cord, quality 34x41). Their Workbench result (default "motif & topology"
+mode) showed jagged diagonals: 2x2 knots and irregular steps.
+
+Measured on a synthetic 34x41 diamond/chevron design (`run length balance` = largest difference
+between sums of k consecutive per-row runs, k <= 7; a digital straight line has balance 1):
+
+| Mode | diamond sides balance | look |
+|---|---:|---|
+| motif & topology | 4 | 1-3-2-1-1-3-3 runs, 2x2 knots (the user's screenshot) |
+| curve neutral (4.47) | 2 | thin, but cadence drifts (local [1 2 1] smoothing only) |
+| curve neutral + straight sides | 1 | exact digital straight line on all four sides |
+
+Change: `PixelCordCurveRedraw.StraightenRuns`, after smoothing. Between two corners (or a corner and
+a chain end) a side of at least 6 centre-line points is fitted with a total-least-squares line on
+its core (4 points at each end excluded). If every core point is within 0.6 source px and every end
+point within 1.0 px (the source raster often bends towards a corner), all points are projected onto
+the line. A run of corner cells between two straight sides becomes the intersection of the two lines
+(when within 2 source px), so apexes stay sharp.
+
+Evidence:
+- new regression `StraightDiagonalSides_KeepAPerfectlyRegularCadence` (34x41 diamond, 1.6x): FAILS
+  on the 4.47 engine (balance 2), passes now,
+- four N69 curve designs unchanged in quality: breaches 0, cord parts = source, palette SAFE, audit
+  exit 0; round-trip exact rises slightly (C071C 90.48 -> 90.90, C069A 91.59 -> 92.04 %); 151 tests.
+
+Decision: **KEEP**. Line designs must be scaled with "RugScale Curve — neutral-first", not with the
+motif mode.
 
 ## 5. Do-not-repeat rules
 

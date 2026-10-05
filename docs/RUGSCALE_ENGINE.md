@@ -93,6 +93,26 @@ Kaynakta karşılığı olmayan düğüm sayısı (1024 px genişlik): B996A 227
 C069A 306 → 3, C071C 664 → 2. Separator breach 0, kordon parçaları kaynakla aynı (C004A dahil),
 round-trip exact %90,5-93,2, ±1 px %99,5-99,8. `Junctions_AndTips_HaveNoKnotsOrSpikes` testi bunu korur.
 
+### Düz çapraz çizgili desenler (iç içe baklava / zikzak)
+
+Düz kenarlı desenlerde yerel yumuşatma yetmez; basamak düzeni kenar boyunca kayar. Bu yüzden
+`StraightenRuns` iki köşe arasındaki her kenarı kontrol eder. Kenar düzse (çekirdek noktalar 0,6 px,
+köşeye yakın uçlar 1,0 px içinde) bütün noktalar tek bir doğruya izdüşürülür. Böylece hedefte basamaklar
+kusursuz periyodik olur (ör. 2-2-2-2-1 tekrarı). İki düz kenarın arasındaki köşe hücreleri iki
+doğrunun kesişim noktasına taşınır ve tepe sivri kalır.
+
+34x41 kalitede sentetik baklava deseni, %160 (art arda gelen basamak toplamlarının en büyük farkı;
+düz bir dijital doğruda bu değer 1'dir):
+
+| Mod | Kenar dengesi |
+|---|---:|
+| RugScale — motif & topology | 4 (2x2 düğümler, 1-3-2-1-3 basamaklar) |
+| RugScale Curve (önceki) | 2 |
+| RugScale Curve (düz kenar) | 1 |
+
+Düz çizgili desenler Workbench'te **"RugScale Curve — neutral-first"** moduyla büyütülmelidir.
+`StraightDiagonalSides_KeepAPerfectlyRegularCadence` testi bunu korur.
+
 Legacy `ScaleMode.CurveFill` ve `LeafPetalArcs` karşılaştırma ve C069 eğitim kapıları için
 dondurulmuş halde duruyor (`CurveScaleAudit --engine legacy`). Yeni geliştirme neutral-first
 motor üzerinde yapılır.

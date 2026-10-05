@@ -388,4 +388,104 @@ public sealed class NeutralCurveScaleEngineTests
         Assert.Equal(0, blocks);
         Assert.Equal(3, ends);
     }
+
+    [Fact]
+    public void StraightDiagonalSides_KeepAPerfectlyRegularCadence()
+    {
+        // A navy diamond outlined by a 4-connected cord on a 34x41 quality grid: its sides are
+        // physical 45-degree lines, i.e. pixel slope 41/34, drawn as uneven 1/2 staircases.
+        const int warp = 34;
+        const int weft = 41;
+        var source =
+            new DesignDocument(
+                200,
+                240,
+                Palette());
+        var inside =
+            new bool[200, 240];
+
+        for (var y = 0; y < 240; y++)
+        {
+            for (var x = 0; x < 200; x++)
+            {
+                var d =
+                    Math.Abs((x + 0.5) / warp - 100.0 / warp) +
+                    Math.Abs((y + 0.5) / weft - 120.0 / weft);
+                inside[x, y] = d <= 2.6;
+                source.SetPixel(x, y, inside[x, y] ? (byte)3 : (byte)0);
+            }
+        }
+
+        for (var y = 1; y < 239; y++)
+        {
+            for (var x = 1; x < 199; x++)
+            {
+                if (!inside[x, y])
+                    continue;
+
+                for (var dy = -1; dy <= 1; dy++)
+                    for (var dx = -1; dx <= 1; dx++)
+                        if (!inside[x + dx, y + dy])
+                            source.SetPixel(x, y, 1);
+            }
+        }
+
+        var target =
+            DesignResizer.Scale(
+                source,
+                320,
+                384,
+                ScaleMode.CurveNeutral,
+                warp,
+                weft,
+                warp,
+                weft);
+
+        // Cord cells per row on the upper-right side, away from the corners.
+        int minY = int.MaxValue, maxY = 0;
+
+        for (var y = 0; y < target.Height; y++)
+        {
+            for (var x = 0; x < target.Width; x++)
+            {
+                if (target.GetPixel(x, y) == 1)
+                {
+                    minY = Math.Min(minY, y);
+                    maxY = Math.Max(maxY, y);
+                }
+            }
+        }
+
+        var centreY =
+            (minY + maxY) / 2;
+        var runs =
+            new List<int>();
+
+        for (var y = minY + 6; y < centreY - 6; y++)
+        {
+            var count = 0;
+
+            for (var x = target.Width / 2 + 2; x < target.Width; x++)
+            {
+                if (target.GetPixel(x, y) == 1)
+                    count++;
+            }
+
+            runs.Add(count);
+        }
+
+        // A digital straight line is balanced: any k consecutive runs sum to within one cell.
+        for (var k = 1; k <= 6; k++)
+        {
+            var sums =
+                Enumerable
+                    .Range(0, runs.Count - k + 1)
+                    .Select(i => runs.Skip(i).Take(k).Sum())
+                    .ToList();
+
+            Assert.True(
+                sums.Max() - sums.Min() <= 1,
+                $"side is not straight (window {k}): {string.Join("", runs)}");
+        }
+    }
 }

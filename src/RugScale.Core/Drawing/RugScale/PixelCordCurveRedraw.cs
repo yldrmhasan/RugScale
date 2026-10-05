@@ -422,7 +422,271 @@ internal static class PixelCordCurveRedraw
                 (next, current);
         }
 
+        StraightenRuns(
+            original,
+            current,
+            pinned,
+            chain.Closed);
+
         return current;
+    }
+
+    /// <summary>Fewest centre-line points between two corners that can count as a straight side.</summary>
+    internal const int MinimumStraightPoints = 6;
+
+    /// <summary>Largest distance (source px) of a centre-line point from the fitted line of a straight side.</summary>
+    internal const double StraightTolerance = 0.6;
+
+    /// <summary>Centre-line points at each end of a side that may bend towards the corner.</summary>
+    internal const int StraightEndZone = 4;
+
+    /// <summary>Tolerance (source px) for the points of <see cref="StraightEndZone"/>.</summary>
+    internal const double StraightEndTolerance = 1.0;
+
+    /// <summary>Furthest (source px) two straight sides may be extended to meet in a sharp corner.</summary>
+    internal const double MaximumCornerReach = 2;
+
+    /// <summary>
+    /// A designer's straight side is drawn exactly straight: between two corners (or a corner and
+    /// a chain end), when every centre-line point lies within <see cref="StraightTolerance"/> of
+    /// one line, the points are projected onto that line, so the target staircase gets a perfectly
+    /// periodic cadence instead of a locally smoothed one. Where two straight sides meet, the
+    /// corner cells are replaced by the intersection of the two lines, so the apex stays sharp.
+    /// </summary>
+    private static void StraightenRuns(
+        (double X, double Y)[] original,
+        (double X, double Y)[] current,
+        bool[] pinned,
+        bool closed)
+    {
+        var n =
+            original.Length;
+        var anchors =
+            Enumerable
+                .Range(
+                    0,
+                    n)
+                .Where(index => pinned[index])
+                .ToList();
+
+        if (!closed)
+        {
+            if (!pinned[0])
+                anchors.Insert(0, 0);
+
+            if (!pinned[n - 1])
+                anchors.Add(n - 1);
+        }
+
+        if (anchors.Count == 0)
+            return;
+
+        // Straight side ending at / starting from each anchor (index into lines, or -1).
+        var lineInto =
+            new int[n];
+        var lineFrom =
+            new int[n];
+        Array.Fill(
+            lineInto,
+            -1);
+        Array.Fill(
+            lineFrom,
+            -1);
+        var lines =
+            new List<(double Px, double Py, double Dx, double Dy)>();
+        var sides =
+            closed
+                ? anchors.Count
+                : anchors.Count - 1;
+
+        for (var k = 0;
+             k < sides;
+             k++)
+        {
+            var start =
+                anchors[k];
+            var end =
+                anchors[(k + 1) % anchors.Count];
+            var interior =
+                new List<int>();
+
+            for (var index = (start + 1) % n;
+                 index != end;
+                 index = (index + 1) % n)
+            {
+                interior.Add(index);
+            }
+
+            if (interior.Count < MinimumStraightPoints)
+                continue;
+
+            // Total-least-squares line through the core of the side; the cells next to a corner
+            // often bend towards it in the source raster, so they are checked with a looser
+            // tolerance and do not steer the fit.
+            var core =
+                interior.Count >= MinimumStraightPoints + 2 * StraightEndZone
+                    ? interior
+                        .Skip(StraightEndZone)
+                        .Take(interior.Count - 2 * StraightEndZone)
+                        .ToList()
+                    : interior;
+            double mx = 0, my = 0;
+
+            foreach (var index in core)
+            {
+                mx += original[index].X;
+                my += original[index].Y;
+            }
+
+            mx /= core.Count;
+            my /= core.Count;
+            double sxx = 0, syy = 0, sxy = 0;
+
+            foreach (var index in core)
+            {
+                var dx =
+                    original[index].X -
+                    mx;
+                var dy =
+                    original[index].Y -
+                    my;
+                sxx += dx * dx;
+                syy += dy * dy;
+                sxy += dx * dy;
+            }
+
+            var angle =
+                0.5 *
+                Math.Atan2(
+                    2 * sxy,
+                    sxx - syy);
+            var ux =
+                Math.Cos(
+                    angle);
+            var uy =
+                Math.Sin(
+                    angle);
+            var straight = true;
+
+            for (var position = 0;
+                 position < interior.Count;
+                 position++)
+            {
+                var index =
+                    interior[position];
+                var distance =
+                    Math.Abs(
+                        (original[index].X - mx) * uy -
+                        (original[index].Y - my) * ux);
+                var nearCorner =
+                    position < StraightEndZone ||
+                    position >= interior.Count - StraightEndZone;
+
+                if (distance >
+                    (nearCorner
+                        ? StraightEndTolerance
+                        : StraightTolerance))
+                {
+                    straight = false;
+                    break;
+                }
+            }
+
+            if (!straight)
+                continue;
+
+            foreach (var index in interior)
+            {
+                var t =
+                    (original[index].X - mx) * ux +
+                    (original[index].Y - my) * uy;
+                current[index] =
+                    (mx + t * ux,
+                     my + t * uy);
+            }
+
+            lineFrom[start] =
+                lines.Count;
+            lineInto[end] =
+                lines.Count;
+            lines.Add(
+                (mx, my, ux, uy));
+        }
+
+        // Sharp corners: a run of consecutive pinned cells between two straight sides becomes the
+        // intersection point of the two lines.
+        for (var k = 0;
+             k < anchors.Count;
+             k++)
+        {
+            var first =
+                anchors[k];
+
+            if (lineInto[first] < 0 ||
+                (!closed &&
+                 (first == 0 ||
+                  first == n - 1)))
+            {
+                continue;
+            }
+
+            var last =
+                first;
+            var cluster =
+                new List<int> { first };
+
+            while (lineFrom[last] < 0)
+            {
+                var following =
+                    (last + 1) % n;
+
+                if (!pinned[following] ||
+                    following == first ||
+                    (!closed &&
+                     following == n - 1))
+                {
+                    break;
+                }
+
+                last = following;
+                cluster.Add(last);
+            }
+
+            if (lineFrom[last] < 0)
+                continue;
+
+            var a =
+                lines[lineInto[first]];
+            var b =
+                lines[lineFrom[last]];
+            var cross =
+                a.Dx * b.Dy -
+                a.Dy * b.Dx;
+
+            if (Math.Abs(cross) < 0.2)
+                continue;
+
+            var t =
+                ((b.Px - a.Px) * b.Dy -
+                 (b.Py - a.Py) * b.Dx) /
+                cross;
+            var corner =
+                (X: a.Px + t * a.Dx,
+                 Y: a.Py + t * a.Dy);
+            var reach =
+                cluster.Max(index =>
+                    Math.Sqrt(
+                        (original[index].X - corner.X) *
+                        (original[index].X - corner.X) +
+                        (original[index].Y - corner.Y) *
+                        (original[index].Y - corner.Y)));
+
+            if (reach > MaximumCornerReach)
+                continue;
+
+            foreach (var index in cluster)
+                current[index] = corner;
+        }
     }
 
     /// <summary>
