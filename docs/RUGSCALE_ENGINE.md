@@ -113,6 +113,20 @@ düz bir dijital doğruda bu değer 1'dir):
 Düz çizgili desenler Workbench'te **"RugScale Curve — neutral-first"** moduyla büyütülmelidir.
 `StraightDiagonalSides_KeepAPerfectlyRegularCadence` testi bunu korur.
 
+### Kalın düz bantlar ve düz dolgu kenarları (A023A)
+
+A023A'daki kırmızı çizgiler 1 px Pixel-Cord değil, yaklaşık 4 px kalınlığında düz bantlar; bu
+yüzden kordon olarak algılanmazlar ve dolgu katmanından geçerler. Mesafe alanı örneklemesi düz
+çapraz kenarlarda faza göre dalgalanır (3-1-3-2 basamak). `StraightFillEdges` iki dolgu rengi
+arasındaki her kenarı kaynakta hücre-kenarı orta noktaları zinciri olarak izler. Tek doğruya 0,55 px
+içinde oturan ≥ 10 px'lik bölümleri hedefe taşır ve doğruya 1,5 px yakın pikselleri doğrunun
+hangi tarafında kaldıklarına göre boyar. Sonuç: bant kenarları kusursuz dijital doğru, kalınlık sabit.
+
+| A023A çıktısı | motif | curve (önceki) | curve (düz kenar) |
+|---|---:|---:|---:|
+| 34x41, 544x943 | 3 | 3 | 1 |
+| %160, 818x1030 | 4-5 | 3 | 1 |
+
 Legacy `ScaleMode.CurveFill` ve `LeafPetalArcs` karşılaştırma ve C069 eğitim kapıları için
 dondurulmuş halde duruyor (`CurveScaleAudit --engine legacy`). Yeni geliştirme neutral-first
 motor üzerinde yapılır.

@@ -298,6 +298,16 @@ internal static class NeutralCurveScaleEngine
             }
         }
 
+        // ---- 1b. straight fill edges stay exactly straight ----------------------------------
+        StraightFillEdges.Snap(
+            src,
+            w,
+            h,
+            isCord,
+            target,
+            W,
+            H);
+
         // ---- 2. cords: redraw each source cord chain as a smooth Pixel-Cord curve -----------
         var penX =
             PenSize(

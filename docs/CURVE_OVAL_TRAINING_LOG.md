@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** section 4.48 — neutral engine draws straight cord sides as exact digital lines with sharp corners.
+**Last documented experiment:** section 4.49 — straight fill boundaries (thick ruled bands, A023A) stay exact digital lines.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1822,6 +1822,37 @@ Evidence:
 
 Decision: **KEEP**. Line designs must be scaled with "RugScale Curve — neutral-first", not with the
 motif mode.
+
+### 4.49 Real straight-line design A023A: straight fill edges — KEEP
+
+User design `A023A_160X230_BS.bmp` (511x644, 160x230 cm, about 32x28 quality; Workbench target
+34x41 = 544x943). Its red lines are NOT Pixel-Cords: they are thick ruled bands (about four px
+across, horizontal runs of 6-7) at 43.9 degrees, a 45-degree staircase with one jog every ~19
+rows. `DetectStrokePaletteRoles` therefore finds no cord colour (red 2x2 ratio 0.998), so 4.48
+never applied; the bands went through the distance-field fill layer, whose zero contour wobbles
+with the sampling phase (runs 3-1-3-2, balance 3).
+
+Change: `StraightFillEdges.Snap`, right after the fill layer. Every boundary between two non-cord
+colours is followed on the source as a chain of crack midpoints (mid-points of the separating cell
+edges; for a digital straight edge they lie on the true line, max 0.37 px on A023A). Maximal runs
+that fit one total-least-squares line within 0.55 px and are at least 10 source px long are mapped
+to the target; target pixels of the two colours within 1.5 px of the line take the colour of their
+side (only where all 4-neighbours are one of the two colours, one px kept free at each end).
+A greedy run stopped at the first jog (runs of 15-38 points, glitches at every split), so growth
+looks up to 60 points past a misfit.
+
+Evidence (balance of the per-row runs on the four sides of the central diamond, source = 1):
+
+| Output | motif & topology | curve 4.48 | curve + straight fill edges |
+|---|---:|---:|---:|
+| 34x41, 544x943 | 3 | 3 | 1 |
+| 160 %, 818x1030 | 4-5 | 3 | 1 |
+
+- new regression `ThickStraightBand_EdgesStayDigitallyStraight` (six-cell band, slope 25/26):
+  FAILS without the snap (edge wobble 2.96 px), passes (<= 1 px),
+- N69 curve suite identical to 4.48 (their fills are always cord-separated); 152 tests pass.
+
+Decision: **KEEP**.
 
 ## 5. Do-not-repeat rules
 

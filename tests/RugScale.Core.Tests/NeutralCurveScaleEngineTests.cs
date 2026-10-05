@@ -488,4 +488,69 @@ public sealed class NeutralCurveScaleEngineTests
                 $"side is not straight (window {k}): {string.Join("", runs)}");
         }
     }
+
+    [Fact]
+    public void ThickStraightBand_EdgesStayDigitallyStraight()
+    {
+        // A six-cell tan band (a thick ruled line, not a Pixel-Cord) between the field and navy,
+        // running at slope 25/26 like a hand-placed diagonal: a 45-degree staircase with one jog
+        // every 25 rows. The distance field alone renders its 1.6x edges with phase wobble.
+        var source =
+            new DesignDocument(
+                160,
+                160,
+                Palette());
+
+        for (var y = 0; y < 160; y++)
+        {
+            for (var x = 0; x < 160; x++)
+            {
+                var u =
+                    x - (int)Math.Floor(y * 26 / 25.0);
+                source.SetPixel(
+                    x,
+                    y,
+                    u < -30 ? (byte)0 : u < -24 ? (byte)2 : (byte)3);
+            }
+        }
+
+        var target =
+            Scale(
+                source,
+                256,
+                256);
+
+        // Edge position per row: first navy pixel. A digital straight line keeps all positions
+        // within one pixel of a straight line.
+        var rows =
+            new List<(double Y, double X)>();
+
+        for (var y = 50; y < 236; y++)
+        {
+            for (var x = 0; x < target.Width; x++)
+            {
+                if (target.GetPixel(x, y) == 3)
+                {
+                    rows.Add((y, x));
+                    break;
+                }
+            }
+        }
+
+        var n = rows.Count;
+        var my = rows.Average(r => r.Y);
+        var mx = rows.Average(r => r.X);
+        var slope =
+            rows.Sum(r => (r.Y - my) * (r.X - mx)) /
+            rows.Sum(r => (r.Y - my) * (r.Y - my));
+        var residuals =
+            rows
+                .Select(r => r.X - (mx + slope * (r.Y - my)))
+                .ToList();
+
+        Assert.True(
+            n > 150 &&
+            residuals.Max() - residuals.Min() <= 1.05,
+            $"edge wobbles by {residuals.Max() - residuals.Min():F2} px");
+    }
 }
