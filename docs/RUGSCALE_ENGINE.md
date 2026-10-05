@@ -74,6 +74,25 @@ kaynak hücre dizilimini değil düzgün eğriyi izlediği için çoğu yerde 1 
 kopyasını ödüllendirir; görsel referans (düzenli basamak) eğri çizimini doğrular. Basamak düzeni
 `Cords_AreRedrawnWithRegularStepCadence` testiyle korunur.
 
+### Kavşak ve uç temizliği (kullanıcı geri bildirimi: "uç ve birleşim noktalarında çiftleme")
+
+Zincirlerin buluştuğu yerlerde (Y kavşak, sivri uç, L köşe) kalemler üst üste binip 2x2 kordon
+düğümleri oluşturuyordu; birbirine değen kaynak kordonları iki paralel zincir olarak çiziliyordu.
+Hepsi topolojiyi koruyan (4,8) basit-nokta kuralıyla çözüldü:
+
+1. zincir izlemeden önce kaynakta birbirine değen kordonlar tek merkez çizgisine indirilir
+   (`SkeletonizeTouchingCords`);
+2. hedefte kaynakta karşılığı olmayan 2x2 düğümler, düğüm içindeki tek piksel delikler ve iki kordon
+   arasına sıkışmış 1 px dolgu şeritleri tek piksele inceltilir (`ThinCordKnots`); kaynakta 3x3 dolu
+   kordon alanı olan yerler korunur, yerine gelen dolgu her zaman yasal komşuluk kuralına uyar;
+3. kavşaktan çıkan ≤ 2 px dikenler, kaynakta yakında gerçek bir uç yoksa budanır (`PruneCordSpurs`);
+4. simetri kopyasının kopardığı küçük kordon parçaları (≤ 40 px, ≤ 2 px boşluk) yeniden bağlanır ve
+   simetri tekrar uygulanır (`BridgeStrandedCordPieces`).
+
+Kaynakta karşılığı olmayan düğüm sayısı (1024 px genişlik): B996A 227 → 1, C004A 210 → 0,
+C069A 306 → 3, C071C 664 → 2. Separator breach 0, kordon parçaları kaynakla aynı (C004A dahil),
+round-trip exact %90,5-93,2, ±1 px %99,5-99,8. `Junctions_AndTips_HaveNoKnotsOrSpikes` testi bunu korur.
+
 Legacy `ScaleMode.CurveFill` ve `LeafPetalArcs` karşılaştırma ve C069 eğitim kapıları için
 dondurulmuş halde duruyor (`CurveScaleAudit --engine legacy`). Yeni geliştirme neutral-first
 motor üzerinde yapılır.

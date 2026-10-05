@@ -310,4 +310,82 @@ public sealed class NeutralCurveScaleEngineTests
             runs.Max() - runs.Min() <= 1,
             $"irregular cadence: {string.Join(",", runs)}");
     }
+
+    [Fact]
+    public void Junctions_AndTips_HaveNoKnotsOrSpikes()
+    {
+        // Two 4-connected staircase cords converge into one horizontal cord (a Y junction).
+        var source =
+            new DesignDocument(
+                90,
+                60,
+                Palette());
+
+        for (var y = 0; y < 60; y++)
+            for (var x = 0; x < 90; x++)
+                source.SetPixel(x, y, 0);
+
+        void Staircase(int x0, int y0, int x1, int y1)
+        {
+            var x = x0;
+            var y = y0;
+            source.SetPixel(x, y, 1);
+
+            while (x != x1 || y != y1)
+            {
+                // Step along the axis that keeps closest to the straight segment.
+                var stepX = x + Math.Sign(x1 - x);
+                var stepY = y + Math.Sign(y1 - y);
+                var errX = Math.Abs((stepX - x0) * (y1 - y0) - (y - y0) * (x1 - x0));
+                var errY = Math.Abs((x - x0) * (y1 - y0) - (stepY - y0) * (x1 - x0));
+
+                if (x != x1 && (y == y1 || errX <= errY))
+                    x = stepX;
+                else
+                    y = stepY;
+
+                source.SetPixel(x, y, 1);
+            }
+        }
+
+        Staircase(4, 6, 40, 30);
+        Staircase(4, 54, 40, 30);
+        Staircase(40, 30, 86, 30);
+
+        var target =
+            Scale(
+                source,
+                144,
+                96);
+
+        bool Cord(int x, int y) =>
+            x >= 0 && y >= 0 && x < target.Width && y < target.Height &&
+            target.GetPixel(x, y) == 1;
+
+        var blocks = 0;
+        var ends = 0;
+
+        for (var y = 0; y < target.Height; y++)
+        {
+            for (var x = 0; x < target.Width; x++)
+            {
+                if (!Cord(x, y))
+                    continue;
+
+                if (Cord(x + 1, y) && Cord(x, y + 1) && Cord(x + 1, y + 1))
+                    blocks++;
+
+                var degree =
+                    (Cord(x - 1, y) ? 1 : 0) + (Cord(x + 1, y) ? 1 : 0) +
+                    (Cord(x, y - 1) ? 1 : 0) + (Cord(x, y + 1) ? 1 : 0);
+
+                if (degree <= 1)
+                    ends++;
+            }
+        }
+
+        // One cell wide at the junction, and exactly the three source ends: no spikes.
+        Assert.Equal(0, blocks);
+        Assert.Equal(3, ends);
+    }
 }

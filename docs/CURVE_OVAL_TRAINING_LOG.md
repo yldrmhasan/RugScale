@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** section 4.46 — neutral engine redraws Pixel-Cords as smooth regular-cadence curves (user's red reference line).
+**Last documented experiment:** section 4.47 — neutral engine: no cord knots, spikes or stranded pieces at junctions and tips.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1749,6 +1749,49 @@ Evidence:
 
 Decision: **KEEP** (visual reference beats the exact-pixel round-trip proxy for line work).
 
+### 4.47 Neutral engine: clean cord junctions and tips — KEEP
+
+User feedback on the 4.46 archive (white cords recoloured red): "at tips and junctions the lines
+double up, the source has nothing like that; some tips have small problems". Measured: every place
+where two redrawn chains met (Y junctions, sharp tips, L corners) the pens overlapped into 2x2 cord
+knots; source cords that touch (two cells wide at a junction) were traced as two parallel chains
+around a one-pixel fill sliver; the cells of a source knot left 1-2 px spikes on the redrawn line;
+and the TB symmetry copy cut the C004A V-apex, leaving a 6 px stranded piece (6 cord parts vs 5).
+
+Changes (all in the neutral engine, all topology preserving):
+1. `PixelCordCurveRedraw.SkeletonizeTouchingCords`: before chain tracing, source cord cells in a
+   solid 2x2 block are peeled (directional sub-passes, (4,8) simple points only, endpoints kept), so
+   touching cords are traced as one centre line.
+2. `ThickCordMask` (cord colours allowed in the fill layer) needs a run of three cells in all four
+   axes; two-cell junction spots are line work, not cord areas.
+3. `ThinCordKnots` after the separator repair: a one-pixel pinhole inside a knot, or a fill sliver
+   between two cords where the source cell is solid cord, joins the knot; then target cells in a 2x2
+   cord block are peeled with the same simple-point rule. Kept over a solid 3x3 source cord area,
+   and a peeled cell takes the commonest neighbouring fill that is a legal contact (else stays cord).
+4. `PruneCordSpurs`: a cord end whose 4-connected walk reaches a junction within 2 cells is removed,
+   unless the source has a cord end within 2 source cells (diamond points, real stubs stay).
+5. `BridgeStrandedCordPieces` after symmetry: while a cord colour has more parts than the source, a
+   piece of <= 40 px within 2 px of another piece is re-joined with a 4-connected path, then the
+   symmetry copy is re-applied.
+
+Evidence:
+- new regression `Junctions_AndTips_HaveNoKnotsOrSpikes` (two staircases merging into one line):
+  FAILS on the 4.46 engine (one knot), passes now (0 knots, exactly the 3 source ends),
+- target 2x2 cord blocks with no source block nearby (1024 px wide outputs):
+
+| Design | 4.46 archive | now |
+|---|---:|---:|
+| B996A | 227 | 1 |
+| C004A | 210 | 0 |
+| C069A | 306 | 3 |
+| C071C | 664 | 2 |
+
+- four-design audit: breaches 0, cord parts = source on all four (C004A back to 5), cord weight
+  1.54-1.57, palette SAFE, exit 0; round-trip exact 90.5-93.2 % (-0.1..-0.3 vs 4.46, cord pixels
+  only), +-1 px 99.5-99.8 %; 150 tests pass.
+
+Decision: **KEEP**.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
@@ -1762,7 +1805,10 @@ Decision: **KEEP** (visual reference beats the exact-pixel round-trip proxy for 
 7. Do not merge the active training branch to `main` until explicitly requested.
 8. Do not remove or weaken palette/topology regression gates to improve aesthetics.
 9. Do not thin Pixel-Cords by morphological peeling; redraw them from the source cord path
-   (section 4.44). Peeling produces notched 8-connected lines.
+   (section 4.44). Peeling produces notched 8-connected lines. The only peeling allowed is the
+   (4,8) simple-point knot cleanup of section 4.47, which keeps 4-connectivity and endpoints.
+12. Do not judge junction quality by eye on whole images only: count target 2x2 cord blocks that
+    have no source block nearby and short spurs without a source end (section 4.47).
 10. Judge every redraw stage with `--stage-diagnostics`: a stage that adds separator breaches or
     splits cords is not finished, whatever its pixel-F1.
 11. Do not add shape re-fitting (ribbon/arc/oval curve fits) to the neutral-first engine. The user

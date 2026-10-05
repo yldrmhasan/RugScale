@@ -47,9 +47,18 @@ internal static class PixelCordCurveRedraw
         int penX,
         int penY)
     {
+        // Junction and tip spots where two source cords touch are two cells thick. Traced as they
+        // are, every cell becomes a graph node and the spot is redrawn as a 3x3 blob or as two
+        // parallel lines with a gap. Thin those spots to a one-cell line first.
+        var skeleton =
+            SkeletonizeTouchingCords(
+                source,
+                w,
+                h,
+                isCord);
         var chains =
             TraceChains(
-                source,
+                skeleton,
                 w,
                 h,
                 isCord);
@@ -99,7 +108,7 @@ internal static class PixelCordCurveRedraw
         foreach (var chain in chains)
         {
             var color =
-                source[chain.Cells[0]];
+                skeleton[chain.Cells[0]];
             var points =
                 Smooth(
                     chain,
@@ -473,6 +482,322 @@ internal static class PixelCordCurveRedraw
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Copy of the source in which cord cells belonging to a solid 2x2 cord block are peeled away
+    /// while the cord keeps its 4-connected topology and its endpoints. Wide cord areas (no
+    /// non-cord 4-neighbour at all) are left alone; they are painted by the fill layer.
+    /// </summary>
+    internal static byte[] SkeletonizeTouchingCords(
+        byte[] source,
+        int w,
+        int h,
+        bool[] isCord)
+    {
+        var cells =
+            source.ToArray();
+        ReadOnlySpan<(int Dx, int Dy)> sides =
+        [
+            (0, -1),
+            (0, 1),
+            (-1, 0),
+            (1, 0),
+        ];
+        var removed =
+            new bool[cells.Length];
+
+        bool Cord(
+            int x,
+            int y,
+            byte color) =>
+            x >= 0 &&
+            y >= 0 &&
+            x < w &&
+            y < h &&
+            !removed[y * w + x] &&
+            cells[y * w + x] == color;
+
+        for (var iteration = 0;
+             iteration < 4;
+             iteration++)
+        {
+            var changed = 0;
+
+            foreach (var (sx, sy) in sides)
+            {
+                var remove =
+                    new List<int>();
+
+                for (var y = 0;
+                     y < h;
+                     y++)
+                {
+                    for (var x = 0;
+                         x < w;
+                         x++)
+                    {
+                        var color =
+                            cells[y * w + x];
+
+                        if (removed[y * w + x] ||
+                            !isCord[color] ||
+                            Cord(x + sx, y + sy, color) ||
+                            !InSolidBlock(x, y, color))
+                        {
+                            continue;
+                        }
+
+                        if (IsSimple(x, y, color))
+                            remove.Add(y * w + x);
+                    }
+                }
+
+                // Apply one at a time, re-checking: removing two neighbours of the same block in
+                // one sweep could split the cord.
+                foreach (var index in remove)
+                {
+                    var x =
+                        index % w;
+                    var y =
+                        index / w;
+                    var color =
+                        cells[index];
+
+                    if (!InSolidBlock(x, y, color) ||
+                        !IsSimple(x, y, color))
+                    {
+                        continue;
+                    }
+
+                    removed[index] = true;
+                    changed++;
+                }
+            }
+
+            if (changed == 0)
+                break;
+        }
+
+        // Removed cells must not read as cord to the chain tracer.
+        for (var index = 0;
+             index < cells.Length;
+             index++)
+        {
+            if (removed[index])
+                cells[index] = FirstNonCord(isCord);
+        }
+
+        return cells;
+
+        bool InSolidBlock(
+            int x,
+            int y,
+            byte color) =>
+            PixelCordCurveRedraw.InSolidBlock(
+                (cx, cy) => Cord(cx, cy, color),
+                x,
+                y);
+
+        bool IsSimple(
+            int x,
+            int y,
+            byte color) =>
+            IsSimplePoint(
+                (cx, cy) => Cord(cx, cy, color),
+                x,
+                y);
+    }
+
+    internal static bool InSolidBlock(
+        Func<int, int, bool> cord,
+        int x,
+        int y)
+    {
+        for (var oy = -1;
+             oy <= 0;
+             oy++)
+        {
+            for (var ox = -1;
+                 ox <= 0;
+                 ox++)
+            {
+                if (cord(x + ox, y + oy) &&
+                    cord(x + ox + 1, y + oy) &&
+                    cord(x + ox, y + oy + 1) &&
+                    cord(x + ox + 1, y + oy + 1))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// (4,8) simple point: the 4-adjacent cord neighbours stay one 4-connected group through
+    /// the ring, all ring cord cells belong to it, the background ring stays one 8-connected
+    /// group, and the cell is not an endpoint.
+    /// </summary>
+internal static bool IsSimplePoint(
+    Func<int, int, bool> cord,
+    int x,
+    int y)
+{
+        ReadOnlySpan<(int Dx, int Dy)> ring =
+        [
+            (0, -1),
+            (1, -1),
+            (1, 0),
+            (1, 1),
+            (0, 1),
+            (-1, 1),
+            (-1, 0),
+            (-1, -1),
+        ];
+        Span<bool> on =
+            stackalloc bool[8];
+        var count = 0;
+
+        for (var k = 0;
+             k < 8;
+             k++)
+        {
+            on[k] =
+                cord(
+                    x + ring[k].Dx,
+                    y + ring[k].Dy);
+
+            if (on[k] &&
+                k % 2 == 0)
+            {
+                count++;
+            }
+        }
+
+        if (count < 2)
+            return false;
+
+        // Foreground: consecutive ring cells joined (4-adjacent); diagonal cells only
+        // through an orthogonal neighbour.
+        Span<int> group =
+            stackalloc int[8];
+
+        for (var k = 0;
+             k < 8;
+             k++)
+        {
+            group[k] = k;
+        }
+
+        int Find(
+            Span<int> g,
+            int v)
+        {
+            while (g[v] != v)
+                v = g[v];
+
+            return v;
+        }
+
+        for (var k = 0;
+             k < 8;
+             k++)
+        {
+            var next =
+                (k + 1) % 8;
+
+            if (on[k] &&
+                on[next])
+            {
+                group[Find(group, k)] =
+                    Find(group, next);
+            }
+        }
+
+        var root = -1;
+
+        for (var k = 0;
+             k < 8;
+             k++)
+        {
+            if (!on[k])
+                continue;
+
+            var r =
+                Find(group, k);
+
+            if (root < 0)
+                root = r;
+            else if (r != root)
+                return false;
+        }
+
+        // Background: 8-connected around the ring.
+        for (var k = 0;
+             k < 8;
+             k++)
+        {
+            group[k] = k;
+        }
+
+        for (var k = 0;
+             k < 8;
+             k++)
+        {
+            var next =
+                (k + 1) % 8;
+
+            if (!on[k] &&
+                !on[next])
+            {
+                group[Find(group, k)] =
+                    Find(group, next);
+            }
+
+            if (k % 2 == 0 &&
+                !on[k] &&
+                !on[(k + 2) % 8])
+            {
+                group[Find(group, k)] =
+                    Find(group, (k + 2) % 8);
+            }
+        }
+
+        var background = -1;
+
+        for (var k = 0;
+             k < 8;
+             k++)
+        {
+            if (on[k])
+                continue;
+
+            var r =
+                Find(group, k);
+
+            if (background < 0)
+                background = r;
+            else if (r != background)
+                return false;
+        }
+
+        return background >= 0;
+    }
+
+    private static byte FirstNonCord(
+        bool[] isCord)
+    {
+        for (var color = 0;
+             color < 256;
+             color++)
+        {
+            if (!isCord[color])
+                return (byte)color;
+        }
+
+        return 0;
     }
 
     /// <summary>

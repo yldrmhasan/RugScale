@@ -36,7 +36,8 @@ internal static class NeutralCurveScaleEngine
         int CordChainsRedrawn,
         int TargetCordPixels,
         int BarrierRepairs,
-        int UnresolvedContacts);
+        int UnresolvedContacts,
+        int CordCleanups);
 
     public static void Resize(
         DesignDocument source,
@@ -336,6 +337,37 @@ internal static class NeutralCurveScaleEngine
                 cords,
                 isCord);
 
+        // Where two redrawn chains meet (junctions, sharp tips, L corners) their pens overlap
+        // into small 2x2 cord knots the source does not have. Peel them back to one cell.
+        var thinned =
+            ThinCordKnots(
+                src,
+                w,
+                h,
+                target,
+                W,
+                H,
+                isCord,
+                SolidCordAreaMask(
+                    src,
+                    w,
+                    h,
+                    isCord),
+                contacts);
+
+        // Knots of the source (two cord cells wide where a branch leaves a line) leave one- or
+        // two-pixel spikes on the redrawn line. Prune spikes the source has no tip for.
+        thinned +=
+            PruneCordSpurs(
+                src,
+                w,
+                h,
+                target,
+                W,
+                H,
+                isCord,
+                contacts);
+
         // ---- 4. exact designer symmetry -----------------------------------------------------
         PreserveExactSymmetry(
             src,
@@ -344,6 +376,27 @@ internal static class NeutralCurveScaleEngine
             target,
             W,
             H);
+
+        // A cord crossing the mirror seam can lose the cells that joined it on the discarded
+        // side. Re-join stranded cord pieces (only while the target has more cord parts than the
+        // source) and mirror again so the joins are symmetric too.
+        if (BridgeStrandedCordPieces(
+                src,
+                w,
+                h,
+                target,
+                W,
+                H,
+                isCord) > 0)
+        {
+            PreserveExactSymmetry(
+                src,
+                w,
+                h,
+                target,
+                W,
+                H);
+        }
 
         Commit(
             target,
@@ -354,7 +407,895 @@ internal static class NeutralCurveScaleEngine
             replayed,
             target.Count(value => isCord[value]),
             repairs,
-            unresolved);
+            unresolved,
+            thinned);
+    }
+
+    /// <summary>
+    /// Peels cord cells out of solid 2x2 cord blocks in the target, one side at a time so the
+    /// line stays centred, keeping the cord's 4-connected topology and its endpoints. Blocks over
+    /// genuinely wide source cord are kept. A peeled cell takes the commonest neighbouring fill
+    /// colour that is a legal contact with all of its 4-neighbours; without one it stays cord.
+    /// </summary>
+    private static int ThinCordKnots(
+        byte[] source,
+        int w,
+        int h,
+        byte[] target,
+        int W,
+        int H,
+        bool[] isCord,
+        bool[] wideCord,
+        CurveFillRibbonFidelityGuard.SourceContacts contacts)
+    {
+        ReadOnlySpan<(int Dx, int Dy)> sides =
+        [
+            (0, -1),
+            (0, 1),
+            (-1, 0),
+            (1, 0),
+        ];
+        var thinned = 0;
+
+        bool Cord(
+            int x,
+            int y,
+            byte color) =>
+            x >= 0 &&
+            y >= 0 &&
+            x < W &&
+            y < H &&
+            target[y * W + x] == color;
+
+        bool OverWideSourceCord(
+            int x,
+            int y)
+        {
+            var sx =
+                (int)((long)x * w / W);
+            var sy =
+                (int)((long)y * h / H);
+
+            for (var dy = -1;
+                 dy <= 1;
+                 dy++)
+            {
+                for (var dx = -1;
+                     dx <= 1;
+                     dx++)
+                {
+                    var nx =
+                        sx + dx;
+                    var ny =
+                        sy + dy;
+
+                    if (nx >= 0 &&
+                        ny >= 0 &&
+                        nx < w &&
+                        ny < h &&
+                        wideCord[ny * w + nx])
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        bool SourcePinholeNear(
+            int x,
+            int y)
+        {
+            var sx =
+                (int)((long)x * w / W);
+            var sy =
+                (int)((long)y * h / H);
+
+            for (var dy = -1;
+                 dy <= 1;
+                 dy++)
+            {
+                for (var dx = -1;
+                     dx <= 1;
+                     dx++)
+                {
+                    var nx =
+                        sx + dx;
+                    var ny =
+                        sy + dy;
+
+                    if (nx < 1 ||
+                        ny < 1 ||
+                        nx >= w - 1 ||
+                        ny >= h - 1)
+                    {
+                        continue;
+                    }
+
+                    var at =
+                        ny * w + nx;
+
+                    if (!isCord[source[at]] &&
+                        isCord[source[at - 1]] &&
+                        isCord[source[at + 1]] &&
+                        isCord[source[at - w]] &&
+                        isCord[source[at + w]])
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        int Replacement(
+            int index)
+        {
+            Span<int> around =
+                stackalloc int[4];
+            var count =
+                Neighbours(
+                    index,
+                    W,
+                    H,
+                    around);
+            var best = -1;
+            var bestVotes = 0;
+
+            for (var n = 0;
+                 n < count;
+                 n++)
+            {
+                var candidate =
+                    target[around[n]];
+
+                if (isCord[candidate])
+                    continue;
+
+                var votes = 0;
+                var legal = true;
+
+                for (var m = 0;
+                     m < count;
+                     m++)
+                {
+                    var other =
+                        target[around[m]];
+
+                    if (other == candidate)
+                    {
+                        votes++;
+                    }
+                    else if (!isCord[other] &&
+                             !contacts.Allowed(
+                                 candidate,
+                                 other,
+                                 index))
+                    {
+                        legal = false;
+                        break;
+                    }
+                }
+
+                if (legal &&
+                    votes > bestVotes)
+                {
+                    best = candidate;
+                    bestVotes = votes;
+                }
+            }
+
+            return best;
+        }
+
+        bool Removable(
+            int x,
+            int y,
+            byte color) =>
+            PixelCordCurveRedraw.InSolidBlock(
+                (cx, cy) => Cord(cx, cy, color),
+                x,
+                y) &&
+            PixelCordCurveRedraw.IsSimplePoint(
+                (cx, cy) => Cord(cx, cy, color),
+                x,
+                y) &&
+            !OverWideSourceCord(
+                x,
+                y);
+
+        // A knot often encloses a one-pixel fill pinhole (an "o" in the line), or two chains of a
+        // wide source cord run side by side around a fill sliver. Unless the source has that fill
+        // cell, it joins the knot and is peeled with it.
+        for (var index = 0;
+             index < target.Length;
+             index++)
+        {
+            if (isCord[target[index]])
+                continue;
+
+            var x =
+                index % W;
+            var y =
+                index / W;
+
+            if (x == 0 ||
+                y == 0 ||
+                x == W - 1 ||
+                y == H - 1)
+            {
+                continue;
+            }
+
+            var left =
+                target[index - 1];
+            var up =
+                target[index - W];
+            var pinhole =
+                isCord[left] &&
+                target[index + 1] == left &&
+                up == left &&
+                target[index + W] == left &&
+                !SourcePinholeNear(
+                    x,
+                    y);
+
+            // A one-pixel fill sliver squeezed between two parallel cords where the source cell
+            // is solid cord: the two chains of a wide source cord drawn side by side.
+            var sourceColor =
+                source[
+                    (int)((y + 0.5) * h / H) * w +
+                    (int)((x + 0.5) * w / W)];
+            var sliver =
+                isCord[sourceColor] &&
+                ((left == sourceColor &&
+                  target[index + 1] == sourceColor) ||
+                 (up == sourceColor &&
+                  target[index + W] == sourceColor));
+
+            if (!pinhole &&
+                !sliver)
+            {
+                continue;
+            }
+
+            target[index] =
+                pinhole
+                    ? left
+                    : sourceColor;
+            thinned++;
+        }
+
+        for (var iteration = 0;
+             iteration < 4;
+             iteration++)
+        {
+            var changed = 0;
+
+            foreach (var (sx, sy) in sides)
+            {
+                var candidates =
+                    new List<int>();
+
+                for (var y = 0;
+                     y < H;
+                     y++)
+                {
+                    for (var x = 0;
+                         x < W;
+                         x++)
+                    {
+                        var color =
+                            target[y * W + x];
+
+                        if (isCord[color] &&
+                            !Cord(x + sx, y + sy, color) &&
+                            Removable(x, y, color))
+                        {
+                            candidates.Add(y * W + x);
+                        }
+                    }
+                }
+
+                foreach (var index in candidates)
+                {
+                    var x =
+                        index % W;
+                    var y =
+                        index / W;
+                    var color =
+                        target[index];
+
+                    if (!Removable(x, y, color))
+                        continue;
+
+                    var fill =
+                        Replacement(
+                            index);
+
+                    if (fill < 0)
+                        continue;
+
+                    target[index] =
+                        (byte)fill;
+                    changed++;
+                }
+            }
+
+            thinned += changed;
+
+            if (changed == 0)
+                break;
+        }
+
+        return thinned;
+    }
+
+    /// <summary>Source cord cells covered by a solid 3x3 block of one cord colour.</summary>
+    private static bool[] SolidCordAreaMask(
+        byte[] src,
+        int w,
+        int h,
+        bool[] isCord)
+    {
+        var mask =
+            new bool[src.Length];
+
+        for (var y = 1;
+             y + 1 < h;
+             y++)
+        {
+            for (var x = 1;
+                 x + 1 < w;
+                 x++)
+            {
+                var color =
+                    src[y * w + x];
+
+                if (!isCord[color])
+                    continue;
+
+                var solid = true;
+
+                for (var dy = -1;
+                     dy <= 1 && solid;
+                     dy++)
+                {
+                    for (var dx = -1;
+                         dx <= 1;
+                         dx++)
+                    {
+                        if (src[(y + dy) * w + x + dx] != color)
+                        {
+                            solid = false;
+                            break;
+                        }
+                    }
+                }
+
+                if (!solid)
+                    continue;
+
+                for (var dy = -1;
+                     dy <= 1;
+                     dy++)
+                {
+                    for (var dx = -1;
+                         dx <= 1;
+                         dx++)
+                    {
+                        mask[(y + dy) * w + x + dx] = true;
+                    }
+                }
+            }
+        }
+
+        return mask;
+    }
+
+    /// <summary>Longest spike (cells up to the junction it leaves from) that may be pruned.</summary>
+    private const int MaximumSpurLength = 2;
+
+    /// <summary>
+    /// Removes short cord spikes: walking the 4-connected cord graph from an end cell reaches a
+    /// junction (three or more cord 4-neighbours) within <see cref="MaximumSpurLength"/> cells.
+    /// Spikes are kept where the source has a cord end near the mapped location, and a cell is
+    /// only removed when a fill colour can legally take its place.
+    /// </summary>
+    private static int PruneCordSpurs(
+        byte[] source,
+        int w,
+        int h,
+        byte[] target,
+        int W,
+        int H,
+        bool[] isCord,
+        CurveFillRibbonFidelityGuard.SourceContacts contacts)
+    {
+        var pruned = 0;
+        Span<int> around =
+            stackalloc int[4];
+
+        int CordDegree(
+            byte[] pixels,
+            int width,
+            int height,
+            int index,
+            byte color,
+            Span<int> buffer)
+        {
+            Span<int> all =
+                stackalloc int[4];
+            var count =
+                Neighbours(
+                    index,
+                    width,
+                    height,
+                    all);
+            var degree = 0;
+
+            for (var n = 0;
+                 n < count;
+                 n++)
+            {
+                if (pixels[all[n]] == color)
+                    buffer[degree++] = all[n];
+            }
+
+            return degree;
+        }
+
+        bool SourceEndNear(
+            int x,
+            int y,
+            byte color)
+        {
+            Span<int> buffer =
+                stackalloc int[4];
+            var sx =
+                (int)((long)x * w / W);
+            var sy =
+                (int)((long)y * h / H);
+
+            for (var dy = -2;
+                 dy <= 2;
+                 dy++)
+            {
+                for (var dx = -2;
+                     dx <= 2;
+                     dx++)
+                {
+                    var nx =
+                        sx + dx;
+                    var ny =
+                        sy + dy;
+
+                    if (nx < 0 ||
+                        ny < 0 ||
+                        nx >= w ||
+                        ny >= h)
+                    {
+                        continue;
+                    }
+
+                    var at =
+                        ny * w + nx;
+
+                    if (source[at] == color &&
+                        CordDegree(
+                            source,
+                            w,
+                            h,
+                            at,
+                            color,
+                            buffer) <= 1)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        int LegalFill(
+            int index)
+        {
+            Span<int> ring =
+                stackalloc int[4];
+            var count =
+                Neighbours(
+                    index,
+                    W,
+                    H,
+                    ring);
+            var best = -1;
+            var bestVotes = 0;
+
+            for (var n = 0;
+                 n < count;
+                 n++)
+            {
+                var candidate =
+                    target[ring[n]];
+
+                if (isCord[candidate])
+                    continue;
+
+                var votes = 0;
+                var legal = true;
+
+                for (var m = 0;
+                     m < count;
+                     m++)
+                {
+                    var other =
+                        target[ring[m]];
+
+                    if (other == candidate)
+                    {
+                        votes++;
+                    }
+                    else if (!isCord[other] &&
+                             !contacts.Allowed(
+                                 candidate,
+                                 other,
+                                 index))
+                    {
+                        legal = false;
+                        break;
+                    }
+                }
+
+                if (legal &&
+                    votes > bestVotes)
+                {
+                    best = candidate;
+                    bestVotes = votes;
+                }
+            }
+
+            return best;
+        }
+
+        var spur =
+            new List<int>(MaximumSpurLength);
+
+        for (var start = 0;
+             start < target.Length;
+             start++)
+        {
+            var color =
+                target[start];
+
+            if (!isCord[color] ||
+                CordDegree(
+                    target,
+                    W,
+                    H,
+                    start,
+                    color,
+                    around) != 1)
+            {
+                continue;
+            }
+
+            // Walk the line until it meets a junction.
+            spur.Clear();
+            var previous = -1;
+            var current = start;
+            var reachedJunction = false;
+
+            while (spur.Count <= MaximumSpurLength)
+            {
+                var degree =
+                    CordDegree(
+                        target,
+                        W,
+                        H,
+                        current,
+                        color,
+                        around);
+
+                if (degree >= 3)
+                {
+                    reachedJunction = true;
+                    break;
+                }
+
+                if (degree == 0 ||
+                    (degree == 1 && previous >= 0))
+                {
+                    break;
+                }
+
+                spur.Add(current);
+                var next =
+                    around[0] == previous && degree > 1
+                        ? around[1]
+                        : around[0];
+                previous = current;
+                current = next;
+            }
+
+            if (!reachedJunction ||
+                spur.Count == 0 ||
+                spur.Count > MaximumSpurLength ||
+                SourceEndNear(
+                    start % W,
+                    start / W,
+                    color))
+            {
+                continue;
+            }
+
+            // Remove from the tip inwards; stop at the first cell no fill can legally replace.
+            foreach (var index in spur)
+            {
+                var fill =
+                    LegalFill(
+                        index);
+
+                if (fill < 0)
+                    break;
+
+                target[index] =
+                    (byte)fill;
+                pruned++;
+            }
+        }
+
+        return pruned;
+    }
+
+    /// <summary>Largest cord piece that may be re-joined, and the widest gap (cells) it may jump.</summary>
+    private const int MaximumStrandedPiece = 40;
+    private const int MaximumBridgeGap = 2;
+
+    private static int BridgeStrandedCordPieces(
+        byte[] src,
+        int w,
+        int h,
+        byte[] target,
+        int W,
+        int H,
+        bool[] isCord)
+    {
+        var bridged = 0;
+
+        for (var color = 0;
+             color < 256;
+             color++)
+        {
+            if (!isCord[color])
+                continue;
+
+            var cord =
+                (byte)color;
+            var sourceParts =
+                CountParts(
+                    src,
+                    w,
+                    h,
+                    cord);
+            var labels =
+                Label(
+                    target,
+                    W,
+                    H,
+                    cord,
+                    out var sizes);
+            var targetParts =
+                sizes.Count - 1;
+
+            if (targetParts <= sourceParts)
+                continue;
+
+            for (var label = 1;
+                 label < sizes.Count &&
+                 targetParts > sourceParts;
+                 label++)
+            {
+                if (sizes[label] > MaximumStrandedPiece)
+                    continue;
+
+                // Nearest cell of another piece within the gap limit.
+                var bestFrom = -1;
+                var bestTo = -1;
+                var bestDistance = int.MaxValue;
+
+                for (var index = 0;
+                     index < labels.Length;
+                     index++)
+                {
+                    if (labels[index] != label)
+                        continue;
+
+                    var x =
+                        index % W;
+                    var y =
+                        index / W;
+
+                    for (var dy = -MaximumBridgeGap - 1;
+                         dy <= MaximumBridgeGap + 1;
+                         dy++)
+                    {
+                        for (var dx = -MaximumBridgeGap - 1;
+                             dx <= MaximumBridgeGap + 1;
+                             dx++)
+                        {
+                            var nx =
+                                x + dx;
+                            var ny =
+                                y + dy;
+
+                            if (nx < 0 ||
+                                ny < 0 ||
+                                nx >= W ||
+                                ny >= H)
+                            {
+                                continue;
+                            }
+
+                            var other =
+                                labels[ny * W + nx];
+
+                            if (other == 0 ||
+                                other == label)
+                            {
+                                continue;
+                            }
+
+                            var distance =
+                                Math.Abs(dx) +
+                                Math.Abs(dy);
+
+                            if (distance < bestDistance)
+                            {
+                                bestDistance = distance;
+                                bestFrom = index;
+                                bestTo = ny * W + nx;
+                            }
+                        }
+                    }
+                }
+
+                if (bestFrom < 0 ||
+                    bestDistance - 1 > MaximumBridgeGap)
+                {
+                    continue;
+                }
+
+                // 4-connected L path, horizontal first.
+                var cx =
+                    bestFrom % W;
+                var cy =
+                    bestFrom / W;
+                var tx =
+                    bestTo % W;
+                var ty =
+                    bestTo / W;
+
+                while (cx != tx)
+                {
+                    cx += Math.Sign(tx - cx);
+                    target[cy * W + cx] = cord;
+                }
+
+                while (cy != ty)
+                {
+                    cy += Math.Sign(ty - cy);
+                    target[cy * W + cx] = cord;
+                }
+
+                bridged++;
+                targetParts--;
+            }
+        }
+
+        return bridged;
+    }
+
+    /// <summary>8-connected labels of one colour; sizes[0] is unused.</summary>
+    private static int[] Label(
+        byte[] pixels,
+        int width,
+        int height,
+        byte color,
+        out List<int> sizes)
+    {
+        var labels =
+            new int[pixels.Length];
+        sizes =
+            new List<int> { 0 };
+        var queue =
+            new Queue<int>();
+
+        for (var start = 0;
+             start < pixels.Length;
+             start++)
+        {
+            if (pixels[start] != color ||
+                labels[start] != 0)
+            {
+                continue;
+            }
+
+            var label =
+                sizes.Count;
+            var size = 0;
+            labels[start] = label;
+            queue.Enqueue(start);
+
+            while (queue.Count > 0)
+            {
+                var current =
+                    queue.Dequeue();
+                size++;
+                var x =
+                    current % width;
+                var y =
+                    current / width;
+
+                for (var dy = -1;
+                     dy <= 1;
+                     dy++)
+                {
+                    for (var dx = -1;
+                         dx <= 1;
+                         dx++)
+                    {
+                        var nx =
+                            x + dx;
+                        var ny =
+                            y + dy;
+
+                        if (nx < 0 ||
+                            ny < 0 ||
+                            nx >= width ||
+                            ny >= height)
+                        {
+                            continue;
+                        }
+
+                        var next =
+                            ny * width +
+                            nx;
+
+                        if (pixels[next] != color ||
+                            labels[next] != 0)
+                        {
+                            continue;
+                        }
+
+                        labels[next] = label;
+                        queue.Enqueue(next);
+                    }
+                }
+            }
+
+            sizes.Add(size);
+        }
+
+        return labels;
+    }
+
+    private static int CountParts(
+        byte[] pixels,
+        int width,
+        int height,
+        byte color)
+    {
+        Label(
+            pixels,
+            width,
+            height,
+            color,
+            out var sizes);
+
+        return sizes.Count - 1;
     }
 
     private static int PenSize(
@@ -393,7 +1334,7 @@ internal static class NeutralCurveScaleEngine
         return result;
     }
 
-    /// <summary>Cord cells that are at least two cells thick in every direction: real cord areas.</summary>
+    /// <summary>Cord cells that are at least three cells thick in every direction: real cord areas.</summary>
     private static bool[] ThickCordMask(
         byte[] src,
         int w,
@@ -424,19 +1365,52 @@ internal static class NeutralCurveScaleEngine
                 if (!isCord[color])
                     continue;
 
+                // A genuine cord AREA is at least three cells thick in every direction. Two-cell
+                // spots (where two cords touch at a junction or a tip) are line work and are
+                // handled by the cord redraw, not grown as an area.
                 var thick = true;
 
                 foreach (var (dx, dy) in axes)
                 {
-                    var forward =
-                        x + dx >= 0 && x + dx < w && y + dy >= 0 && y + dy < h &&
-                        src[(y + dy) * w + x + dx] == color;
-                    var backward =
-                        x - dx >= 0 && x - dx < w && y - dy >= 0 && y - dy < h &&
-                        src[(y - dy) * w + x - dx] == color;
+                    var run = 1;
 
-                    if (!forward &&
-                        !backward)
+                    for (var k = 1;
+                         k <= 2;
+                         k++)
+                    {
+                        var nx =
+                            x + dx * k;
+                        var ny =
+                            y + dy * k;
+
+                        if (nx < 0 || nx >= w || ny < 0 || ny >= h ||
+                            src[ny * w + nx] != color)
+                        {
+                            break;
+                        }
+
+                        run++;
+                    }
+
+                    for (var k = 1;
+                         k <= 2;
+                         k++)
+                    {
+                        var nx =
+                            x - dx * k;
+                        var ny =
+                            y - dy * k;
+
+                        if (nx < 0 || nx >= w || ny < 0 || ny >= h ||
+                            src[ny * w + nx] != color)
+                        {
+                            break;
+                        }
+
+                        run++;
+                    }
+
+                    if (run < 3)
                     {
                         thick = false;
                         break;
