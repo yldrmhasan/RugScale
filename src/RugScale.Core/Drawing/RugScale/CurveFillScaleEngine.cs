@@ -25,6 +25,15 @@ internal static class CurveFillScaleEngine
     private const float Infinity = 1_000_000f;
     private const float TieBias = 0.0005f;
 
+    /// <summary>
+    /// Training/audit hook only: when set, receives the live destination after every pipeline
+    /// stage so diagnostics can attribute a defect to the stage that introduced it. Observers must
+    /// copy the document; they must never modify it. Thread-static so parallel callers do not
+    /// observe each other.
+    /// </summary>
+    [ThreadStatic]
+    internal static Action<string, DesignDocument>? StageObserver;
+
     public static void Resize(
         DesignDocument source,
         DesignDocument destination,
@@ -237,9 +246,24 @@ internal static class CurveFillScaleEngine
         // Smooth categorical interpolation is allowed to move a boundary locally, but a fill
         // must never jump across a third-colour separator. Lock region ownership BEFORE replaying
         // the tool-faithful outline so the final stroke remains the hard visual barrier.
+        StageObserver?.Invoke(
+            "1-signed-field",
+            destination);
+
         var ownership =
             CurveFillRegionOwnershipGuard.Apply(
                 source,
+                destination);
+
+        StageObserver?.Invoke(
+            "2-ownership",
+            destination);
+
+        var protectedStrokeColors =
+            ToolFaithfulPixelCordOverlay.DetectStrokePaletteRoles(
+                source);
+        var beforeOverlay =
+            CurveFillRibbonFidelityGuard.Snapshot(
                 destination);
 
         // Replay any source 1x1 Curve/Pixel-Cord strokes through RugScale's own rasterizer.
@@ -257,9 +281,43 @@ internal static class CurveFillScaleEngine
         // Cleanup of the block-expanded old stroke happens inside the tool overlay. Validate its
         // replacement colours as well: this second pass catches a rare narrow-junction case where
         // a cleanup pixel can choose the geometrically close but topologically opposite fill.
+        StageObserver?.Invoke(
+            "3-tool-overlay",
+            destination);
+
         var finalOwnership =
             CurveFillRegionOwnershipGuard.Apply(
                 source,
+                destination);
+
+        StageObserver?.Invoke(
+            "4-final-ownership",
+            destination);
+
+        // Pixel-Cord replay thins block-scaled cords back to the target drawing weight. Where that
+        // opens a gap between two colours the source always keeps apart, redraw the separator.
+        // Pixel-Cord replay can strand single residue cells of the old block-scaled cord inside
+        // a neighbouring fill. Clear them (and bridge any cord it split) before checking barriers.
+        var overlayCords =
+            CurveFillRibbonFidelityGuard.RepairColourContinuity(
+                source,
+                beforeOverlay,
+                destination,
+                protectedStrokeColors);
+
+        var overlayBarriers =
+            CurveFillRibbonFidelityGuard.EnforceSeparatorBarriers(
+                source,
+                beforeOverlay,
+                destination,
+                protectedStrokeColors);
+
+        StageObserver?.Invoke(
+            "4b-overlay-barriers",
+            destination);
+
+        var beforeRibbon =
+            CurveFillRibbonFidelityGuard.Snapshot(
                 destination);
 
         // Long filled oval/ribbon arcs need a different authority than the Pixel-Cord learner:
@@ -273,8 +331,64 @@ internal static class CurveFillScaleEngine
                 source,
                 destination);
 
+        StageObserver?.Invoke(
+            "5-ribbon-arc",
+            destination);
+
+        // The ribbon fit describes the main sweep. Teeth and side lobes it removed are design
+        // content; separators it broke are visible gaps. Repair both against the pre-ribbon state.
+        var ribbonAppendages =
+            CurveFillRibbonFidelityGuard.RestoreLostAppendages(
+                source,
+                beforeRibbon,
+                destination,
+                protectedStrokeColors);
+
+        StageObserver?.Invoke(
+            "5b-appendages",
+            destination);
+
+        var ribbonCords =
+            CurveFillRibbonFidelityGuard.RepairColourContinuity(
+                source,
+                beforeRibbon,
+                destination,
+                beforeRibbon
+                    .Distinct()
+                    .ToHashSet());
+
+        StageObserver?.Invoke(
+            "5b2-cords",
+            destination);
+
+        var ribbonBarriers =
+            CurveFillRibbonFidelityGuard.EnforceSeparatorBarriers(
+                source,
+                beforeRibbon,
+                destination,
+                protectedStrokeColors);
+
+        StageObserver?.Invoke(
+            "5c-ribbon-barriers",
+            destination);
+
+        var cordNotches =
+            CurveFillRibbonFidelityGuard.CloseCordNotches(
+                source,
+                destination,
+                protectedStrokeColors);
+
+        StageObserver?.Invoke(
+            "5d-cord-notches",
+            destination);
+
+
         PreserveExactSourceSymmetry(
             source,
+            destination);
+
+        StageObserver?.Invoke(
+            "6-symmetry",
             destination);
 
         return overlay with
@@ -354,6 +468,21 @@ internal static class CurveFillScaleEngine
                 string.Empty,
             RibbonArcLayeredStaleCleanedPixels =
                 ribbonArc.LayeredStaleCleanedPixels,
+            FidelitySeparatorRepairs =
+                overlayBarriers.SeparatorRepairs +
+                overlayBarriers.Reverts +
+                ribbonBarriers.SeparatorRepairs +
+                ribbonBarriers.Reverts,
+            FidelityAppendagesRestored =
+                ribbonAppendages.Appendages,
+            FidelityCordBridges =
+                overlayCords.BridgesRestored +
+                ribbonCords.BridgesRestored,
+            FidelityDustRemoved =
+                overlayCords.DustComponentsRemoved +
+                ribbonCords.DustComponentsRemoved,
+            FidelityCordNotchesClosed =
+                cordNotches,
         };
     }
 

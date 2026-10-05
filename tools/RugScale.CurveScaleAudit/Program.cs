@@ -56,6 +56,28 @@ internal static class Program
                 $"Unknown --fixture '{fixtureName}'. Expected one of: {string.Join(", ", Fixtures.Select(fixture => fixture.Name))}.");
         }
 
+        if (args.Any(arg =>
+                string.Equals(
+                    arg,
+                    "--stage-diagnostics",
+                    StringComparison.OrdinalIgnoreCase)))
+        {
+            return StageDiagnostics.Run(
+                inputDir,
+                outputDir,
+                selectedFixtures.Select(fixture =>
+                    (fixture.Name,
+                     fixture.FileName,
+                     fixture.Warp,
+                     fixture.Weft)),
+                writeImages:
+                    args.Any(arg =>
+                        string.Equals(
+                            arg,
+                            "--stage-images",
+                            StringComparison.OrdinalIgnoreCase)));
+        }
+
         Directory.CreateDirectory(outputDir);
 
         var styleTraining =
@@ -139,6 +161,26 @@ internal static class Program
             return 3;
         }
 
+        foreach (var row in rows)
+        {
+            if (row.DirectSeparatorBreaches > MaximumSeparatorBreaches)
+            {
+                Console.Error.WriteLine(
+                    $"[curve-suite] FAIL: {row.Name} has {row.DirectSeparatorBreaches} separator breaches " +
+                    $"(max {MaximumSeparatorBreaches}); outlines are broken.");
+                return 5;
+            }
+
+            if (row.SourceCordComponents > 0 &&
+                row.DirectCordWeightRatio > MaximumCordWeightRatio)
+            {
+                Console.Error.WriteLine(
+                    $"[curve-suite] FAIL: {row.Name} cord weight ratio {row.DirectCordWeightRatio:0.00} " +
+                    $"exceeds {MaximumCordWeightRatio:0.00}; Pixel-Cords are block-scaled instead of redrawn.");
+                return 5;
+            }
+        }
+
         if (!ValidateCurveStyleTraining(
                 styleTraining,
                 out var trainingFailure))
@@ -149,6 +191,62 @@ internal static class Program
         }
 
         return 0;
+    }
+
+    /// <summary>Visible outline gaps tolerated in a 160% direct enlargement (pre-existing raster phase cases).</summary>
+    private const int MaximumSeparatorBreaches = 25;
+
+    /// <summary>Protected-cord area ratio limit; 1.60 is ideal for a 1 px cord, ~2.56 is block scaling.</summary>
+    private const double MaximumCordWeightRatio = 1.90;
+
+    private readonly record struct DrawingFidelity(
+        int SeparatorBreaches,
+        double CordWeightRatio,
+        int SourceCordComponents,
+        int DirectCordComponents);
+
+    private static DrawingFidelity MeasureDrawingFidelity(
+        DesignDocument source,
+        DesignDocument direct)
+    {
+        var breaches =
+            StageDiagnostics.BreachMask(
+                    direct,
+                    StageDiagnostics.Adjacency4(
+                        source),
+                    out _)
+                .Count(value => value);
+        var cords =
+            ToolFaithfulPixelCordOverlay.DetectStrokePaletteRoles(
+                source);
+        var sourcePixels = 0;
+        var directPixels = 0;
+        var sourceParts = 0;
+        var directParts = 0;
+
+        foreach (var cord in cords)
+        {
+            var sourceStats =
+                StageDiagnostics.Cord(
+                    source,
+                    cord);
+            var directStats =
+                StageDiagnostics.Cord(
+                    direct,
+                    cord);
+            sourcePixels += sourceStats.Pixels;
+            directPixels += directStats.Pixels;
+            sourceParts += sourceStats.Components;
+            directParts += directStats.Components;
+        }
+
+        return new DrawingFidelity(
+            breaches,
+            sourcePixels > 0
+                ? directPixels / (double)sourcePixels
+                : 0d,
+            sourceParts,
+            directParts);
     }
 
     private static bool ValidateCurveStyleTraining(
@@ -1142,6 +1240,13 @@ internal static class Program
         var directSeconds =
             watch.Elapsed.TotalSeconds;
 
+        // Drawing-fidelity metrics a user sees first: separator gaps (colours the source always
+        // keeps apart touching in the output) and protected-cord weight/continuity.
+        var drawingFidelity =
+            MeasureDrawingFidelity(
+                source,
+                direct);
+
         if (string.Equals(
                 fixture.Name,
                 "C069A_CREAM_N69",
@@ -2006,6 +2111,10 @@ internal static class Program
                 directStyleDiagnostics.RibbonArcLayeredApplied,
                 directStyleDiagnostics.RibbonArcLastLayeredReason,
                 directStyleDiagnostics.RibbonArcLayeredStaleCleanedPixels,
+                drawingFidelity.SeparatorBreaches,
+                drawingFidelity.CordWeightRatio,
+                drawingFidelity.SourceCordComponents,
+                drawingFidelity.DirectCordComponents,
                 exactLrSource,
                 exactLrRound,
                 exactTbSource,
@@ -2043,6 +2152,9 @@ internal static class Program
             $"layered={directStyleDiagnostics.RibbonArcLayeredApplied:N0}/{directStyleDiagnostics.RibbonArcLayeredCandidates:N0} " +
             $"[{directStyleDiagnostics.RibbonArcLastLayeredReason}] " +
             $"stale-cleaned={directStyleDiagnostics.RibbonArcLayeredStaleCleanedPixels:N0}), " +
+            $"fidelity=[separators {directStyleDiagnostics.FidelitySeparatorRepairs:N0}, appendages {directStyleDiagnostics.FidelityAppendagesRestored:N0}, " +
+            $"bridges {directStyleDiagnostics.FidelityCordBridges:N0}, dust {directStyleDiagnostics.FidelityDustRemoved:N0}; " +
+            $"breaches {drawingFidelity.SeparatorBreaches:N0}, cord weight {drawingFidelity.CordWeightRatio:0.00}, cord parts {drawingFidelity.DirectCordComponents:N0}/{drawingFidelity.SourceCordComponents:N0}], " +
             $"cache={directStyleDiagnostics.StyleFitCacheHits:N0}, round={directStyleDiagnostics.MeanLearnedRoundness:0.000}");
 
         return row;
@@ -3129,6 +3241,26 @@ internal static class Program
 
         sb.AppendLine();
         sb.AppendLine(
+            "## Drawing fidelity (direct 160%)");
+        sb.AppendLine();
+        sb.AppendLine(
+            "Separator breaches = 4-adjacent pixel pairs of colours that never touch in the source (a visible gap in an outline). " +
+            "Cord weight = protected-cord area ratio direct/source; a one-pixel cord at the same quality ideally gives 1.60, block scaling gives ~2.56.");
+        sb.AppendLine();
+        sb.AppendLine(
+            "| Design | Separator breaches | Cord weight | Source cord parts | Direct cord parts |");
+        sb.AppendLine(
+            "|---|---:|---:|---:|---:|");
+
+        foreach (var row in report.Designs)
+        {
+            sb.AppendLine(
+                $"| {row.Name} | {row.DirectSeparatorBreaches:N0} | {row.DirectCordWeightRatio:0.00} | " +
+                $"{row.SourceCordComponents:N0} | {row.DirectCordComponents:N0} |");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine(
             "## Exact designer symmetry");
         sb.AppendLine();
         sb.AppendLine(
@@ -3276,6 +3408,10 @@ internal static class Program
         int ToolLayeredRibbonApplied,
         string ToolLastLayeredRibbonReason,
         int ToolLayeredStaleCleanedPixels,
+        int DirectSeparatorBreaches,
+        double DirectCordWeightRatio,
+        int SourceCordComponents,
+        int DirectCordComponents,
         bool ExactLeftRightSource,
         bool ExactLeftRightRoundTrip,
         bool ExactTopBottomSource,

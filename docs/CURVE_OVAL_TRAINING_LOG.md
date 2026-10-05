@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** section 4.43 — layered cleanup authority follows the measured centreline shift with a source-stack guard; stale separator ghosts on the C069 long S sweeps removed.
+**Last documented experiment:** section 4.44 — drawing-fidelity guards (separator barriers, lost appendages, colour continuity) and 4-connected cord replay; stage diagnostics added.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1586,6 +1586,104 @@ Still open after this change: the thin stale white line INSIDE the cyan fill at 
 
 Decision: **KEEP.**
 
+### 4.44 Drawing fidelity: separator gaps, lost teeth and block-scaled cords — KEEP
+
+User feedback on the 160% comparison images (all four designs): line weight is not like the
+original, outlines have gaps, and parts of the drawing are damaged. This session measured each
+complaint per pipeline stage before changing anything.
+
+New training tool: `RugScale.CurveScaleAudit --stage-diagnostics [--stage-images] [--fixture X]`.
+It runs only the direct 160% Curve & Fill enlargement with a thread-static
+`CurveFillScaleEngine.StageObserver` hook and reports after every stage:
+- **separator breaches** — 4-adjacent pixel pairs of colours that are never 4-adjacent in the
+  source (the source always keeps them apart with a Pixel-Cord). Nearest gives 0 by construction;
+  every breach is a visible outline gap,
+- **cord stats** per protected stroke colour — pixel count, 8-connected parts, tiny "dust" parts
+  (<= 4 px) and local run-thickness shares.
+
+Root causes found (before any change, direct 160%):
+
+| Stage | C069 breaches | C071C | B996A | C004A |
+|---|---:|---:|---:|---:|
+| signed field + ownership | 0 | 0 | 4 | 8 |
+| tool overlay (Pixel-Cord replay) | +91 | +192 | +585 | +311 |
+| ribbon-arc refiner | **+4,142** | **+10,692** | **+7,661** | **+8,123** |
+
+- The ribbon-arc stage also shattered the cord network (C069 33 -> 351 parts, B996A 5 -> 684,
+  C004A 5 -> 1,017) and left hundreds of stray cord specks.
+- `CurveFillOutlinedRibbonRasterizer` phase 1 converts EVERY region pixel outside the fitted
+  ribbon (near the source boundary) to the outline colour. The cyan acanthus teeth of the C069 long
+  S are therefore turned into white blobs — the "white triangles" in the screenshots.
+- Cord weight: source cords are 94-95 % one pixel thick in every direction. B996A output was
+  correct (cord area ratio 1.65, ideal 1.60), but C069 and C071C stayed at 2.34 (Nearest 2.54):
+  `ToolFaithfulPixelCordOverlay` erases block-scaled cord residue only for a component that is
+  4-connected AS A WHOLE. The main C069 cord network (86,722 px) is three 4-connected runs joined by
+  diagonal joints; C071C's main network has one 1-2 px diagonal appendix. One diagonal joint disabled
+  residue cleanup for the whole network, so every outline stayed ~1.5x the source weight.
+
+Changes:
+1. `CurveFillRibbonFidelityGuard` (new), applied against a snapshot taken before the stage:
+   - `EnforceSeparatorBarriers` after the tool overlay and after the ribbon stage: every breach
+     touching a stage-changed pixel is repaired by drawing the source separator colour (the
+     protected colour both sides touch in the source) on the locally thicker side, or by reverting
+     to the baseline when that is impossible. Thin bands (navy stripes) are not thinned by it,
+   - `RestoreLostAppendages` after the ribbon stage: deep (>= 3 target px beyond the new region),
+     compact (area <= 2.5 depth^2), narrow-rooted (base <= 2.5 depth + 2), source-backed (>= 50 %)
+     lost pieces of a colour are restored with their baseline outline ring and a distance-descent
+     stem back to the redrawn region; shallow or long sliver losses (genuine smoothing and
+     centreline motion) stay as the stage decided,
+   - `RepairColourContinuity` after the ribbon stage, for every colour: bridges pieces the stage
+     split by reviving <= 10 px of the old path, and removes stage-stranded dust (<= 4 px) only when
+     the replacement is a legal source neighbour.
+2. `ToolFaithfulPixelCordOverlay.BuildComponents` splits trusted cord networks into their
+   4-connected runs, so each run is a genuine Pixel-Cord component with residue cleanup and
+   4-connected replay. Diagonal joints are re-closed by the separator guard. The same continuity
+   repair (bridges + dust) also runs right after the overlay, which removes single residue cells
+   of the old block-scaled cord stranded inside fills.
+3. **Local contact rule.** A design-wide adjacency table is too weak: in C004A navy touches the
+   pale field at one motif tip, so a missing cord along the whole navy arc was "legal". Gap
+   DETECTION now requires two fill colours (neither a cord) to touch in the source within
+   `LocalContactRadius` = 2 source px of the mapped location; repair FEASIBILITY keeps the global
+   table (requiring local evidence for the repair itself made most separator redraws next to a
+   moved boundary impossible: 900-3,900 breaches stayed unresolved). Contacts with the cord itself
+   are always legal.
+4. `CloseCordNotches`: a fill cell enclosed by the cord on 3-4 sides (a pale hole in a zig-zag cord,
+   a navy spur through it) becomes cord unless the source has an enclosed one-cell detail within 2
+   source px. This removed the "comb" look of C004A's navy arc edges.
+5. Finding: `PreserveExactSourceSymmetry` copies the top half over the bottom half for exactly
+   TB-symmetric sources (C004A). It was not the cause of the comb; it copied a damaged top half
+   over a clean bottom half. Fix the damage before the mirror, never by changing the mirror.
+6. A first attempt — morphological peeling of thick cords — was **rejected**: a synthetic staircase
+   probe showed notched, spurred 8-connected lines instead of the source's 4-connected staircase.
+   Redrawing cords from the source path (item 2) is the correct owner. Do not reintroduce peeling.
+7. The four-design audit now reports and gates drawing fidelity (direct 160%):
+   separator breaches <= 25 and cord weight ratio <= 1.90 per design (exit code 5).
+
+Results after the changes (direct 160%, local stage diagnostics; "local" = fill-fill contacts
+without source evidence within 2 px):
+
+| Design | Breaches before -> after (local after) | Cord parts (source) before -> after | Cord weight before -> after |
+|---|---|---|---|
+| C069A | 4,231 -> 0 (0) | (33) 351 -> 48 | 2.34 -> 1.66 |
+| C071C | 10,881 -> 0 (0) | (41) 998 -> 95 | 2.34 -> 1.76 |
+| B996A | 8,106 -> 2 (1) | (5) 685 -> 25 | 1.65 -> 1.68 |
+| C004A | 7,106 -> 4 (2) | (5) 772 -> 24 | 1.85 -> 1.70 |
+
+Visual result: C069 long-S teeth are back and white blobs gone; outlines are continuous one-pixel
+4-connected staircases like the source; stray white specks are gone; navy bands keep their width
+where the separator is redrawn; the comb on C004A's navy arcs is gone.
+
+Still open:
+- the ribbon refiner itself remains the main source of content change; the guard repairs its
+  damage after the fact. The narrowest long-term fix is to make the rasterizers appendage-aware
+  instead of shaving everything outside the fit,
+- B996A navy stripe along the teal petal is thinner than the source (ribbon redraw of the teal
+  region takes width from the stripe),
+- C004A outer green arcs still show a hatched pattern from the ribbon stage,
+- cord parts are still above source counts (diagonal joints and a few unbridged gaps > 10 px).
+
+Decision: **KEEP.**
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
@@ -1598,6 +1696,10 @@ Decision: **KEEP.**
    Coordinates belong only in audits/tests.
 7. Do not merge the active training branch to `main` until explicitly requested.
 8. Do not remove or weaken palette/topology regression gates to improve aesthetics.
+9. Do not thin Pixel-Cords by morphological peeling; redraw them from the source cord path
+   (section 4.44). Peeling produces notched 8-connected lines.
+10. Judge every redraw stage with `--stage-diagnostics`: a stage that adds separator breaches or
+    splits cords is not finished, whatever its pixel-F1.
 
 ## 6. Required continuation workflow
 
@@ -1626,19 +1728,15 @@ If an experiment fails, document it before reverting so a future session does no
 
 ## 7. Next technical priorities
 
-Items 1, 3, 5 and 6 of the earlier list are resolved (variable-width sweep production redraw,
-`CurveFillRibbonSmoothness` / `CurveFillRibbonCurvatureFairness`, `CurvePixelCadence`, persistent
-focus crops). Current order:
-
-1. **Thin stale white line inside the cyan fill at the spiral junction of the long S.** It is on
-   the fill side (not the layered side), so the owner is the fill/outlined-ribbon redraw or the
-   true-ribbon rasterizer; find the narrowest owner and fix there. Do not widen the layered pass to
-   the fill side.
-2. Compare large compound sweeps using visual curvature continuity, not only source deviation.
-3. Investigate Pixel-Cord / graph fallback volume (C069 direct run: 11,562 graph fallbacks vs 33
-   learned open curves) without weakening source safety.
-4. Extend the production layered class only with new source-proven cross-section evidence (another
-   real design), never by loosening the C069 thresholds.
+1. **Make the ribbon rasterizers appendage-aware** (`CurveFillOutlinedRibbonRasterizer` phase 1 and
+   `CurveFillTrueRibbonRasterizer` stale cleanup) so teeth and side lobes are never shaved in the
+   first place; the post-stage guard should then have little to repair. Measure with
+   `--stage-diagnostics` (breaches/cord parts at stage `5-ribbon-arc`).
+2. B996A: keep the navy stripe width when the teal ribbon is redrawn (band thickness fidelity).
+3. C004A: remove the hatched pattern on the outer green arcs.
+4. Thin spurs / doubled inner lines inside the C069 long-S cyan near the V and the lower hook.
+5. Compare large compound sweeps using visual curvature continuity, not only source deviation.
+6. Extend the production layered class only with new source-proven cross-section evidence.
 
 ## 8. Key implementation files
 
@@ -1654,4 +1752,5 @@ focus crops). Current order:
 - `ToolFaithfulPixelCordOverlay.cs` — source Pixel-Cord / curve replay
 - `CurveFillRibbonSmoothness.cs` — aesthetic low-frequency roughness metric
 - `CurveOvalTrainingTests.cs` — focused training regression tests
-- `RugScale.CurveScaleAudit` — real-raster diagnostics and artifacts
+- `RugScale.CurveScaleAudit` — real-raster diagnostics and artifacts (`--stage-diagnostics` for per-stage breaches/cords)
+- `CurveFillRibbonFidelityGuard.cs` — separator barriers, lost appendages, colour continuity

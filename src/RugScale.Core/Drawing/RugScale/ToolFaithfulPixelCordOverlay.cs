@@ -1101,6 +1101,29 @@ internal static class ToolFaithfulPixelCordOverlay
                 continue;
             }
 
+            if (trustedStrokeRole)
+            {
+                // A trusted Pixel-Cord network is drawn as 4-connected staircases, but a handful
+                // of diagonal joints (where two cords meet corner-to-corner) make the whole
+                // 8-connected network fail the 4-connected test. That used to disable residue
+                // cleanup for the ENTIRE network, leaving every outline block-scaled (about
+                // 1.5x the source weight). Treat each 4-connected run as its own Pixel-Cord
+                // component instead; the joints are re-closed by the separator barrier guard.
+                foreach (var part in SplitFourConnected(
+                             pixels,
+                             width))
+                {
+                    result.Add(
+                        part with
+                        {
+                            Color = color,
+                            TrustedStrokeRole = true,
+                        });
+                }
+
+                continue;
+            }
+
             result.Add(
                 new StrokeComponent(
                     color,
@@ -1113,6 +1136,77 @@ internal static class ToolFaithfulPixelCordOverlay
         }
 
         return result;
+    }
+
+    private static IEnumerable<StrokeComponent> SplitFourConnected(
+        IReadOnlyList<int> pixels,
+        int width)
+    {
+        var remaining =
+            pixels.ToHashSet();
+        var queue =
+            new Queue<int>();
+
+        foreach (var start in pixels)
+        {
+            if (!remaining.Remove(start))
+                continue;
+
+            var part =
+                new List<int>();
+            var minX = int.MaxValue;
+            var minY = int.MaxValue;
+            var maxX = int.MinValue;
+            var maxY = int.MinValue;
+
+            queue.Enqueue(start);
+
+            while (queue.Count > 0)
+            {
+                var pixel =
+                    queue.Dequeue();
+                part.Add(pixel);
+
+                var x =
+                    pixel % width;
+                var y =
+                    pixel / width;
+
+                minX = Math.Min(minX, x);
+                minY = Math.Min(minY, y);
+                maxX = Math.Max(maxX, x);
+                maxY = Math.Max(maxY, y);
+
+                foreach (var (dx, dy) in FourDirections)
+                {
+                    var nx =
+                        x + dx;
+
+                    // Row-wrap guard: x-1 at the left edge is not the previous row's last cell.
+                    if (nx < 0 ||
+                        nx >= width)
+                    {
+                        continue;
+                    }
+
+                    var next =
+                        (y + dy) * width +
+                        nx;
+
+                    if (remaining.Remove(next))
+                        queue.Enqueue(next);
+                }
+            }
+
+            yield return new StrokeComponent(
+                0,
+                part,
+                minX,
+                minY,
+                maxX,
+                maxY,
+                true);
+        }
     }
 
     private static bool ParticipatesInSolidTwoByTwo(
@@ -3192,4 +3286,9 @@ internal readonly record struct ToolFaithfulOverlayReport(
     int RibbonArcLayeredCandidates = 0,
     int RibbonArcLayeredApplied = 0,
     string RibbonArcLastLayeredReason = "",
-    int RibbonArcLayeredStaleCleanedPixels = 0);
+    int RibbonArcLayeredStaleCleanedPixels = 0,
+    int FidelitySeparatorRepairs = 0,
+    int FidelityAppendagesRestored = 0,
+    int FidelityCordBridges = 0,
+    int FidelityDustRemoved = 0,
+    int FidelityCordNotchesClosed = 0);
