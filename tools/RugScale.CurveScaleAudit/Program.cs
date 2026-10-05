@@ -2001,6 +2001,9 @@ internal static class Program
                 directStyleDiagnostics.RegionOwnershipCorrections,
                 directStyleDiagnostics.BarrierCrossingCorrections,
                 directStyleDiagnostics.MeanLearnedRoundness,
+                directStyleDiagnostics.RibbonArcLayeredCandidates,
+                directStyleDiagnostics.RibbonArcLayeredApplied,
+                directStyleDiagnostics.RibbonArcLastLayeredReason,
                 exactLrSource,
                 exactLrRound,
                 exactTbSource,
@@ -2034,7 +2037,9 @@ internal static class Program
             $"max={directStyleDiagnostics.RibbonArcCompoundMaxDeviation:0.000}, " +
             $"widthLP={directStyleDiagnostics.RibbonArcWidthRegularized:N0} " +
             $"shift={directStyleDiagnostics.RibbonArcMaxWidthRegularizationShift:0.000} " +
-            $"dv={directStyleDiagnostics.RibbonArcMaxWidthVariationReduction:0.000}), " +
+            $"dv={directStyleDiagnostics.RibbonArcMaxWidthVariationReduction:0.000}, " +
+            $"layered={directStyleDiagnostics.RibbonArcLayeredApplied:N0}/{directStyleDiagnostics.RibbonArcLayeredCandidates:N0} " +
+            $"[{directStyleDiagnostics.RibbonArcLastLayeredReason}]), " +
             $"cache={directStyleDiagnostics.StyleFitCacheHits:N0}, round={directStyleDiagnostics.MeanLearnedRoundness:0.000}");
 
         return row;
@@ -3264,6 +3269,9 @@ internal static class Program
         int ToolRegionOwnershipCorrections,
         int ToolBarrierCrossingCorrections,
         double ToolMeanLearnedRoundness,
+        int ToolLayeredRibbonCandidates,
+        int ToolLayeredRibbonApplied,
+        string ToolLastLayeredRibbonReason,
         bool ExactLeftRightSource,
         bool ExactLeftRightRoundTrip,
         bool ExactTopBottomSource,

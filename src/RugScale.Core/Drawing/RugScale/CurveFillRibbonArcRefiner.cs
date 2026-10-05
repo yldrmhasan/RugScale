@@ -2406,7 +2406,7 @@ internal static class CurveFillRibbonArcRefiner
             .ToArray();
     }
 
-    private static bool LooksLikeProductionLayeredRibbon(
+    internal static bool LooksLikeProductionLayeredRibbon(
         LeafPetalArcModel model,
         ElegantArcFit fit,
         LayeredRibbonProfileDiagnostics profile,

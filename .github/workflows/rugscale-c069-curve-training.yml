@@ -246,6 +246,32 @@ jobs:
                       f"{key}: variable-width local breathing regressed to "
                       f"{row['variable_width_max_adjacent_delta']} px"
                   )
+
+          # Production evidence: the gated layered-band redraw must actually run inside the
+          # normal CurveFill path for both mirrored long S sweeps, not only in the preview run.
+          import json
+
+          report = json.loads(
+              Path("artifacts/rugscale-c069/curve-suite-report.json").read_text(encoding="utf-8")
+          )
+          design = next(
+              (entry for entry in report["designs"] if entry["name"] == "C069A_CREAM_N69"),
+              None,
+          )
+          if design is None:
+              raise SystemExit("C069 design row missing from curve-suite-report.json")
+          layered_applied = int(design["toolLayeredRibbonApplied"])
+          layered_candidates = int(design["toolLayeredRibbonCandidates"])
+          if layered_applied < 2:
+              raise SystemExit(
+                  f"production layered-band redraw applied to {layered_applied} regions "
+                  f"({layered_candidates} authorized); expected both mirrored long S sweeps"
+              )
+          if layered_applied > 2:
+              raise SystemExit(
+                  f"production layered-band redraw widened to {layered_applied} regions; "
+                  "the strict long-S gate must not leak to other ribbons"
+              )
           PY
 
       - name: Publish C069 summary

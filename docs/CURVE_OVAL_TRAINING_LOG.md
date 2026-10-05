@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** `e5a7d98bc17d23be6d007cc95bcdc7f9a84b2d91` — local source-normal exterior ownership for bracketed layered-ribbon cleanup; CI/audit queued at this documentation point.
+**Last documented experiment:** section 4.42 — strictly gated production layered-ribbon redraw for the two mirrored C069 long S sweeps (`a78d977` + `7cba042`), with production evidence now surfaced in the audit report and CI gate.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1482,6 +1482,62 @@ Production rule remains unchanged:
 layered-band work is still preview/diagnostic until the local-ownership artifact is visually checked
 and all regression suites are green.
 
+### 4.42 Strictly gated production layered-ribbon redraw for the long S sweeps — KEEP
+
+Commits:
+- `a78d977feb28fa7b32397e99a093258a0cf71ae5` — `CurveFillRibbonArcRefiner` runs the layered
+  analyzer as a production probe for long, sparse, strongly elongated accepted ribbons and
+  authorizes `CurveFillLayeredRibbonRasterizer.TryApplySecondProtectedBandPreview` inside the normal
+  CurveFill path only when `LooksLikeProductionLayeredRibbon` holds,
+- `7cba042731a75ef4927df7f755117dfaa91f369d` — C069 training workflow gates both mirrored long S
+  rows (`(105,566,156,812)` negative side, `(484,566,535,812)` positive side).
+
+Production gate (all required, immutable source evidence only):
+- redraw scale >= 1.50,
+- accepted safe `CompoundSpline` fit with exactly **2** curvature inflections and max centreline
+  deviation <= 3.30 source px,
+- candidate elongation 4.0–5.75, major extent >= 120 source px, bounding fill <= 0.20,
+- layered profile detected with bracketed `separator > band > separator` coverage >= 0.80,
+- the separator colour is a protected Pixel-Cord/outline role,
+- inner/outer separator 0.65–1.65 source px, middle band 1.75–8.0 source px.
+
+Evidence (local run of the C069 focused audit, head `7cba042` + diagnostics below):
+- production CurveFill now reports **layered = 2/2 [ok]**: exactly the two mirrored long S sweeps are
+  authorized and both apply; no other ribbon leaks through the gate,
+- long-S focus crop: production vs layered preview differ by **15 px** (the preview applies 34/65
+  candidates; the production gate deliberately excludes the other 32),
+- long-S focus crop: production vs Nearest differ by **8,833 px**,
+- the output is deterministic across two runs (0 px difference),
+- C069 round-trip exact **92.83%**, ±1 px **99.43%**, palette SAFE, stroke x 0.781,
+- all C069 workflow gates pass locally with the same script CI runs.
+
+Visual result (long-S focus crop, source / Nearest / production):
+- the navy band now follows the accepted cyan compound centreline on the whole sweep; the ornament
+  reads as one parallel designer curve instead of a redrawn cyan ribbon beside a block-scaled band,
+- **remaining defect:** near the top junction where the S meets the spiral, stale white separator
+  fragments remain outside the redrawn navy band and a thin stale white line survives inside the
+  cyan fill. These are the old separator/band positions that lie beyond the cleanup authority
+  mask after the centreline moved (the fit shifts up to ~3.19 source px, while the authority mask
+  reaches `separator + band + 2.0` source px from the new fill edge).
+
+Diagnostics added after `7cba042` (this session):
+- `ToolFaithfulOverlayReport.RibbonArcLayeredCandidates / RibbonArcLayeredApplied /
+  RibbonArcLastLayeredReason` carry the production counters out of the refiner,
+- the four-design audit prints `layered=applied/candidates [reason]` and writes
+  `toolLayeredRibbonCandidates / toolLayeredRibbonApplied / toolLastLayeredRibbonReason` into
+  `curve-suite-report.json`,
+- the C069 workflow additionally requires `toolLayeredRibbonApplied == 2` from the JSON report, so a
+  gate regression that silently drops production authority (while the CSV rows still look healthy)
+  fails CI,
+- `ProductionLayeredRibbonGateTests` pins the gate: it accepts the proven class and rejects one
+  inflection, unsafe/too-deviating fits, moderate scale, weak bracket coverage, an unprotected
+  separator, an unclosed bracket, an out-of-class band width, and short/compact regions.
+
+Decision: **KEEP.** Production routing stays limited to this proven class.
+
+Next unresolved issue: stale separator/band ghosts beyond the authority mask after a large
+centreline shift (see section 7, item 1).
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
@@ -1522,18 +1578,21 @@ If an experiment fails, document it before reverting so a future session does no
 
 ## 7. Next technical priorities
 
-After the current sparse-taper experiment is resolved:
+Items 1, 3, 5 and 6 of the earlier list are resolved (variable-width sweep production redraw,
+`CurveFillRibbonSmoothness` / `CurveFillRibbonCurvatureFairness`, `CurvePixelCadence`, persistent
+focus crops). Current order:
 
-1. verify whether the C069 long tapered sweep is now actually redrawn;
-2. compare large compound sweeps using visual curvature continuity, not only source deviation;
-3. add a specific smooth-spiral / hook quality metric:
-   - arc-length resampling,
-   - curvature derivative / jerk,
-   - abrupt radius-change penalty;
-4. investigate Pixel-Cord / graph fallback volume without weakening source safety;
-5. make pixel-step cadence measurable so "pixel faithful" means more than ±1 px distance;
-6. add focused crop artifacts for the major C069 problem regions so whole-image metrics cannot hide
-   local ugly curves.
+1. **Stale layered ghosts after centreline shift.** Extend the layered cleanup authority outward by
+   the bounded centreline shift actually measured by the fit (never a global constant), keep the
+   local source-proven exterior rule, and measure the long-S focus crop before/after. Do not clean
+   pixels whose nearest source owner is not the separator/band.
+2. Decide whether the thin stale white line inside the cyan fill at the spiral junction belongs to
+   the fill redraw (inner side) or to the layered pass; fix in the narrowest owner.
+3. Compare large compound sweeps using visual curvature continuity, not only source deviation.
+4. Investigate Pixel-Cord / graph fallback volume (C069 direct run: 11,562 graph fallbacks vs 33
+   learned open curves) without weakening source safety.
+5. Extend the production layered class only with new source-proven cross-section evidence (another
+   real design), never by loosening the C069 thresholds.
 
 ## 8. Key implementation files
 

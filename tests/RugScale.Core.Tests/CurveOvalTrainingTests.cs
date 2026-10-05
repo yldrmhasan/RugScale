@@ -2152,3 +2152,226 @@ public sealed class CurveOvalTrainingTests
             SkeletonCoverage: 1d);
     }
 }
+
+public sealed class ProductionLayeredRibbonGateTests
+{
+    private static LeafPetalArcModel BuildLongSModel(
+        int majorExtent = 246,
+        double elongation = 4.75)
+    {
+        // 1994 fill pixels inside a 51 x 246 bounding box: bounding fill 0.159, matching the
+        // real C069 long S-sweep statistics without embedding any C069 raster/coordinates.
+        var pixels =
+            Enumerable.Range(
+                    0,
+                    1994)
+                .ToArray();
+        var region =
+            new LeafPetalRegion(
+                6,
+                pixels,
+                pixels,
+                0,
+                0,
+                50,
+                majorExtent - 1);
+        var candidate =
+            new LeafPetalArcCandidate(
+                region,
+                25,
+                majorExtent / 2d,
+                0,
+                1,
+                1,
+                0,
+                majorExtent,
+                majorExtent / elongation,
+                elongation,
+                0.377);
+        var samples =
+            Enumerable.Range(
+                    0,
+                    40)
+                .Select(index =>
+                    new LeafPetalAxisSample(
+                        25d,
+                        index *
+                        (majorExtent - 1) /
+                        39d,
+                        1.1,
+                        index /
+                        39d))
+                .ToArray();
+
+        return new LeafPetalArcModel(
+            candidate,
+            samples,
+            ReversedForApex: false,
+            BaseWidth: 2.2,
+            ApexWidth: 2.2,
+            SkeletonCoverage: 0.87);
+    }
+
+    private static ElegantArcFit BuildFit(
+        LeafPetalArcModel model,
+        int flips = 2,
+        double deviation = 3.19,
+        bool safe = true) =>
+        new(
+            model.Samples
+                .Select(sample =>
+                    new ElegantArcPoint(
+                        sample.X,
+                        sample.Y,
+                        sample.HalfWidth))
+                .ToArray(),
+            IsSafe: safe,
+            IsMonotonic: false,
+            CurvatureSignFlips: flips,
+            MaximumCenterlineDeviation: deviation);
+
+    private static LayeredRibbonProfileDiagnostics BuildProfile(
+        double bracketed = 0.885,
+        string sequence = "1>4>1>2",
+        double bandWidth = 4.07) =>
+        new(
+            Detected: true,
+            Side: "negative",
+            Sequence: sequence,
+            Coverage: 0.59,
+            BracketedCoverage: bracketed,
+            ExteriorColor: "2",
+            ExteriorCoverage: 0.59,
+            SampleCount: 191,
+            MatchingSamples: 113,
+            MeanRunWidths:
+                new[]
+                {
+                    1.28,
+                    bandWidth,
+                    1.30,
+                    10.8,
+                });
+
+    private static readonly IReadOnlySet<byte> ProtectedCord =
+        new HashSet<byte>
+        {
+            1,
+        };
+
+    [Fact]
+    public void ProductionLayeredGate_AcceptsProvenBracketedTwoInflectionSweep()
+    {
+        var model =
+            BuildLongSModel();
+
+        Assert.True(
+            CurveFillRibbonArcRefiner.LooksLikeProductionLayeredRibbon(
+                model,
+                BuildFit(model),
+                BuildProfile(),
+                ProtectedCord,
+                redrawScale: 1.6));
+    }
+
+    [Fact]
+    public void ProductionLayeredGate_RejectsWeakOrForeignEvidence()
+    {
+        var model =
+            BuildLongSModel();
+        var fit =
+            BuildFit(model);
+        var profile =
+            BuildProfile();
+
+        // Not an S: a single-bend or straight sweep is not the proven production class.
+        Assert.False(
+            CurveFillRibbonArcRefiner.LooksLikeProductionLayeredRibbon(
+                model,
+                BuildFit(model, flips: 1),
+                profile,
+                ProtectedCord,
+                1.6));
+
+        // Unsafe or too far from the immutable source centreline.
+        Assert.False(
+            CurveFillRibbonArcRefiner.LooksLikeProductionLayeredRibbon(
+                model,
+                BuildFit(model, safe: false),
+                profile,
+                ProtectedCord,
+                1.6));
+        Assert.False(
+            CurveFillRibbonArcRefiner.LooksLikeProductionLayeredRibbon(
+                model,
+                BuildFit(model, deviation: 3.5),
+                profile,
+                ProtectedCord,
+                1.6));
+
+        // Moderate enlargement keeps the conservative path.
+        Assert.False(
+            CurveFillRibbonArcRefiner.LooksLikeProductionLayeredRibbon(
+                model,
+                fit,
+                profile,
+                ProtectedCord,
+                1.25));
+
+        // Bracket evidence below the production threshold.
+        Assert.False(
+            CurveFillRibbonArcRefiner.LooksLikeProductionLayeredRibbon(
+                model,
+                fit,
+                BuildProfile(bracketed: 0.70),
+                ProtectedCord,
+                1.6));
+
+        // Separator must be a protected Pixel-Cord/outline role, and the bracket must close.
+        Assert.False(
+            CurveFillRibbonArcRefiner.LooksLikeProductionLayeredRibbon(
+                model,
+                fit,
+                profile,
+                new HashSet<byte>(),
+                1.6));
+        Assert.False(
+            CurveFillRibbonArcRefiner.LooksLikeProductionLayeredRibbon(
+                model,
+                fit,
+                BuildProfile(sequence: "1>4>2>3"),
+                ProtectedCord,
+                1.6));
+
+        // Broad middle band outside the proven source width class.
+        Assert.False(
+            CurveFillRibbonArcRefiner.LooksLikeProductionLayeredRibbon(
+                model,
+                fit,
+                BuildProfile(bandWidth: 9.0),
+                ProtectedCord,
+                1.6));
+
+        // Short or compact regions are not the long-S class.
+        var shortModel =
+            BuildLongSModel(
+                majorExtent: 100);
+        Assert.False(
+            CurveFillRibbonArcRefiner.LooksLikeProductionLayeredRibbon(
+                shortModel,
+                BuildFit(shortModel),
+                profile,
+                ProtectedCord,
+                1.6));
+        var compactModel =
+            BuildLongSModel(
+                elongation: 2.5);
+        Assert.False(
+            CurveFillRibbonArcRefiner.LooksLikeProductionLayeredRibbon(
+                compactModel,
+                BuildFit(compactModel),
+                profile,
+                ProtectedCord,
+                1.6));
+    }
+}

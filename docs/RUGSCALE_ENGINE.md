@@ -1,7 +1,7 @@
 # RugScale — Indexed Carpet Design Resampling
 
 **Durum:** aktif geliştirme / üretim adayı  
-**Son güncelleme:** 26 Eylül 2026  
+**Son güncelleme:** 5 Ekim 2026  
 **Core:** `RugScaleEngine.cs` + `MotifShrinkEngine.cs` + `MotifMemory.cs` + `MotifRepairEngine.cs` + `MotifSourceCatalog.cs`  
 **Dispatcher:** `src/RugScale.Core/Drawing/DesignResizer.cs`  
 **Host:** UI bağımsız; manuel çalışma için `tools/RugScale.Cli`, entegrasyon için `RugScale.Core` API  
@@ -50,9 +50,12 @@ Güncel mimari:
   - exterior kanıtı yoksa overlay-only çalışır,
   - stale protected/fill ownership cleanup'ı yalnız güçlü bracket + exterior evidence ile yapabilir.
 
-**Güvenlik kuralı:** layered-ribbon yolu şu anda eğitim/preview ağırlıklıdır. Genel ribbon eşikleri
-gevşetilmez ve bir dış zemin rengi source tarafından kanıtlanmadan eski white/navy ownership
-silinmez.
+**Güvenlik kuralı:** layered-ribbon yolu üretimde yalnız kanıtlanmış dar bir sınıfta çalışır
+(`CurveFillRibbonArcRefiner.LooksLikeProductionLayeredRibbon`: iki gerçek inflection'lı uzun, seyrek
+compound sweep + bracketed `separator > band > separator` kesit kanıtı). Diğer bütün adaylar
+preview/diagnostic kalır. Genel ribbon eşikleri gevşetilmez ve bir dış zemin rengi source
+tarafından kanıtlanmadan eski white/navy ownership silinmez. Üretimde kaç bölgeye uygulandığı
+`ToolFaithfulOverlayReport.RibbonArcLayeredApplied` ile raporlanır ve C069 workflow'u bunu gate'ler.
 
 Ayrıntılı deney geçmişi ve KEEP/REJECT kararları:
 [`CURVE_OVAL_TRAINING_LOG.md`](CURVE_OVAL_TRAINING_LOG.md).

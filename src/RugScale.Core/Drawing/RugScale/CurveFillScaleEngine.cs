@@ -345,6 +345,13 @@ internal static class CurveFillScaleEngine
                 ribbonArc.MaxWidthRegularizationShift,
             RibbonArcMaxWidthVariationReduction =
                 ribbonArc.MaxWidthVariationReduction,
+            RibbonArcLayeredCandidates =
+                ribbonArc.LayeredPreviewCandidates,
+            RibbonArcLayeredApplied =
+                ribbonArc.LayeredPreviewApplied,
+            RibbonArcLastLayeredReason =
+                ribbonArc.LastLayeredPreviewReason ??
+                string.Empty,
         };
     }
 
