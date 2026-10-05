@@ -3191,4 +3191,5 @@ internal readonly record struct ToolFaithfulOverlayReport(
     double RibbonArcMaxWidthVariationReduction = 0d,
     int RibbonArcLayeredCandidates = 0,
     int RibbonArcLayeredApplied = 0,
-    string RibbonArcLastLayeredReason = "");
+    string RibbonArcLastLayeredReason = "",
+    int RibbonArcLayeredStaleCleanedPixels = 0);

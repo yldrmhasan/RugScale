@@ -9,6 +9,20 @@ namespace RugScale.Core.Drawing;
 /// </summary>
 internal static class CurveFillLayeredRibbonRasterizer
 {
+    /// <summary>
+    /// Upper bound (source px) on how far stale-layer cleanup may reach beyond the redrawn stack.
+    /// The actual reach is the centreline shift the accepted fit measured against the immutable
+    /// source medial axis; this bound only caps it so cleanup can never wander with a wild fit.
+    /// </summary>
+    internal const double MaximumCleanupShiftReach = 3.5;
+
+    /// <summary>
+    /// Raster-phase slack (source px) added to the source-stack distance guard. A stale target
+    /// pixel is only cleaned when its nearest source pixel lies inside the layered stack around
+    /// the SOURCE centreline, so a neighbouring motif that happens to use the same separator or
+    /// band colour can never be erased.
+    /// </summary>
+    private const double SourceStackSlack = 1.0;
     internal static HashSet<int> BuildOneSidedBandMask(
         IReadOnlyList<ElegantArcPoint> points,
         double side,
@@ -416,6 +430,20 @@ internal static class CurveFillLayeredRibbonRasterizer
                     innerAdditionalSourceWidth:
                         bandSourceWidth)
                 : new HashSet<int>();
+        // The accepted centreline may sit up to MaximumCenterlineDeviation source px away from the
+        // immutable source medial axis. The old separator/band therefore can lie that far beyond
+        // the redrawn stack; extend cleanup authority by exactly the measured shift (bounded), not
+        // by a global constant. Stale pixels beyond this reach stay untouched.
+        var centrelineShiftReach =
+            Math.Clamp(
+                fit.MaximumCenterlineDeviation,
+                0d,
+                MaximumCleanupShiftReach);
+        var outerSeparatorSourceWidth =
+            bracketed &&
+            profile.MeanRunWidths.Count >= 3
+                ? profile.MeanRunWidths[2]
+                : 0d;
         var authorityMask =
             BuildOneSidedBandMask(
                 fit.Points,
@@ -428,7 +456,8 @@ internal static class CurveFillLayeredRibbonRasterizer
                 sourceBandWidth:
                     separatorSourceWidth +
                     bandSourceWidth +
-                    2.0);
+                    2.0 +
+                    centrelineShiftReach);
 
         diagnostics =
             diagnostics with
@@ -461,6 +490,7 @@ internal static class CurveFillLayeredRibbonRasterizer
             (hasExterior ||
              localExteriorProfile.Any(value =>
                  value.HasValue));
+        var staleCleaned = 0;
 
         foreach (var key in authorityMask)
         {
@@ -566,6 +596,29 @@ internal static class CurveFillLayeredRibbonRasterizer
                 continue;
             }
 
+            // Stale ownership must come from THIS ribbon's own source stack. Measure the nearest
+            // source pixel against the immutable source centreline: inside
+            // half-width + separator + band (+ outer separator) it is the old layer position;
+            // farther out it belongs to another motif and is never ours to erase.
+            var sourceStackDistance =
+                SourceStackDistance(
+                    model.Samples,
+                    sourceX,
+                    sourceY,
+                    out var nearestHalfWidth);
+            var sourceStackReach =
+                nearestHalfWidth +
+                separatorSourceWidth +
+                bandSourceWidth +
+                outerSeparatorSourceWidth +
+                SourceStackSlack;
+
+            if (sourceStackDistance >
+                sourceStackReach)
+            {
+                continue;
+            }
+
             var localExterior =
                 ResolveLocalExterior(
                     model.Samples,
@@ -588,6 +641,7 @@ internal static class CurveFillLayeredRibbonRasterizer
                 y,
                 localExterior.Value);
             changed++;
+            staleCleaned++;
         }
 
         diagnostics =
@@ -599,9 +653,56 @@ internal static class CurveFillLayeredRibbonRasterizer
                         : "no-pixel-authority",
                 ChangedPixels =
                     changed,
+                StaleCleanedPixels =
+                    staleCleaned,
             };
 
         return changed > 0;
+    }
+
+    /// <summary>
+    /// Euclidean source-space distance from (x, y) to the nearest source centreline sample, with
+    /// that sample's fitted half-width.
+    /// </summary>
+    private static double SourceStackDistance(
+        IReadOnlyList<LeafPetalAxisSample> samples,
+        double sourceX,
+        double sourceY,
+        out double nearestHalfWidth)
+    {
+        nearestHalfWidth = 0d;
+        var best =
+            double.PositiveInfinity;
+
+        foreach (var sample in samples)
+        {
+            var dx =
+                sample.X -
+                sourceX;
+            var dy =
+                sample.Y -
+                sourceY;
+            var distanceSquared =
+                dx *
+                    dx +
+                dy *
+                    dy;
+
+            if (distanceSquared <
+                best)
+            {
+                best =
+                    distanceSquared;
+                nearestHalfWidth =
+                    sample.HalfWidth;
+            }
+        }
+
+        return double.IsPositiveInfinity(
+            best)
+            ? best
+            : Math.Sqrt(
+                best);
     }
 
     private static byte? ResolveLocalExterior(
@@ -691,4 +792,5 @@ internal readonly record struct LayeredRibbonPreviewDiagnostics(
     int SeparatorMaskPixels,
     int BandMaskPixels,
     int AuthorityMaskPixels,
-    int ChangedPixels);
+    int ChangedPixels,
+    int StaleCleanedPixels = 0);

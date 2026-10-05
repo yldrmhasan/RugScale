@@ -2113,6 +2113,235 @@ public sealed class CurveOvalTrainingTests
             "Local source-normal bracketing should restore at least one stale navy pixel even when the profile has no global exterior colour.");
     }
 
+    [Fact]
+    public void LayeredRibbonCleanup_ReachFollowsMeasuredCentrelineShiftAndStaysInsideOwnSourceStack()
+    {
+        // Source stack on the positive side of a straight cyan ribbon:
+        //   fill(6) y=18..22 | white(1) y=23 | navy(4) y=24..26 | white(1) y=27 | background(2)
+        // plus a FOREIGN white outline at y=32 that belongs to another motif.
+        static (DesignDocument Source, LeafPetalArcModel Model) BuildSource()
+        {
+            var palette =
+                new Palette(
+                    new[]
+                    {
+                        new RugColor(0, 0, 0),
+                        new RugColor(255, 255, 255),
+                        new RugColor(230, 224, 218),
+                        new RugColor(120, 120, 120),
+                        new RugColor(0, 0, 102),
+                        new RugColor(216, 185, 124),
+                        new RugColor(44, 128, 166),
+                    });
+            var source =
+                new DesignDocument(
+                    64,
+                    48,
+                    palette);
+
+            for (var y = 0; y < source.Height; y++)
+                for (var x = 0; x < source.Width; x++)
+                    source.SetPixel(x, y, 2);
+
+            var regionPixels =
+                new List<int>();
+
+            for (var x = 8; x <= 55; x++)
+            {
+                for (var y = 18; y <= 22; y++)
+                {
+                    source.SetPixel(x, y, 6);
+                    regionPixels.Add(
+                        y *
+                            source.Width +
+                        x);
+                }
+
+                source.SetPixel(x, 23, 1);
+                source.SetPixel(x, 24, 4);
+                source.SetPixel(x, 25, 4);
+                source.SetPixel(x, 26, 4);
+                source.SetPixel(x, 27, 1);
+                source.SetPixel(x, 32, 1);
+            }
+
+            var region =
+                new LeafPetalRegion(
+                    6,
+                    regionPixels.ToArray(),
+                    regionPixels.ToArray(),
+                    8,
+                    18,
+                    55,
+                    22);
+            var candidate =
+                new LeafPetalArcCandidate(
+                    region,
+                    31.5,
+                    20,
+                    1,
+                    0,
+                    0,
+                    1,
+                    47,
+                    4,
+                    10,
+                    0.15);
+            var samples =
+                Enumerable.Range(
+                        0,
+                        48)
+                    .Select(index =>
+                        new LeafPetalAxisSample(
+                            8d +
+                            index,
+                            20d,
+                            2.25,
+                            index /
+                            47d))
+                    .ToArray();
+
+            return (
+                source,
+                new LeafPetalArcModel(
+                    candidate,
+                    samples,
+                    ReversedForApex: false,
+                    BaseWidth: 2.25,
+                    ApexWidth: 2.25,
+                    SkeletonCoverage: 1d));
+        }
+
+        static ElegantArcFit ShiftedFit(
+            LeafPetalArcModel model,
+            double shift) =>
+            new(
+                model.Samples
+                    .Select(sample =>
+                        new ElegantArcPoint(
+                            sample.X,
+                            sample.Y +
+                            shift,
+                            sample.HalfWidth))
+                    .ToArray(),
+                IsSafe: true,
+                IsMonotonic: true,
+                CurvatureSignFlips: 0,
+                MaximumCenterlineDeviation:
+                    Math.Abs(
+                        shift));
+
+        var profile =
+            new LayeredRibbonProfileDiagnostics(
+                Detected: true,
+                Side: "positive",
+                Sequence: "1>4>1>2",
+                Coverage: 0.92,
+                BracketedCoverage: 0.96,
+                ExteriorColor: "2",
+                ExteriorCoverage: 0.92,
+                SampleCount: 40,
+                MatchingSamples: 38,
+                MeanRunWidths:
+                    new[]
+                    {
+                        1.0,
+                        3.0,
+                        1.0,
+                        4.0,
+                    });
+        var protectedCord =
+            new HashSet<byte>
+            {
+                1,
+            };
+
+        // Scenario A: the accepted centreline moved 3 source px AWAY from the stack. The old
+        // navy/white rows (source y=26..27, target y=52..55) lie beyond the fixed reach but inside
+        // the measured-shift reach and must be restored to the source-proven exterior.
+        {
+            var (source, model) =
+                BuildSource();
+            var destination =
+                DesignResizer.Scale(
+                    source,
+                    128,
+                    96,
+                    ScaleMode.NearestNeighbor);
+
+            Assert.True(
+                CurveFillLayeredRibbonRasterizer.TryApplySecondProtectedBandPreview(
+                    source,
+                    destination,
+                    model,
+                    ShiftedFit(model, -3d),
+                    profile,
+                    protectedCord,
+                    out _,
+                    out var diagnostics));
+            Assert.True(
+                diagnostics.StaleCleanedPixels > 0);
+
+            var staleRemaining =
+                Enumerable.Range(
+                        24,
+                        80)
+                    .Sum(x =>
+                        Enumerable.Range(
+                                52,
+                                4)
+                            .Count(y =>
+                                destination.GetPixel(x, y) is 4 or 1));
+
+            Assert.True(
+                staleRemaining == 0,
+                $"Stale old-stack pixels beyond the fixed reach must be cleaned when the fit measured a 3 px shift; {staleRemaining} remain.");
+        }
+
+        // Scenario B: the centreline moved 3 source px TOWARDS the stack, so target cleanup
+        // authority now reaches the foreign white outline at source y=32 (target y=64..65). That
+        // outline is 12 source px from THIS ribbon's source centreline, outside its own stack, and
+        // must survive untouched.
+        {
+            var (source, model) =
+                BuildSource();
+            var destination =
+                DesignResizer.Scale(
+                    source,
+                    128,
+                    96,
+                    ScaleMode.NearestNeighbor);
+
+            Assert.True(
+                CurveFillLayeredRibbonRasterizer.TryApplySecondProtectedBandPreview(
+                    source,
+                    destination,
+                    model,
+                    ShiftedFit(model, 3d),
+                    profile,
+                    protectedCord,
+                    out _,
+                    out _));
+
+            // Nothing of this ribbon's own old stack is left beyond the new masks here, so the
+            // only candidates inside the extended authority are the foreign outline pixels.
+            var foreignSurvivors =
+                Enumerable.Range(
+                        24,
+                        80)
+                    .Sum(x =>
+                        Enumerable.Range(
+                                64,
+                                2)
+                            .Count(y =>
+                                destination.GetPixel(x, y) == 1));
+
+            Assert.Equal(
+                160,
+                foreignSurvivors);
+        }
+    }
+
     private static LeafPetalArcModel Model(
         IReadOnlyList<LeafPetalAxisSample> samples,
         int width,

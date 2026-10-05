@@ -352,6 +352,8 @@ internal static class CurveFillScaleEngine
             RibbonArcLastLayeredReason =
                 ribbonArc.LastLayeredPreviewReason ??
                 string.Empty,
+            RibbonArcLayeredStaleCleanedPixels =
+                ribbonArc.LayeredStaleCleanedPixels,
         };
     }
 

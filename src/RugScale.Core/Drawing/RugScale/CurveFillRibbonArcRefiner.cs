@@ -948,6 +948,7 @@ internal static class CurveFillRibbonArcRefiner
         var lastLayeredSeparatorMaskPixels = 0;
         var lastLayeredBandMaskPixels = 0;
         var lastLayeredAuthorityMaskPixels = 0;
+        var layeredStaleCleanedPixels = 0;
 
         int ApplyProductionLayeredBands(
             LeafPetalArcModel model,
@@ -982,6 +983,8 @@ internal static class CurveFillRibbonArcRefiner
                 localDiagnostics.BandMaskPixels;
             lastLayeredAuthorityMaskPixels =
                 localDiagnostics.AuthorityMaskPixels;
+            layeredStaleCleanedPixels +=
+                localDiagnostics.StaleCleanedPixels;
 
             if (applied)
             {
@@ -1029,6 +1032,8 @@ internal static class CurveFillRibbonArcRefiner
                         layeredDiagnostics.BandMaskPixels;
                     lastLayeredAuthorityMaskPixels =
                         layeredDiagnostics.AuthorityMaskPixels;
+                    layeredStaleCleanedPixels +=
+                        layeredDiagnostics.StaleCleanedPixels;
 
                     if (layeredApplied)
                     {
@@ -1185,7 +1190,8 @@ internal static class CurveFillRibbonArcRefiner
             LastLayeredPreviewReason: lastLayeredPreviewReason,
             LastLayeredSeparatorMaskPixels: lastLayeredSeparatorMaskPixels,
             LastLayeredBandMaskPixels: lastLayeredBandMaskPixels,
-            LastLayeredAuthorityMaskPixels: lastLayeredAuthorityMaskPixels);
+            LastLayeredAuthorityMaskPixels: lastLayeredAuthorityMaskPixels,
+            LayeredStaleCleanedPixels: layeredStaleCleanedPixels);
     }
 
     internal static IReadOnlyList<RibbonArcCandidateStage> AnalyzeCandidateStages(
@@ -3013,4 +3019,5 @@ internal readonly record struct RibbonArcRefinementDiagnostics(
     string LastLayeredPreviewReason,
     int LastLayeredSeparatorMaskPixels,
     int LastLayeredBandMaskPixels,
-    int LastLayeredAuthorityMaskPixels);
+    int LastLayeredAuthorityMaskPixels,
+    int LayeredStaleCleanedPixels = 0);

@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** section 4.42 — strictly gated production layered-ribbon redraw for the two mirrored C069 long S sweeps (`a78d977` + `7cba042`), with production evidence now surfaced in the audit report and CI gate.
+**Last documented experiment:** section 4.43 — layered cleanup authority follows the measured centreline shift with a source-stack guard; stale separator ghosts on the C069 long S sweeps removed.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1538,6 +1538,54 @@ Decision: **KEEP.** Production routing stays limited to this proven class.
 Next unresolved issue: stale separator/band ghosts beyond the authority mask after a large
 centreline shift (see section 7, item 1).
 
+### 4.43 Layered cleanup reach follows the measured centreline shift — KEEP
+
+Problem (from 4.42 visual inspection):
+after the production layered redraw, stale white separator fragments remained outside the redrawn
+navy band at the top of the long S (near the spiral junction) and along the lower hook. Cause: the
+cleanup authority mask reached a fixed `separator + band + 2.0` source px beyond the NEW fill edge,
+while the accepted compound centreline sits up to 3.19 source px away from the immutable source
+medial axis. The old stack therefore partially lay outside cleanup reach.
+
+Change (`CurveFillLayeredRibbonRasterizer.TryApplySecondProtectedBandPreview`):
+- the authority mask is widened by `min(fit.MaximumCenterlineDeviation, 3.5)` source px — the
+  shift the fit actually measured, never a global constant,
+- a new **source-stack guard**: a stale target pixel may be cleaned only when its nearest source
+  pixel lies within `half-width + separator + band (+ outer separator) + 1.0` source px of THIS
+  ribbon's source centreline. A neighbouring motif using the same separator/band colour is never
+  erased even if the wider target authority now overlaps it,
+- all previous cleanup conditions remain (bracketed stack, local source-proven exterior, stale
+  pixel must currently be band/separator and its source owner must be band/separator),
+- `LayeredRibbonPreviewDiagnostics.StaleCleanedPixels` and
+  `ToolFaithfulOverlayReport.RibbonArcLayeredStaleCleanedPixels` report how many stale pixels
+  were restored; the audit prints `stale-cleaned=` for both the preview and the production run.
+
+Regression `LayeredRibbonCleanup_ReachFollowsMeasuredCentrelineShiftAndStaysInsideOwnSourceStack`:
+- scenario A: centreline moved 3 px away from the stack → the old navy/white rows beyond the fixed
+  reach are restored to the source-proven exterior,
+- scenario B: centreline moved 3 px towards the stack → a foreign white outline 12 source px from
+  the centreline, now inside the widened target authority, survives untouched (verified to fail
+  when the guard is disabled).
+
+C069 evidence (local focused audit, same binaries as CI):
+- production `layered=2/2 [ok] stale-cleaned=2,808` (both mirrored long S sweeps),
+- long-S focus crop: **213 px** changed vs 4.42; full 160% output: **403 px** changed,
+- diff pixels lie exclusively along the outer navy edge: ghost white dashes outside the band at the
+  spiral top-right and on the lower hook are gone; no fill, intersection or neighbouring motif
+  pixel changed,
+- round-trip exact **92.83%**, ±1 px **99.43%**, palette SAFE, stroke x 0.780 (unchanged),
+- all C069 workflow gates pass locally,
+- four-design suite (local, exit 0): C071C 90.09 % / B996A 91.89 % / C004A 92.60 % / C069A 92.83 %
+  round-trip exact, all palette SAFE, Through-Points self-training 60/60, roundness MAE 0.015;
+  production `layered=0/0 [not-attempted]` on the other three designs, so the gated class does
+  not leak,
+- core tests 136/136.
+
+Still open after this change: the thin stale white line INSIDE the cyan fill at the spiral junction
+(section 7, item 1). It is on the fill side, not the layered side, so it is not this pass's owner.
+
+Decision: **KEEP.**
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
@@ -1582,16 +1630,14 @@ Items 1, 3, 5 and 6 of the earlier list are resolved (variable-width sweep produ
 `CurveFillRibbonSmoothness` / `CurveFillRibbonCurvatureFairness`, `CurvePixelCadence`, persistent
 focus crops). Current order:
 
-1. **Stale layered ghosts after centreline shift.** Extend the layered cleanup authority outward by
-   the bounded centreline shift actually measured by the fit (never a global constant), keep the
-   local source-proven exterior rule, and measure the long-S focus crop before/after. Do not clean
-   pixels whose nearest source owner is not the separator/band.
-2. Decide whether the thin stale white line inside the cyan fill at the spiral junction belongs to
-   the fill redraw (inner side) or to the layered pass; fix in the narrowest owner.
-3. Compare large compound sweeps using visual curvature continuity, not only source deviation.
-4. Investigate Pixel-Cord / graph fallback volume (C069 direct run: 11,562 graph fallbacks vs 33
+1. **Thin stale white line inside the cyan fill at the spiral junction of the long S.** It is on
+   the fill side (not the layered side), so the owner is the fill/outlined-ribbon redraw or the
+   true-ribbon rasterizer; find the narrowest owner and fix there. Do not widen the layered pass to
+   the fill side.
+2. Compare large compound sweeps using visual curvature continuity, not only source deviation.
+3. Investigate Pixel-Cord / graph fallback volume (C069 direct run: 11,562 graph fallbacks vs 33
    learned open curves) without weakening source safety.
-5. Extend the production layered class only with new source-proven cross-section evidence (another
+4. Extend the production layered class only with new source-proven cross-section evidence (another
    real design), never by loosening the C069 thresholds.
 
 ## 8. Key implementation files

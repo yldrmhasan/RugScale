@@ -1490,7 +1490,8 @@ internal static class Program
                 $"reason={layeredDiagnostics.LastLayeredPreviewReason}, " +
                 $"masks={layeredDiagnostics.LastLayeredSeparatorMaskPixels}/" +
                 $"{layeredDiagnostics.LastLayeredBandMaskPixels}/" +
-                $"{layeredDiagnostics.LastLayeredAuthorityMaskPixels}");
+                $"{layeredDiagnostics.LastLayeredAuthorityMaskPixels}, " +
+                $"stale-cleaned={layeredDiagnostics.LayeredStaleCleanedPixels:N0}");
 
             IndexedBmp.Write(
                 Path.Combine(
@@ -2004,6 +2005,7 @@ internal static class Program
                 directStyleDiagnostics.RibbonArcLayeredCandidates,
                 directStyleDiagnostics.RibbonArcLayeredApplied,
                 directStyleDiagnostics.RibbonArcLastLayeredReason,
+                directStyleDiagnostics.RibbonArcLayeredStaleCleanedPixels,
                 exactLrSource,
                 exactLrRound,
                 exactTbSource,
@@ -2039,7 +2041,8 @@ internal static class Program
             $"shift={directStyleDiagnostics.RibbonArcMaxWidthRegularizationShift:0.000} " +
             $"dv={directStyleDiagnostics.RibbonArcMaxWidthVariationReduction:0.000}, " +
             $"layered={directStyleDiagnostics.RibbonArcLayeredApplied:N0}/{directStyleDiagnostics.RibbonArcLayeredCandidates:N0} " +
-            $"[{directStyleDiagnostics.RibbonArcLastLayeredReason}]), " +
+            $"[{directStyleDiagnostics.RibbonArcLastLayeredReason}] " +
+            $"stale-cleaned={directStyleDiagnostics.RibbonArcLayeredStaleCleanedPixels:N0}), " +
             $"cache={directStyleDiagnostics.StyleFitCacheHits:N0}, round={directStyleDiagnostics.MeanLearnedRoundness:0.000}");
 
         return row;
@@ -3272,6 +3275,7 @@ internal static class Program
         int ToolLayeredRibbonCandidates,
         int ToolLayeredRibbonApplied,
         string ToolLastLayeredRibbonReason,
+        int ToolLayeredStaleCleanedPixels,
         bool ExactLeftRightSource,
         bool ExactLeftRightRoundTrip,
         bool ExactTopBottomSource,
