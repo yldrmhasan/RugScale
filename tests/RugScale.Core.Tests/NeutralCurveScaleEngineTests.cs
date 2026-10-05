@@ -253,4 +253,61 @@ public sealed class NeutralCurveScaleEngineTests
             for (var x = 0; x < 32; x++)
                 Assert.Equal(target.GetPixel(x, y), target.GetPixel(63 - x, y));
     }
+    [Fact]
+    public void Cords_AreRedrawnWithRegularStepCadence()
+    {
+        // A straight 1-cell cord of slope 2/5, drawn as a 4-connected staircase whose source runs
+        // alternate 2,3,2,3: a cell-by-cell 1.6x copy turns that into 3/5 jitter.
+        var source =
+            new DesignDocument(
+                90,
+                60,
+                Palette());
+
+        for (var y = 0; y < 60; y++)
+            for (var x = 0; x < 90; x++)
+                source.SetPixel(x, y, 0);
+
+        static int F(int x) => 5 + x * 2 / 5;
+
+        for (var x = 0; x < 90; x++)
+        {
+            source.SetPixel(x, F(x), 1);
+
+            if (x > 0 && F(x) != F(x - 1))
+                source.SetPixel(x, F(x - 1), 1);
+        }
+
+        var target =
+            Scale(
+                source,
+                144,
+                96);
+
+        // Horizontal run lengths of the target cord along the line, away from the ends.
+        var runs =
+            new List<int>();
+
+        for (var y = 14; y < 54; y++)
+        {
+            var count = 0;
+
+            for (var x = 0; x < target.Width; x++)
+            {
+                if (target.GetPixel(x, y) == 1)
+                    count++;
+            }
+
+            if (count > 0)
+                runs.Add(count);
+        }
+
+        Assert.NotEmpty(runs);
+
+        // A smooth line of constant slope has an (almost) constant cadence: every run is within
+        // one cell of the others, never the 1-2-1-3 jitter of a cell-by-cell copy.
+        Assert.True(
+            runs.Max() - runs.Min() <= 1,
+            $"irregular cadence: {string.Join(",", runs)}");
+    }
 }

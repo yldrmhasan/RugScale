@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** section 4.45 — curve mode rewritten as the neutral-first RugScale Curve engine; legacy ribbon/arc training frozen.
+**Last documented experiment:** section 4.46 — neutral engine redraws Pixel-Cords as smooth regular-cadence curves (user's red reference line).
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1724,6 +1724,30 @@ Decisions:
   comparison, do not extend. Removing them is the user's call.
 - New quality work starts from the neutral engine and must keep it neutral: any change has to stay
   within sub-pixel boundary motion of the nearest resize unless the user asks otherwise.
+
+### 4.46 Neutral engine: cords redrawn as smooth Pixel-Cord curves — KEEP
+
+User reference: the user drew a red Pixel-Cord line over the neutral output (C069 top medallion,
+between the green and tan arcs): one pixel, 4-connected, step cadence changing gradually along the
+curve. Our cell-by-cell cord replay was continuous and one pixel wide but its cadence jittered
+(1,2,1,3,1) because each source stair step maps to one or two target cells depending on rounding.
+
+Change: `PixelCordCurveRedraw` (see `RUGSCALE_ENGINE.md`): chains between junctions, stair-corner
+cells dropped (8-connected centre line), [1 2 1] x10 smoothing with a 0.5 source px shift clamp and
+pinned ends/corners, target rasterization as a 4-connected line choosing the axis step closest to the
+curve. Measured on the sources: stair corners sit on the side closer to the curve 2:1 to 3:1, so the
+rasterizer follows the source convention.
+
+Evidence:
+- a regression with a 2/5-slope staircase (source runs 2,3,2,3) first FAILED with runs
+  3,4,3,3,5 (corner cells kept as curve points left 0.5 px bumps); after dropping corner cells it
+  passes (all runs within one cell),
+- four designs: breaches 0, cord parts = source, cord weight 1.63-1.65, palette SAFE, audit exit 0,
+- round-trip exact drops from 95.7-97.9 % (cell copy) to 91.6-93.7 %; 100 % of the difference is
+  cord pixels (cords follow the curve, shifted by one cell vs the source cell layout); ±1 px stays
+  99.8-99.9 %. The exact metric rewards cell copying; the visual target is the user's reference.
+
+Decision: **KEEP** (visual reference beats the exact-pixel round-trip proxy for line work).
 
 ## 5. Do-not-repeat rules
 

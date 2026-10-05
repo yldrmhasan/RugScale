@@ -44,6 +44,36 @@ Dört N69 desende (160% aynı kalite) ölçüm:
 
 Doğrudan 160% büyütme ~0,7 sn (legacy 35-70 sn).
 
+### Pixel-Cord eğri çizimi (kullanıcı referansı: elle çizilmiş kırmızı Pixel-Cord)
+
+Kullanıcı, çıktının üzerine RugCAD Pixel-Cord ile bir referans çizgi çizdi: tek piksel, 4-bağlantılı
+ve basamak uzunlukları eğri boyunca düzenli değişen (1-1-2-1-2-2 ...) bir çizgi. Kaynak merdiveni
+hücre hücre 1,6x'e taşımak bunu veremez; her kaynak basamağı yuvarlama fazına göre 1 ya da 2 hedef
+hücreye düşer ve basamaklar 1,2,1,3,1 gibi düzensizleşir.
+
+`PixelCordCurveRedraw`:
+1. kaynak kordon ağı kavşak/uç noktaları arasında zincirlere ayrılır (kapalı döngüler kapalı kalır);
+2. merdivenin 4-bağlantı köşe hücreleri çizim diline aittir, eğriye değil; yalnız 8-bağlantılı merkez
+   çizgisi alınır;
+3. merkez noktalar [1 2 1] çekirdeğiyle 10 kez yumuşatılır; hiçbir nokta kaynak hücre merkezinden
+   0,5 px'ten fazla kaymaz, zincir uçları ve gerçek köşeler (±3 hücrede > 65° dönüş) sabittir;
+4. eğri hedef gride taşınır ve her adımda eğriye en yakın eksen adımı seçilerek 4-bağlantılı tek
+   piksel çizgi olarak çizilir (kaynak köşeleri de 2:1-3:1 oranında bu "eğriye yakın" kuralına uyar).
+
+Ölçüm (160% aynı kalite; separator breach 0, kordon parçası kaynakla aynı, kordon ağırlığı 1,63-1,65):
+
+| Desen | Round-trip exact: hücre kopyası → eğri çizimi | ±1 px |
+|---|---|---:|
+| C071C | %96,5 → %91,6 | %99,8 |
+| B996A | %97,1 → %92,3 | %99,8 |
+| C004A | %97,9 → %93,7 | %99,9 |
+| C069A | %95,7 → %92,4 | %99,8 |
+
+Round-trip exact düşüşünün tamamı kordon piksellerindedir: 0,8x küçültme + geri büyütmede çizgi
+kaynak hücre dizilimini değil düzgün eğriyi izlediği için çoğu yerde 1 px kayar. Bu metrik hücre
+kopyasını ödüllendirir; görsel referans (düzenli basamak) eğri çizimini doğrular. Basamak düzeni
+`Cords_AreRedrawnWithRegularStepCadence` testiyle korunur.
+
 Legacy `ScaleMode.CurveFill` ve `LeafPetalArcs` karşılaştırma ve C069 eğitim kapıları için
 dondurulmuş halde duruyor (`CurveScaleAudit --engine legacy`). Yeni geliştirme neutral-first
 motor üzerinde yapılır.

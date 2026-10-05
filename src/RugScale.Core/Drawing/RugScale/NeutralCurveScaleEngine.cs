@@ -15,11 +15,12 @@ namespace RugScale.Core.Drawing;
 ///    <see cref="NeutralBias"/> head start, so a boundary can only move by a fraction of a source
 ///    pixel towards the smooth contour. Shapes, tips, teeth and thin features stay where the
 ///    designer put them.
-/// 2. <b>Uneven Pixel-Cord weight.</b> A one-pixel source cord becomes an alternating one/two
-///    pixel cord under a 1.6x neutral resize. Protected cord colours are therefore not resampled;
-///    the source cord graph is replayed in the target at the target pen size: every source cord
-///    cell maps to its target centre and 4-adjacent source cells are joined by straight target runs,
-///    giving the same 4-connected staircase drawing language as the source.
+/// 2. <b>Pixel-Cord line work.</b> A one-pixel source cord becomes an alternating one/two pixel
+///    cord with an irregular step cadence under a 1.6x neutral resize. Protected cord colours are
+///    therefore not resampled: every source cord chain is redrawn by
+///    <see cref="PixelCordCurveRedraw"/> as a one-pixel, 4-connected line along the smooth curve
+///    its staircase represents (each point within 0.5 source px of the source, corners and
+///    junctions pinned), at the target pen size.
 ///
 /// Afterwards two hard source facts are enforced: two fill colours may touch only where the
 /// source lets them touch locally (otherwise a cord is missing), and exact designer symmetry of
@@ -32,7 +33,7 @@ internal static class NeutralCurveScaleEngine
 
     internal readonly record struct NeutralCurveReport(
         int CordColours,
-        int CordCellsReplayed,
+        int CordChainsRedrawn,
         int TargetCordPixels,
         int BarrierRepairs,
         int UnresolvedContacts);
@@ -296,7 +297,7 @@ internal static class NeutralCurveScaleEngine
             }
         }
 
-        // ---- 2. cords: replay the source cord graph at target pen size -----------------------
+        // ---- 2. cords: redraw each source cord chain as a smooth Pixel-Cord curve -----------
         var penX =
             PenSize(
                 sourceWarpDensity,
@@ -305,199 +306,17 @@ internal static class NeutralCurveScaleEngine
             PenSize(
                 sourceWeftDensity,
                 targetWeftDensity);
-        var replayed = 0;
-
-        int TargetX(
-            int x) =>
-            Math.Clamp(
-                (int)Math.Round(
-                    (x + 0.5) *
-                    W /
-                    w -
-                    0.5,
-                    MidpointRounding.AwayFromZero),
-                0,
-                W - 1);
-
-        int TargetY(
-            int y) =>
-            Math.Clamp(
-                (int)Math.Round(
-                    (y + 0.5) *
-                    H /
-                    h -
-                    0.5,
-                    MidpointRounding.AwayFromZero),
-                0,
-                H - 1);
-
-        void Plot(
-            int x,
-            int y,
-            byte color)
-        {
-            var left =
-                x -
-                (penX - 1) / 2;
-            var top =
-                y -
-                (penY - 1) / 2;
-
-            for (var py = top;
-                 py < top + penY;
-                 py++)
-            {
-                if (py < 0 ||
-                    py >= H)
-                {
-                    continue;
-                }
-
-                for (var px = left;
-                     px < left + penX;
-                     px++)
-                {
-                    if (px >= 0 &&
-                        px < W)
-                    {
-                        target[py * W + px] =
-                            color;
-                    }
-                }
-            }
-        }
-
-        void Run(
-            int x1,
-            int y1,
-            int x2,
-            int y2,
-            byte color)
-        {
-            // Axis-aligned run (callers only pass horizontal or vertical pairs).
-            if (y1 == y2)
-            {
-                for (var x = Math.Min(x1, x2);
-                     x <= Math.Max(x1, x2);
-                     x++)
-                {
-                    Plot(
-                        x,
-                        y1,
-                        color);
-                }
-
-                return;
-            }
-
-            for (var y = Math.Min(y1, y2);
-                 y <= Math.Max(y1, y2);
-                 y++)
-            {
-                Plot(
-                    x1,
-                    y,
-                    color);
-            }
-        }
-
-        for (var y = 0;
-             y < h;
-             y++)
-        {
-            for (var x = 0;
-                 x < w;
-                 x++)
-            {
-                var color =
-                    src[y * w + x];
-
-                if (!isCord[color])
-                    continue;
-
-                replayed++;
-
-                var px =
-                    TargetX(
-                        x);
-                var py =
-                    TargetY(
-                        y);
-
-                Plot(
-                    px,
-                    py,
-                    color);
-
-                var right =
-                    x + 1 < w &&
-                    src[y * w + x + 1] == color;
-                var down =
-                    y + 1 < h &&
-                    src[(y + 1) * w + x] == color;
-
-                if (right)
-                {
-                    Run(
-                        px,
-                        py,
-                        TargetX(
-                            x + 1),
-                        py,
-                        color);
-                }
-
-                if (down)
-                {
-                    Run(
-                        px,
-                        py,
-                        px,
-                        TargetY(
-                            y + 1),
-                        color);
-                }
-
-                // Diagonal-only joints: join with an L so the target cord stays 4-connected.
-                for (var dx = -1;
-                     dx <= 1;
-                     dx += 2)
-                {
-                    var nx =
-                        x + dx;
-
-                    if (nx < 0 ||
-                        nx >= w ||
-                        y + 1 >= h ||
-                        src[(y + 1) * w + nx] != color ||
-                        src[y * w + nx] == color ||
-                        down)
-                    {
-                        continue;
-                    }
-
-                    var qx =
-                        TargetX(
-                            nx);
-                    var qy =
-                        TargetY(
-                            y + 1);
-
-                    Run(
-                        px,
-                        py,
-                        qx,
-                        py,
-                        color);
-                    Run(
-                        qx,
-                        py,
-                        qx,
-                        qy,
-                        color);
-                }
-            }
-        }
+        var replayed =
+            PixelCordCurveRedraw.Draw(
+                src,
+                w,
+                h,
+                isCord,
+                target,
+                W,
+                H,
+                penX,
+                penY);
 
         // ---- 3. separators: fills may touch only where the source lets them touch locally ----
         var contacts =
