@@ -127,6 +127,20 @@ hangi tarafında kaldıklarına göre boyar. Sonuç: bant kenarları kusursuz di
 | 34x41, 544x943 | 3 | 3 | 1 |
 | %160, 818x1030 | 4-5 | 3 | 1 |
 
+### Klasik çiçekli desenler: piksel bazlı çizgi katmanı (B137A)
+
+Klasik desenlerde konturlar ve süsleme çizgileri 1 hücre genişliğinde. Bu çizgilerin renkleri
+(lacivert, kahverengi, yeşil, gri) aynı zamanda dolgu olarak da kullanılır, bu yüzden hiçbir renk
+kordon olarak algılanmaz. `LineLayer` çizgileri renkten bağımsız, piksel bazında bulur:
+1. Aynı renkte 2x2 blok içinde olmayan, en az 6 hücrelik ve çoğunlukla başka renkte bir dolguya
+   değen diziler çizgidir. İki çizgi arasında kalan 1 hücrelik zemin şeritleri çizgi sayılmaz.
+2. Çizgi hücrelerinin altı çevredeki dolguyla tamamlanır (`Under`) ve dolgu katmanı bundan ölçeklenir.
+3. Çizgiler en üste hücre düzeni birebir korunarak çizilir. Her hücre merkezi hedefe taşınır ve
+   komşu hücre merkezleri 1 piksellik çizgiyle birleştirilir. Yumuşatma yapılmaz, küçük motiflerin
+   şekli değişmez.
+
+B137A %160: kaynakta 1 hücre olup hedefte 2 piksel kalınlaşan çizgi pikselleri 0,99 M → 0,33 M.
+
 Legacy `ScaleMode.CurveFill` ve `LeafPetalArcs` karşılaştırma ve C069 eğitim kapıları için
 dondurulmuş halde duruyor (`CurveScaleAudit --engine legacy`). Yeni geliştirme neutral-first
 motor üzerinde yapılır.

@@ -121,6 +121,18 @@ internal static class NeutralCurveScaleEngine
                 h,
                 isCord);
 
+        // Classic designs draw outlines and tracery one cell wide in colours that are also used
+        // as fills, so no palette colour qualifies as a cord. Such line work is found per pixel,
+        // the fill underneath it is completed, and the lines are drawn on top one pixel wide.
+        var lines =
+            LineLayer.Build(
+                src,
+                w,
+                h,
+                isCord);
+        var fillSrc =
+            lines?.Under ?? src;
+
         // ---- 1. fills: neutral-biased signed-distance contour interpolation ------------------
         var yStep =
             sourceWarpDensity > 0 &&
@@ -135,7 +147,7 @@ internal static class NeutralCurveScaleEngine
         {
             fields[color] =
                 SignedDistanceField(
-                    src,
+                    fillSrc,
                     w,
                     h,
                     color,
@@ -193,7 +205,7 @@ internal static class NeutralCurveScaleEngine
                     nearestY * w +
                     nearestX;
                 var neutral =
-                    src[nearestIndex];
+                    fillSrc[nearestIndex];
                 var x0 =
                     (int)Math.Floor(
                         u);
@@ -223,7 +235,7 @@ internal static class NeutralCurveScaleEngine
                                 0,
                                 w - 1);
                         var color =
-                            src[cy * w + cx];
+                            fillSrc[cy * w + cx];
 
                         if (seen[color])
                             continue;
@@ -258,7 +270,7 @@ internal static class NeutralCurveScaleEngine
                          sx <= x0 + 2;
                          sx++)
                     {
-                        seen[src[cy * w + Math.Clamp(sx, 0, w - 1)]] = false;
+                        seen[fillSrc[cy * w + Math.Clamp(sx, 0, w - 1)]] = false;
                     }
                 }
 
@@ -300,7 +312,7 @@ internal static class NeutralCurveScaleEngine
 
         // ---- 1b. straight fill edges stay exactly straight ----------------------------------
         StraightFillEdges.Snap(
-            src,
+            fillSrc,
             w,
             h,
             isCord,
@@ -328,6 +340,13 @@ internal static class NeutralCurveScaleEngine
                 H,
                 penX,
                 penY);
+
+        // Classic line work keeps its exact cell layout (small motifs must not be reshaped);
+        // only its width is made a constant one pixel.
+        lines?.Render(
+            target,
+            W,
+            H);
 
         // ---- 3. separators: fills may touch only where the source lets them touch locally ----
         var contacts =

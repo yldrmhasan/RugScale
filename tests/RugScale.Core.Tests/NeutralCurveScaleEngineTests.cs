@@ -553,4 +553,104 @@ public sealed class NeutralCurveScaleEngineTests
             residuals.Max() - residuals.Min() <= 1.05,
             $"edge wobbles by {residuals.Max() - residuals.Min():F2} px");
     }
+
+    [Fact]
+    public void ClassicOutlines_InAFillColour_StayOnePixelAndConnected()
+    {
+        // Classic designs outline motifs one cell wide in a colour that is also a fill: a navy
+        // outline around a tan disc, plus a solid navy square, so navy is not a cord colour.
+        var source =
+            new DesignDocument(
+                100,
+                80,
+                Palette());
+
+        for (var y = 0; y < 80; y++)
+        {
+            for (var x = 0; x < 100; x++)
+            {
+                var d =
+                    Math.Sqrt((x - 30) * (x - 30) + (y - 40) * (y - 40));
+                source.SetPixel(x, y, d <= 20 ? (byte)2 : (byte)0);
+
+                if (x >= 64 && x < 94 && y >= 25 && y < 55)
+                    source.SetPixel(x, y, 3);
+            }
+        }
+
+        for (var y = 1; y < 79; y++)
+        {
+            for (var x = 1; x < 60; x++)
+            {
+                if (source.GetPixel(x, y) != 2)
+                    continue;
+
+                for (var dy = -1; dy <= 1; dy++)
+                    for (var dx = -1; dx <= 1; dx++)
+                        if (source.GetPixel(x + dx, y + dy) == 0)
+                            source.SetPixel(x, y, 3);
+            }
+        }
+
+        var target =
+            Scale(
+                source,
+                160,
+                128);
+
+        // Outline area: left of the square. No navy 2x2 block there (a one-cell outline that
+        // became two pixels wide), and the outline stays one closed piece.
+        var blocks = 0;
+        var navy =
+            new HashSet<(int X, int Y)>();
+
+        for (var y = 0; y < target.Height; y++)
+        {
+            for (var x = 0; x < 96; x++)
+            {
+                if (target.GetPixel(x, y) != 3)
+                    continue;
+
+                navy.Add((x, y));
+
+                if (target.GetPixel(x + 1, y) == 3 &&
+                    target.GetPixel(x, y + 1) == 3 &&
+                    target.GetPixel(x + 1, y + 1) == 3)
+                {
+                    blocks++;
+                }
+            }
+        }
+
+        var seen =
+            new HashSet<(int X, int Y)>();
+        var parts = 0;
+
+        foreach (var start in navy)
+        {
+            if (!seen.Add(start))
+                continue;
+
+            parts++;
+            var stack =
+                new Stack<(int X, int Y)>();
+            stack.Push(start);
+
+            while (stack.Count > 0)
+            {
+                var (cx, cy) = stack.Pop();
+
+                for (var dy = -1; dy <= 1; dy++)
+                    for (var dx = -1; dx <= 1; dx++)
+                        if (navy.Contains((cx + dx, cy + dy)) && seen.Add((cx + dx, cy + dy)))
+                            stack.Push((cx + dx, cy + dy));
+            }
+        }
+
+        Assert.True(
+            navy.Count > 100 &&
+            blocks == 0 &&
+            parts == 1,
+            $"{navy.Count} navy outline px, {blocks} 2x2 blocks, {parts} parts");
+    }
 }

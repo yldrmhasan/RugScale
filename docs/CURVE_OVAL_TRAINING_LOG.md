@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** section 4.49 — straight fill boundaries (thick ruled bands, A023A) stay exact digital lines.
+**Last documented experiment:** section 4.50 — classic floral designs (B137A): per-pixel line layer, one-pixel outlines in fill colours.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1851,6 +1851,51 @@ Evidence (balance of the per-row runs on the four sides of the central diamond, 
 - new regression `ThickStraightBand_EdgesStayDigitallyStraight` (six-cell band, slope 25/26):
   FAILS without the snap (edge wobble 2.96 px), passes (<= 1 px),
 - N69 curve suite identical to 4.48 (their fills are always cord-separated); 152 tests pass.
+
+Decision: **KEEP**.
+
+### 4.50 Classic floral design B137A: per-pixel line layer — KEEP
+
+User design `B137A_CREAM_N58.bmp` (960x2250, 8 colours): a classic Persian-style floral field and
+borders. Petals, leaves and scrolls are outlined, and the grey tracery is drawn, with one-cell
+lines in colours that are also fills (navy outline and navy petal, brown stem and brown bud).
+`DetectStrokePaletteRoles` finds no cord colour, so every line went through the fill layer.
+Measured at 160 % (1536x3600): about 1.0 M target pixels sit in 2x2 blocks where the source line
+was one cell wide (nearest 1.07 M, motif 1.09 M, curve 0.99 M; the source has 0.66 M one-cell
+pixels), i.e. lines are irregularly one or two pixels wide.
+
+Change: `LineLayer` (per pixel, independent of palette roles):
+1. a line pixel belongs to no solid 2x2 block of its own colour, lies in an 8-connected run of
+   >= 6 such pixels, and at least half the run touches a solid area of another colour (a one-cell
+   strip of background between two parallel lines touches only lines and stays a fill);
+2. `Under`: line pixels replaced by the commonest surrounding fill (edge neighbours weigh double),
+   used for the whole fill layer;
+3. `Render` after the cords: each line cell becomes the target pixel under its centre, joined to
+   its line neighbours (straight for edge neighbours, Bresenham for a diagonal-only neighbour) and
+   to the centre of any solid area of its own colour it grows out of.
+
+Rejected on the way (do not repeat):
+- redrawing these lines as smoothed chains (`PixelCordCurveRedraw`, 0.5 px shift): small motifs
+  were reshaped (leaf caps rounded, a navy body split by its brown outline); classic line work must
+  keep its exact cell layout,
+- treating every one-cell run as a line: background strips between parallel outlines were drawn
+  as lines and border motifs broke up.
+
+Evidence (B137A, 160 %):
+
+| | curve 4.49 | line layer |
+|---|---:|---:|
+| doubled one-cell line pixels | 0.99 M | 0.33 M |
+| extra 8-connected parts (navy / brown / grey) | 0 / 0 / 4 | +385 / +786 / +419 |
+
+The remaining extra parts are tiny one-cell pockets and dots of small border motifs; the old
+figure of 0 came from lines fused into blobs. Visual crops: tracery, petal outlines and leaf
+shapes match the source cell for cell with one-pixel lines.
+
+- new regression `ClassicOutlines_InAFillColour_StayOnePixelAndConnected`: FAILS without the line
+  layer (138 navy 2x2 blocks), passes (0 blocks, one closed outline),
+- N69 suite: breaches 0, cord parts = source, audit exit 0 (C069A round-trip 92.04 -> 92.10 %);
+  A023A output byte-identical; 153 tests pass.
 
 Decision: **KEEP**.
 
