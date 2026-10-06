@@ -2131,6 +2131,31 @@ B390A 600x800: vertical line score 1.45 (source 7.40), straight colour edges 0.0
 (source 7.8), no ladders; B317B unchanged (no strokes).
 168 tests pass.
 
+### 4.57 H312B_CREAM_BVF: vertical strokes, joins closed at the rapport's own size — KEEP
+
+User design `H312B_CREAM_BVF_yeni` (565x1149, no markers, vertical streaks, pixel change rate
+0.40 / 0.36) for Wall to Wall use. Detection: whole design (across 23.5 %, along 28.2 %).
+
+| | joins across / along | look |
+|---|---|---|
+| plain repeat | 1.97 / 2.02 | visible joins |
+| seamless join (12 px band, period 553 x 1137) | 0.93 / 1.00 | the pixel ratio says seamless, but the light top meets the dense purple bottom: a horizontal band at every repeat |
+| opened 565x1400 (along only) | line scores 1.92 / 1.24 | bands gone; the width join stays a vertical line |
+| **4.57: same size 565x1149** | line scores 1.66 / 1.26 (source 1.79 / 2.16) | no bands, no lines |
+
+Changes:
+- `Grow` closes a visible join even when the axis is not grown: along the strokes by lengthening
+  a quarter and the stroke-end overlap (4.56); across the strokes by splicing a strip of the
+  rapport's own content over the join alone (`Splice(wanted: 0)`, width unchanged; a cut between
+  vertical strokes). "Raporu aç" at the rapport's own size therefore makes it seamless.
+- The stroke-lengthening axis goes first (it needs no shift and closes its join), so the splices
+  across the strokes are free to shift.
+- Splice search capped at 64 shifts x 32 openings: opening H312B to 700x1500 took 57 s, now 10 s.
+
+B390A / B317B re-checked: line scores 1.32 / 1.80 vertical, no straight colour edges on B390A.
+Test: a stroke design with visible joins opened at its own size keeps its size and repeats below
+1.5. 169 tests pass.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.

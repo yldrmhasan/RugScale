@@ -204,7 +204,9 @@ enine birleşimi görünüyorsa (B390A: tekrarlar arasında düz çizgi), izler 
 uç üst üste bindirilerek bu çizgi de kapatılır: her satır bir uçtan diğerine tek bir noktada,
 tonların buluştuğu yerde geçer; geçiş noktaları satırdan satıra kayar, böylece izler fırça ucu gibi
 farklı yerlerde biter (bir iz içinde satırlar birlikte kalır). Dither'lı desende iz ucu ±12 px
-inceltilir. Orijinal raporun
+inceltilir. Rapor kendi ölçüsünde açılırsa (ölçü değişmeden) yalnızca görünen
+birleşimler kapatılır: H312B gibi üstü açık, altı koyu bir desende tekrar araları bant ya da çizgi
+bırakmaz. Orijinal raporun
 içeriği korunur; yalnızca kenar bantları değişebilir. Workbench'te açma sonrası hedef ölçü en az
 açılmış rapor kadar yapılır, Run açılmış raporu tekrarlar.
 

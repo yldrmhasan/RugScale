@@ -423,8 +423,8 @@ public sealed class WallToWallRepeatTests
         }
 
         // Every row stays a continuation of its own stroke: same darkness, no other row's tone
-        // spliced in.
-        for (var y = 0; y < 120; y++)
+        // spliced in (away from the band where the rapport's own join along is closed).
+        for (var y = 120 / 6; y < 120 - 120 / 6; y++)
             Assert.InRange(Dark(opened, y), Dark(source, y) - 0.08, Dark(source, y) + 0.08);
 
         var tiled =
@@ -473,6 +473,30 @@ public sealed class WallToWallRepeatTests
             tiled.SeamAcross < plain.SeamAcross &&
             tiled.SeamAcross < WallToWallRepeat.VisibleSeam,
             $"opened {tiled.SeamAcross:F2}, plain {plain.SeamAcross:F2}");
+    }
+
+    [Fact]
+    public void OpenRapport_AtTheSameSizeClosesAVisibleJoin()
+    {
+        // H312B-like: "Raporu aç" at the rapport's own size makes it seamless without resizing.
+        var source =
+            Strokes(seamless: false);
+        var tile =
+            new RapportTile(0, 0, 160, 120);
+        var closed =
+            RapportExpander.Expand(source, tile, 160, 120);
+        double Seam(DesignDocument d) =>
+            WallToWallRepeat.Render(
+                d,
+                new RapportTile(0, 0, d.Width, d.Height),
+                d.Width * 3,
+                d.Height * 2,
+                new RapportOptions(RapportDirection.Both, KeepEdgeMarkers: false)).SeamAcross;
+
+        Assert.Equal(160, closed.Width);
+        Assert.Equal(120, closed.Height);
+        Assert.True(Seam(source) > WallToWallRepeat.VisibleSeam, $"plain {Seam(source):F2}");
+        Assert.True(Seam(closed) < WallToWallRepeat.VisibleSeam, $"closed {Seam(closed):F2}");
     }
 
     [Fact]

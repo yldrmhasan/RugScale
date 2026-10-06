@@ -112,9 +112,6 @@ public static class RapportExpander
         // Length: the same on the transposed rapport.
         void Extend()
         {
-            if (gh >= newHeight)
-                return;
-
             var turned =
                 Transpose(grid, gw, gh);
             var tgw = gh;
@@ -134,8 +131,10 @@ public static class RapportExpander
         var wrapAcross =
             WrapRatio(Transpose(grid, gw, gh), gh, gw, rgb);
 
-        if (newHeight > th &&
-            wrapAcross < wrapAlong)
+        // The stroke-lengthening axis first: it needs no shift, and leaves its join closed so
+        // the splices across the strokes are free to shift.
+        if (grain == Grain.Along ||
+            (grain == Grain.None && wrapAcross < wrapAlong))
         {
             Extend();
             Widen();
@@ -230,19 +229,29 @@ public static class RapportExpander
         int[] rgb,
         Random random)
     {
-        if (gw >= target)
+        var visible =
+            WrapRatio(Transpose(grid, gw, gh), gh, gw, rgb) >= SeamlessWrap;
+
+        if (gw >= target &&
+            !visible)
+        {
             return (grid, gw);
+        }
 
         if (strokes != Grain.Across)
         {
+            // A splice closes the join it is cut into. Nothing to add but a visible join: a strip
+            // of the rapport's own content is spliced over the join alone (width unchanged; H312B
+            // across, between vertical strokes).
+            if (gw >= target)
+                return Splice(grid, gw, gh, 0, bandWanted, strokes, rgb, random);
+
             while (gw < target)
                 (grid, gw) = Splice(grid, gw, gh, target - gw, bandWanted, strokes, rgb, random);
 
             return (grid, gw);
         }
 
-        var visible =
-            WrapRatio(Transpose(grid, gw, gh), gh, gw, rgb) >= SeamlessWrap;
         var b =
             visible
                 ? Math.Max(2, bandWanted > 0 ? Math.Min(bandWanted, (gw - 1) / 3) : Math.Max(target / 4, 2))
@@ -994,14 +1003,25 @@ public static class RapportExpander
             freeAlong && freeAcross
                 ? 2 * Step
                 : Step;
+        // At most MaxShifts x MaxOpenings combinations: a long rapport free both ways took a minute.
+        int[] Positions(
+            bool free,
+            int size,
+            int most)
+        {
+            if (!free)
+                return [0];
+
+            var spacing =
+                Math.Max(step, (size + most - 1) / most);
+
+            return Enumerable.Range(0, (size + spacing - 1) / spacing).Select(k => k * spacing).ToArray();
+        }
+
         var shifts =
-            freeAlong
-                ? Enumerable.Range(0, (gh + step - 1) / step).Select(k => k * step).ToArray()
-                : [0];
+            Positions(freeAlong, gh, MaxShifts);
         var openings =
-            freeAcross
-                ? Enumerable.Range(0, (gw + step - 1) / step).Select(k => k * step).ToArray()
-                : [0];
+            Positions(freeAcross, gw, MaxOpenings);
 
         // Tone of cells via summed-area tables over the rapport tiled 2 x 2 (indices wrap).
         var stride =
@@ -1569,6 +1589,10 @@ public static class RapportExpander
 
         return mix;
     }
+
+    internal const int MaxShifts = 64;
+
+    internal const int MaxOpenings = 32;
 
     /// <summary>Half width (px) of the softened edge where a seam runs along the strokes.</summary>
     internal const int StrokeEdge = 4;

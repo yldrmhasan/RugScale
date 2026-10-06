@@ -58,5 +58,7 @@ The workbench is a RugScale-only host. General RugCAD editor responsibilities (P
    otherwise a strip of the rapport is spliced in along a free-form cut (both wrap around, so the
    opened rapport repeats seamlessly). The opened rapport is shown on the canvas (**Save preview**
    saves it); the target width / height is raised to at least the opened size, and **Run** repeats
-   it. **Açmayı kaldır** returns to the original rapport.
+   it. **Açmayı kaldır** returns to the original rapport. Opened at the rapport's own size (the
+   default values) it only closes visible joins: a design whose top and bottom or left and right
+   edges do not meet (H312B) then repeats without bands or lines.
 
