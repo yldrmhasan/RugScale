@@ -639,8 +639,19 @@ public static class RapportExpander
     {
         var k =
             Math.Clamp(gw / 12, 4, 32);
-        var used =
-            new bool[gw * gh];
+
+        // The original column every pixel shows: a copy is fine once; content that already shows
+        // twice nearby must not be copied again (three identical pieces side by side beat).
+        var columns =
+            gw;
+        var origin =
+            new int[gw * gh];
+
+        for (var at = 0; at < origin.Length; at++)
+            origin[at] = at % gw;
+
+        var seen =
+            new int[columns];
 
         while (wanted > 0)
         {
@@ -677,26 +688,48 @@ public static class RapportExpander
 
             mean /= Math.Max(1, (gw - piece) * gh);
 
-            // Keep away from earlier insertions: copying a copy again repeats the same piece
-            // side by side (a visible beat); next to one, the added width bunches up.
-            var copiedBefore =
+            // Keep away from earlier insertions: a pixel whose content shows again within
+            // Repeat px is doubled already. Copying doubled content makes a beat; next to doubled
+            // content the added width bunches up.
+            var doubled =
+                new bool[gw];
+            var doubledBefore =
                 new int[gw + 1];
+            var reach =
+                3 * piece;
 
             for (var y = 0; y < gh; y++)
             {
-                for (var x = 0; x < gw; x++)
-                    copiedBefore[x + 1] = copiedBefore[x] + (used[y * gw + x] ? 1 : 0);
+                Array.Fill(seen, int.MinValue / 2);
+                Array.Clear(doubled);
 
-                int Copied(
+                for (var x = 0; x < gw; x++)
+                {
+                    var o =
+                        origin[y * gw + x];
+
+                    if (x - seen[o] <= reach)
+                    {
+                        doubled[x] = true;
+                        doubled[seen[o]] = true;
+                    }
+
+                    seen[o] = x;
+                }
+
+                for (var x = 0; x < gw; x++)
+                    doubledBefore[x + 1] = doubledBefore[x] + (doubled[x] ? 1 : 0);
+
+                int Doubled(
                     int a,
                     int b) =>
-                    copiedBefore[Math.Clamp(b, 0, gw)] - copiedBefore[Math.Clamp(a, 0, gw)];
+                    doubledBefore[Math.Clamp(b, 0, gw)] - doubledBefore[Math.Clamp(a, 0, gw)];
 
                 for (var x = piece; x < gw; x++)
                 {
-                    if (Copied(x - piece, x) > 0)
+                    if (Doubled(x - piece, x) > piece / 4)
                         energy[y * gw + x] += (long)(50 * mean) + 1;
-                    else if (Copied(x - 2 * piece, x + piece) > 0)
+                    else if (Doubled(x - 2 * piece, x + piece) > 0)
                         energy[y * gw + x] += (long)(4 * mean) + 1;
                 }
             }
@@ -707,8 +740,8 @@ public static class RapportExpander
                 gw + piece;
             var next =
                 new byte[nw * gh];
-            var nextUsed =
-                new bool[nw * gh];
+            var nextOrigin =
+                new int[nw * gh];
 
             // The copy joins the row where it continues smoothly in tone; on a dithered design the
             // dither itself still breaks there, along a near-vertical line. So the join is a
@@ -751,17 +784,15 @@ public static class RapportExpander
                         shifted
                             ? grid[y * gw + x - piece]
                             : grid[y * gw + x];
-                    nextUsed[to + x] =
-                        x >= x0 - f && x < x0 + piece
-                            ? true
-                            : shifted
-                                ? used[y * gw + x - piece]
-                                : used[y * gw + x];
+                    nextOrigin[to + x] =
+                        shifted
+                            ? origin[y * gw + x - piece]
+                            : origin[y * gw + x];
                 }
             }
 
             grid = next;
-            used = nextUsed;
+            origin = nextOrigin;
             gw = nw;
             wanted -= piece;
         }

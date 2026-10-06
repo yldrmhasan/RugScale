@@ -2122,7 +2122,13 @@ exactly once, like a stroke ending and the next one starting.
 | + overlap target / 3 (200 px) | ends spread; but lengthening 400 px on a 399 px design repeated pieces (ladder) |
 | overlap target / 4 (150 px) | **kept**: staggered stroke ends, no ladder |
 
-B390A 600x800: vertical line score 1.59 (source 7.40), straight colour edges 0.0 / 10k px (source 7.8); B317B unchanged (no strokes).
+Lengthening 351 px into a 399 px design then repeated 32 px pieces three or four times side by
+side (a ladder): the old "is it a copy?" flag covered half of every row and could not steer any
+more. Now every pixel carries its original column; only content that already shows twice within
+3 pieces is blocked from being copied again (50x mean energy), and insertions keep away from it.
+
+B390A 600x800: vertical line score 1.45 (source 7.40), straight colour edges 0.0 / 10k px
+(source 7.8), no ladders; B317B unchanged (no strokes).
 168 tests pass.
 
 ## 5. Do-not-repeat rules
