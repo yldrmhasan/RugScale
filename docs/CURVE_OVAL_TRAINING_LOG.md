@@ -2166,8 +2166,8 @@ by the drop; optional tinted first pixel of every repeat). Workbench: "Rapor gö
 tekrar)" and "Rapor sınırları" above the result canvas; drag to pan, wheel zooms around the cursor
 (zoom minimum 10 %), drawn in device pixels into a `WriteableBitmap`; pan offsets wrap within one
 repeat (one repeat across also moves one drop along). Repeats the opened rapport, the rapport area
-on the source, or the whole result. Tests: 6 (endless repeat, any pan distance, zoom, drop, borders,
-region). The WPF part is built only by the Windows workflow.
+on the source, or the whole result. Tests: 7 (endless repeat, any pan distance, zoom, drop, borders,
+region, borders still visible when zoomed out). The WPF part is built only by the Windows workflow.
 
 ## 5. Do-not-repeat rules
 

@@ -87,7 +87,7 @@ public static class RapportView
             new int[viewWidth];
         var columnEdge =
             new bool[viewWidth];
-        long previous = long.MinValue;
+        var previousRepeat = long.MinValue;
 
         for (var x = 0; x < viewWidth; x++)
         {
@@ -97,43 +97,52 @@ public static class RapportView
                 FloorDiv(design, tileWidth);
             column[x] = (int)(design - repeat * tileWidth);
             shift[x] = (int)Mod(repeat * drop, tileHeight);
-            columnEdge[x] = column[x] == 0 && design != previous;
-            previous = design;
+
+            // Zoomed out, a view pixel skips design columns: a border is where the repeat changes
+            // (on the first view column only where the repeat really starts).
+            columnEdge[x] =
+                x == 0
+                    ? column[x] == 0
+                    : repeat != previousRepeat;
+            previousRepeat = repeat;
         }
 
-        previous = long.MinValue;
+        // Per view column, the repeat row shown one view row up: a new repeat starts where it
+        // wraps back.
+        var above =
+            new long[viewWidth];
+        var first = true;
 
         for (var y = 0; y < viewHeight; y++)
         {
             var design =
                 (long)Math.Floor((y - offsetY) / zoom);
-            var rowChanged =
-                design != previous;
-            previous = design;
-            var row =
-                Mod(design, tileHeight);
             var line =
                 y * viewWidth;
 
             for (var x = 0; x < viewWidth; x++)
             {
                 var r =
-                    row - shift[x];
-
-                if (r < 0)
-                    r += tileHeight;
+                    Mod(design - shift[x], tileHeight);
+                var rowEdge =
+                    first
+                        ? r == 0
+                        : r < above[x];
+                above[x] = r;
 
                 var pixel =
                     tile[r * tileWidth + column[x]];
 
                 if (borders &&
-                    (columnEdge[x] || (rowChanged && r == 0)))
+                    (columnEdge[x] || rowEdge))
                 {
                     pixel = BorderColor;
                 }
 
                 view[line + x] = pixel;
             }
+
+            first = false;
         }
     }
 

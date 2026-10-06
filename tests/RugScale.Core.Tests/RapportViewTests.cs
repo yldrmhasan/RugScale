@@ -80,6 +80,34 @@ public sealed class RapportViewTests
     }
 
     [Fact]
+    public void BordersStayVisibleWhenZoomedOut()
+    {
+        // 5 x 4 tile at 50 %: view pixels skip design pixels, so column / row 0 is often skipped.
+        var tile = Enumerable.Range(1, 20).ToArray();
+        const int w = 20, h = 12;
+        var view = new int[w * h];
+        RapportView.Render(tile, 5, 4, 0, 0.5, 0, 0, true, view, w, h);
+
+        int Repeat(int v, int size) => (int)Math.Floor(2.0 * v / size);
+
+        for (var y = 0; y < h; y++)
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var edge =
+                    (x == 0 || Repeat(x, 5) != Repeat(x - 1, 5)) ||
+                    (y == 0 || Repeat(y, 4) != Repeat(y - 1, 4));
+                var expected =
+                    edge
+                        ? RapportView.BorderColor
+                        : tile[(2 * y % 4) * 5 + 2 * x % 5];
+
+                Assert.Equal(expected, view[y * w + x]);
+            }
+        }
+    }
+
+    [Fact]
     public void TilePixelsTakesTheRapportRegion()
     {
         var palette = new Palette([new RugColor(1, 2, 3), new RugColor(200, 100, 50)]);
