@@ -295,9 +295,10 @@ try
 
             if (options.TryGetValue("expanded-output", out var expandedPath))
             {
+                // Saved like the source: with its edge marker columns.
                 IndexedBmpCodec.Write(
                     expandedPath,
-                    repeatSource,
+                    RapportExpander.WithMarkers(repeatSource, markers),
                     loaded.XPixelsPerMeter,
                     loaded.YPixelsPerMeter);
             }

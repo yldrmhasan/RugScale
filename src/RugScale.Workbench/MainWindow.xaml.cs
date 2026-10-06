@@ -124,9 +124,16 @@ public partial class MainWindow : Window
 
         try
         {
+            // An opened rapport is saved like the source: with its edge marker columns.
+            var document =
+                _openedRapport is not null && ReferenceEquals(_preview, _openedRapport)
+                    ? RapportExpander.WithMarkers(
+                        _openedRapport,
+                        RapportDetector.FindEdgeMarkers(_sourceImage.Document))
+                    : _preview;
             IndexedBmpCodec.Write(
                 dialog.FileName,
-                _preview,
+                document,
                 _sourceImage.XPixelsPerMeter,
                 _sourceImage.YPixelsPerMeter);
             StatusText.Text = $"Saved: {dialog.FileName}";

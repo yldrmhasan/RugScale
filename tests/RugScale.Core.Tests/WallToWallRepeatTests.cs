@@ -520,6 +520,25 @@ public sealed class WallToWallRepeatTests
     }
 
     [Fact]
+    public void OpenedRapportIsSavedWithTheSourceMarkerColumns()
+    {
+        var rapport =
+            new DesignDocument(5, 3, Palette());
+        rapport.SetPixel(0, 0, 2);
+
+        var saved =
+            RapportExpander.WithMarkers(rapport, new EdgeMarkers(0, 1, 4));
+
+        Assert.Equal(6, saved.Width);
+        Assert.Equal(2, saved.GetPixel(0, 0));
+
+        for (var y = 0; y < 3; y++)
+            Assert.Equal(4, saved.GetPixel(5, y));
+
+        Assert.Same(rapport, RapportExpander.WithMarkers(rapport, null));
+    }
+
+    [Fact]
     public void OpenRapport_RejectsASmallerSize()
     {
         Assert.Throws<ArgumentOutOfRangeException>(() =>

@@ -2196,6 +2196,19 @@ H312B 565x1149 / 700x1500: 1.54 / 1.27 and 1.30 / 1.30 (about 3 s each); B317B u
 replaced: opening a stroke design to twice its width keeps how fast its tone changes across
 (> 80 % of the source; a stretch halves it). 176 tests pass.
 
+### 4.60 B390A delivered as files; opened rapports saved with marker columns
+
+User could not get B390A_D.BLUE_N71 into a seamless rapport in the Workbench and asked for the
+files. Delivered (both 1 marker column on the right, like the source, palette unchanged):
+- `B390A_D.BLUE_N71_rapor_400x500.bmp`: same size, joins closed (plain repeat 0.94 / 1.19; source
+  1.33 / 1.34). Bands of 24-60 px changed less (7-18 % of pixels) but left faint vertical strips:
+  the source's left and right edges differ too much; the default band (32 %) hides the join.
+- `B390A_D.BLUE_N71_acik_rapor_800x1000.bmp`: opened, ovals at their own size (0.92 / 0.91).
+Both re-checked as new sources: detected as one whole rapport.
+
+`RapportExpander.WithMarkers`: an opened rapport was saved without the source's marker columns
+(CLI `--expanded-output`, Workbench "Save preview"); both now put them back. Test added; 177 pass.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.

@@ -163,6 +163,43 @@ public static class RapportExpander
         return result;
     }
 
+    /// <summary>
+    /// The opened rapport as a file like the source: the technical marker columns the source has
+    /// at its edges (RugCAD) are put back left and right. Without markers it is returned as is.
+    /// </summary>
+    public static DesignDocument WithMarkers(
+        DesignDocument rapport,
+        EdgeMarkers? markers)
+    {
+        ArgumentNullException.ThrowIfNull(rapport);
+
+        if (markers is null ||
+            markers.Left + markers.Right == 0)
+        {
+            return rapport;
+        }
+
+        var result =
+            new DesignDocument(
+                rapport.Width + markers.Left + markers.Right,
+                rapport.Height,
+                rapport.Palette);
+
+        for (var y = 0; y < rapport.Height; y++)
+        {
+            for (var k = 0; k < markers.Left; k++)
+                result.SetPixel(k, y, markers.Color);
+
+            for (var x = 0; x < rapport.Width; x++)
+                result.SetPixel(markers.Left + x, y, rapport.GetPixel(x, y));
+
+            for (var k = 0; k < markers.Right; k++)
+                result.SetPixel(markers.Left + rapport.Width + k, y, markers.Color);
+        }
+
+        return result;
+    }
+
     internal enum Grain
     {
         None,
