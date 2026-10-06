@@ -17,13 +17,18 @@ namespace RugScale.Core.Drawing.WallToWall;
 ///   count) and joined along a free-form minimum cut inside a band of up to <see cref="Band"/>
 ///   px; on a dithered design the cut is dissolved into a dithered transition.
 ///
-/// Every path and cut closes on itself, so the opened rapport repeats like the original. The
-/// original rapport keeps its content: only the bands along its edges can change.
+/// Every path and cut closes on itself, so the opened rapport repeats like the original. Where the
+/// original's own join is visible (B390A across: a straight line between the repeats), lengthening
+/// grows a quarter wider and then overlaps both ends, blended over the whole overlap. On dithered
+/// designs every transition is drawn as stroke-shaped patches (<see cref="PatchNoise"/>), not
+/// single pixels and not one straight cut. The original rapport keeps its content: only the bands
+/// along its edges can change.
 /// </summary>
 public static class RapportExpander
 {
     /// <summary>Widest seam band (px).</summary>
     internal const int Band = 64;
+
 
     /// <summary>Tone cells (px) on which strips are compared.</summary>
     internal const int Cell = 4;
@@ -100,13 +105,8 @@ public static class RapportExpander
 
         void Widen()
         {
-            while (gw < newWidth)
-            {
-                (grid, gw) =
-                    grain == Grain.Across
-                        ? Lengthen(grid, gw, gh, newWidth - gw, rgb)
-                        : Splice(grid, gw, gh, newWidth - gw, band, rgb, random);
-            }
+            (grid, gw) =
+                Grow(grid, gw, gh, newWidth, grain, band, rgb, random);
         }
 
         // Length: the same on the transposed rapport.
@@ -119,13 +119,8 @@ public static class RapportExpander
                 Transpose(grid, gw, gh);
             var tgw = gh;
 
-            while (tgw < newHeight)
-            {
-                (turned, tgw) =
-                    grain == Grain.Along
-                        ? Lengthen(turned, tgw, gw, newHeight - tgw, rgb)
-                        : Splice(turned, tgw, gw, newHeight - tgw, band, rgb, random);
-            }
+            (turned, tgw) =
+                Grow(turned, tgw, gw, newHeight, Turn(grain), band, rgb, random);
 
             gh = tgw;
             grid = Transpose(turned, gh, gw);
@@ -219,6 +214,117 @@ public static class RapportExpander
     internal const int StreakDistance = 8;
 
     /// <summary>
+    /// Grows a rapport across to <paramref name="target"/> columns: by lengthening its strokes, or
+    /// by splicing strips. Splicing closes the rapport's own join across (the strip's tail is cut
+    /// into its start); lengthening does not, so a visible join (B390A: a straight line between
+    /// the repeats) is closed separately: grown a band wider, both ends then overlap.
+    /// </summary>
+    private static (byte[] Grid, int Width) Grow(
+        byte[] grid,
+        int gw,
+        int gh,
+        int target,
+        Grain strokes,
+        int bandWanted,
+        int[] rgb,
+        Random random)
+    {
+        if (gw >= target)
+            return (grid, gw);
+
+        if (strokes != Grain.Across)
+        {
+            while (gw < target)
+                (grid, gw) = Splice(grid, gw, gh, target - gw, bandWanted, strokes, rgb, random);
+
+            return (grid, gw);
+        }
+
+        var visible =
+            WrapRatio(Transpose(grid, gw, gh), gh, gw, rgb) >= SeamlessWrap;
+        var b =
+            visible
+                ? Math.Max(2, Math.Min(bandWanted > 0 ? bandWanted : Math.Clamp(gw / 4, 2, 400), (gw - 1) / 3))
+                : 0;
+
+        (grid, gw) =
+            Lengthen(grid, gw, gh, target - gw + b, rgb);
+
+        return visible
+            ? CloseWrap(grid, gw, gh, b, rgb, random)
+            : (grid, gw);
+    }
+
+    /// <summary>
+    /// Closes a rapport's join across by overlapping its last <paramref name="band"/> columns onto
+    /// its first: they are joined along a free-form minimum cut (dithered on dithered designs) and
+    /// the rapport becomes <paramref name="band"/> columns narrower.
+    /// </summary>
+    private static (byte[] Grid, int Width) CloseWrap(
+        byte[] grid,
+        int gw,
+        int gh,
+        int band,
+        int[] rgb,
+        Random random)
+    {
+        // Left side of the cut: the previous repeat's tail; right side: this repeat's start.
+        var (_, left) =
+            SeamSide(
+                (x, y) => Difference(grid[y * gw + gw - band + x], grid[y * gw + x], rgb),
+                band,
+                gh);
+        var feather =
+            FeatherWidth(grid, gw, gh, band);
+        var mix =
+            Feather(left, band, gh, feather);
+
+        // A dithered design is made of soft dithered gradients: there the two ends are blended
+        // over the whole band, a gradient like the design's own, instead of meeting at one cut.
+        if (feather > 0)
+        {
+            for (var y = 0; y < gh; y++)
+            {
+                for (var x = 0; x < band; x++)
+                {
+                    // Linear: stroke ends spread over the whole band instead of lining up.
+                    mix[y * band + x] = (x + 0.5) / band;
+                }
+            }
+        }
+
+        var salt =
+            random.Next();
+        var nw =
+            gw - band;
+        var result =
+            new byte[nw * gh];
+
+        for (var y = 0; y < gh; y++)
+        {
+            for (var x = 0; x < band; x++)
+            {
+                // Patches drawn out along the strokes, not single pixels: they read as stroke
+                // fragments instead of salt and pepper.
+                var chance =
+                    feather > 0
+                        ? PatchNoise(x, y, salt, Grain.Across)
+                        : Noise(x, y, salt);
+
+                result[y * nw + x] =
+                    chance < mix[y * band + x]
+                        ? grid[y * gw + x]
+                        : grid[y * gw + gw - band + x];
+            }
+
+            for (var x = band; x < nw; x++)
+                result[y * nw + x] = grid[y * gw + x];
+        }
+
+        return (result, nw);
+    }
+
+    /// <summary>
     /// Widens a design of horizontal strokes by lengthening them: along a top-to-bottom path
     /// where every row continues smoothly <c>k</c> px further on, each row gets the k pixels just
     /// before the path once more. Dither and texture are copied, not stretched; a path never
@@ -306,29 +412,53 @@ public static class RapportExpander
             var nextUsed =
                 new bool[nw * gh];
 
+            // The copy joins the row where it continues smoothly in tone; on a dithered design the
+            // dither itself still breaks there, along a near-vertical line. So the join is a
+            // transition of stroke-shaped patches: left of it the row (A = row[x]), right of it
+            // the row shifted by the copy (B = row[x - piece]).
+            var feather =
+                FeatherWidth(grid, gw, gh, piece);
+            var salt =
+                gw * 7919 + wanted;
+
             for (var y = 0; y < gh; y++)
             {
                 var x0 =
                     path[y];
                 var to =
                     y * nw;
+                var f =
+                    Math.Max(0, Math.Min(feather, Math.Min(x0 - piece, gw - x0)));
 
-                for (var x = 0; x < x0; x++)
+                for (var x = 0; x < nw; x++)
                 {
-                    next[to + x] = grid[y * gw + x];
-                    nextUsed[to + x] = used[y * gw + x];
-                }
+                    bool shifted;
 
-                for (var x = 0; x < piece; x++)
-                {
-                    next[to + x0 + x] = grid[y * gw + x0 - piece + x];
-                    nextUsed[to + x0 + x] = true;
-                }
+                    if (x < x0 - f)
+                    {
+                        shifted = false;
+                    }
+                    else if (x >= x0 + f)
+                    {
+                        shifted = true;
+                    }
+                    else
+                    {
+                        var ramp =
+                            (x - (x0 - f) + 0.5) / (2.0 * f);
+                        shifted = PatchNoise(x, y, salt, Grain.Across) < ramp;
+                    }
 
-                for (var x = x0; x < gw; x++)
-                {
-                    next[to + x + piece] = grid[y * gw + x];
-                    nextUsed[to + x + piece] = used[y * gw + x];
+                    next[to + x] =
+                        shifted
+                            ? grid[y * gw + x - piece]
+                            : grid[y * gw + x];
+                    nextUsed[to + x] =
+                        x >= x0 - f && x < x0 + piece
+                            ? true
+                            : shifted
+                                ? used[y * gw + x - piece]
+                                : used[y * gw + x];
                 }
             }
 
@@ -491,6 +621,7 @@ public static class RapportExpander
         int gh,
         int wanted,
         int bandWanted,
+        Grain strokes,
         int[] rgb,
         Random random)
     {
@@ -692,8 +823,11 @@ public static class RapportExpander
             p.Cost != q.Cost
                 ? p.Cost.CompareTo(q.Cost)
                 : (p.Open, p.Start, p.Shift).CompareTo((q.Open, q.Start, q.Shift)));
+        // The cheapest seams; the seed only varies among strips practically as good.
+        var close =
+            joined.Count(j => j.Cost <= joined[0].Cost * 1.05);
         var pick =
-            joined[random.Next(Math.Min(2, joined.Count))];
+            joined[random.Next(Math.Max(1, close))];
 
         byte Source(
             int x,
@@ -707,8 +841,16 @@ public static class RapportExpander
 
         // Dithered designs are themselves made of mixed-colour transitions: there the seam is
         // dissolved into one (a hard cut through brush strokes would read as a straight line).
+        // A seam that runs along the strokes lies between strokes already: only its edge is
+        // softened like a stroke edge (a few px, pixel noise); a wide transition of patches would
+        // break the strokes into dashes.
         var feather =
             FeatherWidth(grid, gw, gh, b);
+
+        if (strokes == Grain.Along)
+            feather = Math.Min(feather, StrokeEdge);
+
+
         var leftMix =
             Feather(pick.Left, b, gh, feather);
         var rightMix =
@@ -730,7 +872,7 @@ public static class RapportExpander
             for (var x = 0; x < b; x++)
             {
                 result[y * nw + gw - b + x] =
-                    Noise(x, y, salt) < leftMix[y * b + x]
+                    Chance(x, y, salt, strokes) < leftMix[y * b + x]
                         ? Strip(x, y)
                         : Source(gw - b + x, y);
             }
@@ -741,7 +883,7 @@ public static class RapportExpander
             // The strip's tail lies over the rapport's first columns (wrap), left of the cut.
             for (var x = 0; x < b; x++)
             {
-                if (Noise(x, y, salt + 1) >= rightMix[y * b + x])
+                if (Chance(x, y, salt + 1, strokes) >= rightMix[y * b + x])
                     result[y * nw + x] = Strip(added + b + x, y);
             }
         }
@@ -983,8 +1125,9 @@ public static class RapportExpander
     }
 
     /// <summary>
-    /// Half width (px) of the dithered transition across a seam: none for flat colour areas,
-    /// up to half the band for a fully dithered design (B390A changes colour at 59 % of pixels).
+    /// Half width (px) of the dithered transition across a seam: none for flat colour areas
+    /// (B317B splotches with outlines change colour at 25 % of pixels; a transition breaks them
+    /// into speckles), up to half the band for a fully dithered design (B390A: 59 %).
     /// </summary>
     internal static int FeatherWidth(
         byte[] grid,
@@ -1002,7 +1145,7 @@ public static class RapportExpander
         var share =
             changes / (double)Math.Max(1, (gw - 1) * gh);
         var strength =
-            Math.Clamp((share - 0.15) / 0.3, 0, 1);
+            Math.Clamp((share - 0.3) / 0.25, 0, 1);
 
         return (int)Math.Round(strength * band / 2);
     }
@@ -1096,6 +1239,75 @@ public static class RapportExpander
         }
 
         return mix;
+    }
+
+    /// <summary>Half width (px) of the softened edge where a seam runs along the strokes.</summary>
+    internal const int StrokeEdge = 4;
+
+    /// <summary>Noise for a splice transition: pixel noise along the strokes, patches otherwise.</summary>
+    private static double Chance(
+        int x,
+        int y,
+        int salt,
+        Grain strokes) =>
+        strokes == Grain.Along
+            ? Noise(x, y, salt)
+            : PatchNoise(x, y, salt, strokes);
+
+    /// <summary>The same strokes seen in the transposed rapport.</summary>
+    private static Grain Turn(
+        Grain grain) =>
+        grain switch
+        {
+            Grain.Across => Grain.Along,
+            Grain.Along => Grain.Across,
+            _ => Grain.None,
+        };
+
+    /// <summary>
+    /// Smooth noise in [0, 1) for choosing between two sources in a transition: patches drawn out
+    /// along the strokes (40 x 3 px; 6 x 6 without strokes) with a little per-pixel grain, so a
+    /// transition reads as stroke fragments instead of salt and pepper.
+    /// </summary>
+    private static double PatchNoise(
+        int x,
+        int y,
+        int salt,
+        Grain strokes)
+    {
+        var (across, along) =
+            strokes switch
+            {
+                Grain.Across => (40.0, 3.0),
+                Grain.Along => (3.0, 40.0),
+                _ => (6.0, 6.0),
+            };
+        var fx =
+            x / across;
+        var fy =
+            y / along;
+        var ix =
+            (int)Math.Floor(fx);
+        var iy =
+            (int)Math.Floor(fy);
+        var tx =
+            fx - ix;
+        var ty =
+            fy - iy;
+        tx = tx * tx * (3 - 2 * tx);
+        ty = ty * ty * (3 - 2 * ty);
+        var top =
+            Noise(ix, iy, salt) * (1 - tx) + Noise(ix + 1, iy, salt) * tx;
+        var bottom =
+            Noise(ix, iy + 1, salt) * (1 - tx) + Noise(ix + 1, iy + 1, salt) * tx;
+        var smooth =
+            top * (1 - ty) + bottom * ty;
+
+        // Smoothed values bunch around 0.5: spread them back over [0, 1).
+        var spread =
+            Math.Clamp((smooth - 0.5) * 2.2 + 0.5, 0, 1);
+
+        return Math.Clamp(0.85 * spread + 0.15 * Noise(x, y, salt + 7), 0, 0.999999);
     }
 
     /// <summary>Deterministic per-pixel noise in [0, 1).</summary>

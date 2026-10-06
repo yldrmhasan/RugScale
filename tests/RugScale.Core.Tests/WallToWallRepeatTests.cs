@@ -329,7 +329,7 @@ public sealed class WallToWallRepeatTests
     /// Dithered horizontal brush strokes (B390A-like): bands of rows whose darkness drifts slowly
     /// across, seamless across.
     /// </summary>
-    private static DesignDocument Strokes()
+    private static DesignDocument Strokes(bool seamless = true)
     {
         var design =
             new DesignDocument(160, 120, Palette());
@@ -353,7 +353,12 @@ public sealed class WallToWallRepeatTests
                 for (var x = 0; x < 160; x++)
                 {
                     var tone =
-                        Math.Clamp(level + swing * Math.Sin(2 * Math.PI * x / 160 + phase), 0, 1);
+                        Math.Clamp(
+                            seamless
+                                ? level + swing * Math.Sin(2 * Math.PI * x / 160 + phase)
+                                : level + swing * (x / 80.0 - 1) * (phase < Math.PI ? 1 : -1),
+                            0,
+                            1);
                     design.SetPixel(x, y, random.NextDouble() < tone ? (byte)2 : (byte)0);
                 }
             }
@@ -433,6 +438,41 @@ public sealed class WallToWallRepeatTests
         Assert.True(
             tiled.SeamAcross < WallToWallRepeat.VisibleSeam,
             $"seam across {tiled.SeamAcross:F2}");
+    }
+
+    [Fact]
+    public void OpenRapport_ClosesAVisibleJoinWhenLengtheningStrokes()
+    {
+        // Strokes whose darkness ramps across: the rapport's own join across is a straight line.
+        var source =
+            Strokes(seamless: false);
+        var plain =
+            WallToWallRepeat.Render(
+                source,
+                new RapportTile(0, 0, 160, 120),
+                640,
+                240,
+                new RapportOptions(RapportDirection.Both, KeepEdgeMarkers: false));
+        var opened =
+            RapportExpander.Expand(
+                source,
+                new RapportTile(0, 0, 160, 120),
+                240,
+                120);
+        var tiled =
+            WallToWallRepeat.Render(
+                opened,
+                new RapportTile(0, 0, 240, 120),
+                720,
+                240,
+                new RapportOptions(RapportDirection.Both, KeepEdgeMarkers: false));
+
+        Assert.Equal(240, opened.Width);
+        Assert.True(plain.SeamAcross > WallToWallRepeat.VisibleSeam, $"plain {plain.SeamAcross:F2}");
+        Assert.True(
+            tiled.SeamAcross < plain.SeamAcross &&
+            tiled.SeamAcross < WallToWallRepeat.VisibleSeam,
+            $"opened {tiled.SeamAcross:F2}, plain {plain.SeamAcross:F2}");
     }
 
     [Fact]

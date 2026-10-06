@@ -2062,6 +2062,41 @@ CLI: `--expand-band px` (old `--expand-block` still accepted). Tests: stroke des
 horizontal grain, every row keeps its own darkness after widening, joins under 1.5; original kept
 away from its bands (a sixth of the rapport). 167 tests pass.
 
+### 4.55 Rapport opening: no straight lines or cuts between repeats — KEEP
+
+User report on 4.54: "aralarda kesikler ve düz çizgiler oluşuyor" (cuts and straight lines between).
+
+New measuring tool (scratch probe): per column / row, the mean 3x3-tone break between x - 1 and
+x + 1 over the whole rapport, wrapped, relative to the columns around it (straight-line score), plus
+perfectly straight colour boundaries >= 12 px.
+
+| B390A 600x800 | vertical line score | where |
+|---|---|---|
+| source rapport (repeated as is) | 7.40 | x = 0, its own join across |
+| 4.54 opened | 7.08 | x = 0: lengthening kept the original join |
+| 4.55 | 1.39 | none (inside the design's own range) |
+
+Changes:
+- `Grow`: when the strokes are lengthened and the join across is visible (wrap ratio >= 1.15),
+  the rapport is lengthened a quarter wider and `CloseWrap` overlaps both ends. On a dithered design
+  the two ends are blended linearly over the whole overlap (a soft gradient like the design's own);
+  otherwise a free-form cut. A 32 px dissolve read as a noisy column, a hard cut as a line.
+- `PatchNoise`: transitions choose between the two sources in patches 40 x 3 px along the strokes
+  (6 x 6 without strokes), so a transition reads as stroke ends; single-pixel noise looked like
+  salt and pepper, 24 px patches with a smoothstep ramp lined their ends up in one column.
+- Lengthening joins (row continues into its copy) are such a transition too: the tone matched,
+  but the dither broke along a near-vertical line inside the ovals.
+- Splice seams running along the strokes keep a clean cut, softened by 4 px of pixel noise: a wide
+  patch transition broke the strokes into white dashes.
+- Transitions only on really dithered designs (pixel change rate > 0.3): B317B (0.25, flat
+  splotches with outlines) was breaking into speckles.
+- The seed varies only among strips within 5 % of the cheapest seam (it picked the 2nd best, which
+  cut a B317B splotch straight).
+
+B317B 640x700: line scores 1.69 / 1.46 (source 1.90 / 5.94), straight edges per 10k px 59.0
+(source 58.5). Test: strokes ramping across (plain join visible) opened -> join below 1.5 and below
+the plain one. 168 tests pass.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.
