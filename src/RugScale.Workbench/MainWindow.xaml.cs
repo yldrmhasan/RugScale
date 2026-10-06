@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private SelectionPurpose _selectionPurpose = SelectionPurpose.Detection;
     private Point? _dragStart;
     private RapportTile? _rapportTile;
+    private DesignDocument? _openedRapport;
 
     public MainWindow()
     {
@@ -73,6 +74,7 @@ public partial class MainWindow : Window
             _accepted.Clear();
             ResetMotifSession(clearSelections: true);
             _rapportTile = null;
+            _openedRapport = null;
             RapportText.Text = "Rapor: seçilmedi (otomatik bulunacak).";
 
             WidthBox.Text = loaded.Document.Width.ToString();
@@ -337,6 +339,9 @@ public partial class MainWindow : Window
             var document = _sourceImage.Document;
             var detection = await Task.Run(() => RapportDetector.Detect(document));
             _rapportTile = detection.Tile;
+            _openedRapport = null;
+            OpenWidthBox.Text = detection.Tile.Width.ToString();
+            OpenHeightBox.Text = detection.Tile.Height.ToString();
             DropBox.Text = detection.Tile.Drop.ToString();
             _selectionPurpose = SelectionPurpose.Rapport;
             ShowSourceOnCanvas();
@@ -397,13 +402,25 @@ public partial class MainWindow : Window
                 ? await Task.Run(() => RapportDetector.Detect(source).Tile)
                 : _rapportTile with { Drop = drop };
             _rapportTile = tile;
-            var result = await Task.Run(() =>
-                WallToWallRepeat.Render(
-                    source,
-                    tile,
-                    width,
-                    height,
-                    new RapportOptions(direction, seamless)));
+            var opened = _openedRapport;
+            var markers = RapportDetector.FindEdgeMarkers(source);
+            var result = opened is null
+                ? await Task.Run(() =>
+                    WallToWallRepeat.Render(
+                        source,
+                        tile,
+                        width,
+                        height,
+                        new RapportOptions(direction, seamless)))
+                : await Task.Run(() =>
+                    WallToWallRepeat.Render(
+                        opened,
+                        new RapportTile(0, 0, opened.Width, opened.Height, drop),
+                        width,
+                        height,
+                        new RapportOptions(direction, Seamless: false, Markers: markers)));
+            if (opened is not null)
+                tile = new RapportTile(0, 0, opened.Width, opened.Height, drop);
 
             _basePreview = result.Design;
             _preview = result.Design;
@@ -436,6 +453,75 @@ public partial class MainWindow : Window
         {
             IsEnabled = true;
         }
+    }
+
+    private async void OnOpenRapport(object sender, RoutedEventArgs e)
+    {
+        if (_sourceImage is null)
+        {
+            StatusText.Text = "Open a source BMP first.";
+            return;
+        }
+
+        var source = _sourceImage.Document;
+
+        try
+        {
+            IsEnabled = false;
+            var tile = _rapportTile ?? await Task.Run(() => RapportDetector.Detect(source).Tile);
+            _rapportTile = tile;
+
+            if (!TryPositiveInt(OpenWidthBox.Text, out var openWidth))
+                openWidth = tile.Width;
+
+            if (!TryPositiveInt(OpenHeightBox.Text, out var openHeight))
+                openHeight = tile.Height;
+
+            if (openWidth < tile.Width || openHeight < tile.Height)
+            {
+                StatusText.Text = $"Açılmış rapor en az rapor kadar olmalı ({tile.Width}×{tile.Height}).";
+                return;
+            }
+
+            StatusText.Text = $"Rapor açılıyor: {tile.Width}×{tile.Height} → {openWidth}×{openHeight}...";
+            var opened = await Task.Run(() =>
+                RapportExpander.Expand(
+                    source,
+                    tile,
+                    openWidth,
+                    openHeight));
+            _openedRapport = opened;
+
+            // Show the opened rapport; "Save preview" saves it as a BMP.
+            _basePreview = opened;
+            _preview = opened;
+            _accepted.Clear();
+            ResetMotifSession(clearSelections: true);
+            _selectionPurpose = SelectionPurpose.Detection;
+            RenderPreview();
+
+            RapportText.Text =
+                $"Açılmış rapor: {tile.Width}×{tile.Height} → {openWidth}×{openHeight} (orijinal sol üstte, eklenen alan desenin kendi dokusundan, kenarları dikişsiz). Run bu raporu tekrarlar.";
+            StatusText.Text = "Rapor açıldı. Kaydetmek için 'Save preview', tekrar için Run.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Rapor açılamadı: {ex.Message}";
+            MessageBox.Show(this, ex.Message, "Rapor açma", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsEnabled = true;
+        }
+    }
+
+    private void OnClearOpenedRapport(object sender, RoutedEventArgs e)
+    {
+        _openedRapport = null;
+        RapportText.Text = _rapportTile is null
+            ? "Rapor: seçilmedi (otomatik bulunacak)."
+            : $"Rapor: {_rapportTile.Width}×{_rapportTile.Height} @ {_rapportTile.X},{_rapportTile.Y} (açma kaldırıldı).";
+        ShowSourceOnCanvas();
     }
 
     private static string FormatSeam(double ratio) =>
@@ -535,6 +621,9 @@ public partial class MainWindow : Window
                 selection.Width,
                 selection.Height,
                 ParseDrop());
+            _openedRapport = null;
+            OpenWidthBox.Text = selection.Width.ToString();
+            OpenHeightBox.Text = selection.Height.ToString();
             RapportText.Text =
                 $"Rapor (seçim): {selection.Width}×{selection.Height} @ {selection.X},{selection.Y}, kaydırma {_rapportTile.Drop}.";
             StatusText.Text =

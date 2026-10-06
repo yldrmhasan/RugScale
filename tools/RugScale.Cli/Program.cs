@@ -27,6 +27,7 @@ static int Usage(
           wall-to-wall   (roll designs: rapport repeated, not scaled)
                          [--repeat both|width|length] [--rapport x,y,w,h] [--drop px]
                          [--seamless false] [--seam-band px]
+                         [--expand WxH] [--expanded-output rapport.bmp]   (rapor açma)
           leaf-petal
           smooth
           area-average
@@ -263,16 +264,61 @@ try
         var seamless =
             !options.TryGetValue("seamless", out var seamlessRaw) ||
             !string.Equals(seamlessRaw, "false", StringComparison.OrdinalIgnoreCase);
+        var repeatSource =
+            loaded.Document;
+        EdgeMarkers? originalMarkers = null;
+
+        // Rapor açma: grow the rapport with the design's own texture, then repeat the grown one.
+        if (options.TryGetValue("expand", out var expandRaw))
+        {
+            var size =
+                expandRaw
+                    .ToLowerInvariant()
+                    .Split('x')
+                    .Select(int.Parse)
+                    .ToArray();
+            var markers =
+                RapportDetector.FindEdgeMarkers(loaded.Document);
+            repeatSource =
+                RapportExpander.Expand(
+                    loaded.Document,
+                    tile,
+                    size[0],
+                    size[1],
+                    options.TryGetValue("seed", out var seedRaw) ? int.Parse(seedRaw) : 1,
+                    options.TryGetValue("expand-block", out var blockRaw) ? int.Parse(blockRaw) : 0);
+            Console.WriteLine(
+                $"Rapport opened: {tile.Width}x{tile.Height} -> {size[0]}x{size[1]}");
+
+            if (options.TryGetValue("expanded-output", out var expandedPath))
+            {
+                IndexedBmpCodec.Write(
+                    expandedPath,
+                    repeatSource,
+                    loaded.XPixelsPerMeter,
+                    loaded.YPixelsPerMeter);
+            }
+
+            tile =
+                new RapportTile(0, 0, size[0], size[1], tile.Drop);
+            originalMarkers =
+                markers;
+
+            // The opened rapport is already built to wrap around: no further join.
+            seamless = false;
+        }
+
         var rendered =
             WallToWallRepeat.Render(
-                loaded.Document,
+                repeatSource,
                 tile,
                 width,
                 height,
                 new RapportOptions(
                     direction,
                     seamless,
-                    options.TryGetValue("seam-band", out var bandRaw) ? int.Parse(bandRaw) : new RapportOptions().SeamBand));
+                    options.TryGetValue("seam-band", out var bandRaw) ? int.Parse(bandRaw) : new RapportOptions().SeamBand,
+                    Markers: originalMarkers));
 
         Console.WriteLine(
             $"Rapport detected: {detection.Tile.Width}x{detection.Tile.Height} @ {detection.Tile.X},{detection.Tile.Y}, drop {detection.Tile.Drop} " +

@@ -112,7 +112,7 @@ Available CLI modes:
 | `motif` | `ScaleMode.RugScale` | motif/topology designs |
 | `curve` | `ScaleMode.CurveNeutral` | **curve-heavy designs (recommended)**: neutral-first, faithful to the source |
 | `texture` | `ScaleMode.Texture` | **abstract / distressed designs**: structure scaled, grain kept 1:1 |
-| `wall-to-wall` | `ScaleMode.WallToWall` | **roll / wall-to-wall designs**: rapport repeated (`--repeat both\|width\|length`, `--rapport x,y,w,h`, `--drop`, `--seamless false`) |
+| `wall-to-wall` | `ScaleMode.WallToWall` | **roll / wall-to-wall designs**: rapport repeated (`--repeat both\|width\|length`, `--rapport x,y,w,h`, `--drop`, `--seamless false`, rapor açma `--expand WxH`) |
 | `curve-fill` | `ScaleMode.CurveFill` | legacy curve redraw (ribbon/arc refitting), kept for comparison |
 | `leaf-petal` | `ScaleMode.LeafPetalArcs` | elongated floral leaf/petal curves |
 | `nearest` | `NearestNeighbor` | exact categorical nearest baseline |

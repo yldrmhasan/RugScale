@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** section 4.52 — Wall to Wall / roll designs: rapport detection and repeat (des3, H312, M29).
+**Last documented experiment:** section 4.53 — Wall to Wall: rapport opening (rapor açma) and sharper period detection (B317B, B390A).
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1987,6 +1987,34 @@ whole-design joins (des3 cut more visibly, H312 worse).
 Tests: `WallToWallRepeatTests` (detection of periods, half-drop and markers; exact continuation and
 drop when tiling; across-only and along-only repeats; seamless join lowers the seam; the
 WallToWall scale mode repeats instead of scaling). 162 tests pass.
+
+### 4.53 Wall to Wall: rapport opening (rapor açma), sharper periods — KEEP
+
+User designs `B390A_D.BLUE_N71` (400x500) and `B317B_NAVY_N71` (400x400), and a request: some
+rapports must be opened (grown across / along) before they can be repeated, e.g. B317B.
+
+Detection fix: B390A (horizontal painterly streaks) gave a false 24 px period (82 % match): streaks
+match at any small shift. A period must now be a sharp peak: at least 0.05 above the shifts 4 px
+on either side. B390A -> whole width; des3 / H312 / M29 unchanged.
+
+`RapportExpander.Expand` (CLI `--expand WxH [--expanded-output f.bmp] [--expand-block px]`,
+Workbench "Raporu aç"): the original rapport stays in the top-left corner; the added area is
+filled with blocks copied 1:1 from the design, chosen among the 5 best overlap matches (fixed seed)
+and cut in along minimum-mismatch paths in all four bands. The canvas is a torus, so the added
+area also matches the rapport's opposite edges and the opened rapport repeats without a join. Block
+grids are anchored on the original's edges (first band on its end, last band on its start); the
+original may only change inside its edge bands. Block size = rapport's short side / 6 (32-96):
+B317B 32 px gave rectangular splotch edges, 64 px organic splotches.
+
+| | B317B 399x400 -> 640x700 | B390A 399x500 -> 600x800 |
+|---|---|---|
+| direct repeat | the same motif every 400 px, a visible grid | seamless 1.18 / 1.10 |
+| opened rapport | organic; repeat every 640 x 700, no visible join (ratio 1.66 / 2.18: single-row measure is noisy on this speckle) | block marks: grey rectangles and straight block edges |
+
+Opening suits stationary textures (B317B, marble / splotch grounds); for painterly gradients with
+long streaks (B390A) the block copies show, and the design is better repeated as it is.
+Tests: three new (original kept away from its edge bands, own colours in similar proportions,
+opened rapport joins far less than a plain repeat, smaller size rejected); 166 tests pass.
 
 ## 5. Do-not-repeat rules
 

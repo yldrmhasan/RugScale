@@ -186,6 +186,14 @@ Rulo halılarda desen ölçeklenmez; rapor (tekrar birimi) halının enine ve bo
 Dikiş oranı ~1 ise birleşim görünmez. 1,5'in üstünde arayüz uyarı verir; örneğin des3 yalnızca
 boydan tekrar için tasarlanmış.
 
+**Rapor açma** (`RapportExpander`, Workbench "Raporu aç", CLI `--expand GxB`): küçük bir rapor
+(B317B 400×400) desenin kendi dokusundan üretilen içerikle enine/boyuna büyütülür. Orijinal rapor
+sol üstte aynen kalır (yalnızca kenar bantlarında dikiş geçebilir). Eklenen alan kaynaktan 1:1
+alınan bloklarla, en iyi eşleşen 5 aday arasından seçilerek ve dört kenarda en az uyumsuz hattan
+kesilerek doldurulur. Tuval halka kabul edildiği için açılmış rapor dikişsiz tekrar eder.
+Durağan dokularda (B317B) çok iyi sonuç verir; uzun fırça geçişli resimsel desenlerde (B390A)
+blok izleri görünür, bu desenler olduğu gibi tekrar edilmelidir.
+
 Legacy `ScaleMode.CurveFill` ve `LeafPetalArcs` karşılaştırma ve C069 eğitim kapıları için
 dondurulmuş halde duruyor (`CurveScaleAudit --engine legacy`). Yeni geliştirme neutral-first
 motor üzerinde yapılır.

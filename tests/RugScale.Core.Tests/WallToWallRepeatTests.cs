@@ -214,4 +214,124 @@ public sealed class WallToWallRepeatTests
             for (var x = 2; x < 240; x++)
                 Assert.Equal(result.GetPixel(x, y), result.GetPixel(x, y + 30));
     }
+
+    /// <summary>Blobby two-colour texture: a few large discs on a speckled ground.</summary>
+    private static DesignDocument Blobs()
+    {
+        var random =
+            new Random(5);
+        var design =
+            new DesignDocument(
+                120,
+                110,
+                Palette());
+
+        for (var y = 0; y < 110; y++)
+            for (var x = 0; x < 120; x++)
+                design.SetPixel(x, y, random.NextDouble() < 0.15 ? (byte)3 : (byte)0);
+
+        for (var k = 0; k < 9; k++)
+        {
+            var cx = random.Next(0, 120);
+            var cy = random.Next(0, 110);
+            var r = random.Next(6, 14);
+
+            for (var y = Math.Max(0, cy - r); y < Math.Min(110, cy + r); y++)
+                for (var x = Math.Max(0, cx - r); x < Math.Min(120, cx + r); x++)
+                    if ((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r)
+                        design.SetPixel(x, y, 2);
+        }
+
+        return design;
+    }
+
+    [Fact]
+    public void OpenRapport_KeepsTheOriginalAndGrowsWithItsOwnTexture()
+    {
+        var source =
+            Blobs();
+        var tile =
+            new RapportTile(0, 0, 120, 110);
+        var opened =
+            RapportExpander.Expand(
+                source,
+                tile,
+                190,
+                170);
+
+        Assert.Equal(190, opened.Width);
+        Assert.Equal(170, opened.Height);
+
+        // The original rapport is untouched away from the seam bands along its edges.
+        for (var y = 12; y < 110 - 12; y++)
+            for (var x = 12; x < 120 - 12; x++)
+                Assert.Equal(source.GetPixel(x, y), opened.GetPixel(x, y));
+
+        // Only the design's own colours, in similar proportions.
+        double Share(DesignDocument d, byte c)
+        {
+            var n = 0;
+
+            for (var y = 0; y < d.Height; y++)
+                for (var x = 0; x < d.Width; x++)
+                    if (d.GetPixel(x, y) == c)
+                        n++;
+
+            return n / (double)(d.Width * d.Height);
+        }
+
+        for (var y = 0; y < 170; y++)
+            for (var x = 0; x < 190; x++)
+                Assert.Contains(opened.GetPixel(x, y), new byte[] { 0, 2, 3 });
+
+        Assert.InRange(Share(opened, 2), Share(source, 2) - 0.12, Share(source, 2) + 0.12);
+    }
+
+    [Fact]
+    public void OpenRapport_RepeatsWithoutVisibleJoins()
+    {
+        var source =
+            Blobs();
+        var opened =
+            RapportExpander.Expand(
+                source,
+                new RapportTile(0, 0, 120, 110),
+                190,
+                170);
+        var tiled =
+            WallToWallRepeat.Render(
+                opened,
+                new RapportTile(0, 0, 190, 170),
+                400,
+                360,
+                new RapportOptions(RapportDirection.Both, KeepEdgeMarkers: false));
+
+        var plain =
+            WallToWallRepeat.Render(
+                source,
+                new RapportTile(0, 0, 120, 110),
+                400,
+                360,
+                new RapportOptions(RapportDirection.Both, KeepEdgeMarkers: false));
+
+        // The opened rapport wraps around: its joins read far less than repeating the design
+        // as it is, and stay near the texture itself.
+        Assert.True(
+            tiled.SeamAcross < plain.SeamAcross &&
+            tiled.SeamAlong < plain.SeamAlong &&
+            tiled.SeamAcross < 2 &&
+            tiled.SeamAlong < 2,
+            $"opened {tiled.SeamAcross:F2} / {tiled.SeamAlong:F2}, plain {plain.SeamAcross:F2} / {plain.SeamAlong:F2}");
+    }
+
+    [Fact]
+    public void OpenRapport_RejectsASmallerSize()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            RapportExpander.Expand(
+                Blobs(),
+                new RapportTile(0, 0, 120, 110),
+                100,
+                170));
+    }
 }

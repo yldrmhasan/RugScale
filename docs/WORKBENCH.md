@@ -53,4 +53,9 @@ The workbench is a RugScale-only host. General RugCAD editor responsibilities (P
 6. Enter the target width / height and **Run**. The panel reports the period used and the seam ratio
    per direction (about 1 = invisible; above 1.5 a warning: e.g. a design made to repeat only along
    the length).
+7. **Raporu aç (en / boy)**: grows a small rapport to the given width / height with new content
+   made from the design's own texture (the original stays in the top-left corner; the added area
+   wraps around to its opposite edges so the opened rapport repeats seamlessly). The opened rapport
+   is shown on the canvas (**Save preview** saves it) and **Run** repeats it. **Açmayı kaldır**
+   returns to the original rapport.
 

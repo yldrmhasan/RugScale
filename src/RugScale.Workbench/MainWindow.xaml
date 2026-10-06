@@ -98,6 +98,15 @@
                         <TextBlock Text="Kaydırma (drop, px)" Margin="0,4,0,2"/>
                         <TextBox x:Name="DropBox" Text="0" Margin="0,0,0,6"/>
                         <CheckBox x:Name="SeamlessCheck" Content="Dikişsiz birleştir" IsChecked="True" Margin="0,0,0,6"/>
+                        <TextBlock Text="Raporu aç (en / boy, px)" Margin="0,4,0,2"/>
+                        <UniformGrid Columns="2" Margin="0,0,0,4">
+                            <TextBox x:Name="OpenWidthBox" Text="" Margin="0,0,4,0"/>
+                            <TextBox x:Name="OpenHeightBox" Text="" Margin="4,0,0,0"/>
+                        </UniformGrid>
+                        <WrapPanel>
+                            <Button Content="Raporu aç" Click="OnOpenRapport" Padding="8,4" Margin="0,0,5,5"/>
+                            <Button Content="Açmayı kaldır" Click="OnClearOpenedRapport" Padding="8,4" Margin="0,0,5,5"/>
+                        </WrapPanel>
                         <TextBlock x:Name="RapportText" Text="Rapor: seçilmedi (otomatik bulunacak)."
                                    TextWrapping="Wrap" Foreground="#AFC7FF" Margin="0,0,0,12"/>
 

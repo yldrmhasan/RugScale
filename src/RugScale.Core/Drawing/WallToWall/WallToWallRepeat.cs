@@ -46,11 +46,14 @@ public sealed record RapportResult(
     double SeamAcross,
     double SeamAlong);
 
+/// <param name="Markers">Edge markers to paint instead of the ones found on the repeated source
+/// (an opened rapport carries none of the original design's markers).</param>
 public sealed record RapportOptions(
     RapportDirection Direction = RapportDirection.Both,
     bool Seamless = false,
     int SeamBand = 12,
-    bool KeepEdgeMarkers = true);
+    bool KeepEdgeMarkers = true,
+    EdgeMarkers? Markers = null);
 
 /// <summary>
 /// Fills a roll / wall-to-wall target by repeating one rapport, instead of scaling the design: on
@@ -110,7 +113,7 @@ public static class WallToWallRepeat
             Math.Clamp(tile.Height, 1, h - ty);
         var markers =
             options.KeepEdgeMarkers
-                ? RapportDetector.FindEdgeMarkers(source)
+                ? options.Markers ?? RapportDetector.FindEdgeMarkers(source)
                 : null;
 
         var src =

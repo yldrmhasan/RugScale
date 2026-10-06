@@ -33,6 +33,11 @@ public static class RapportDetector
 
     internal const double Tolerance = 0.02;
 
+    /// <summary>A period must beat the shifts this far on either side by <see cref="MinimumSharpness"/>.</summary>
+    internal const int SharpnessDistance = 4;
+
+    internal const double MinimumSharpness = 0.05;
+
     private const int Sample = 3;
 
     public static RapportDetection Detect(
@@ -396,7 +401,22 @@ public static class RapportDetector
                 k++;
             }
 
-            return scores[k];
+            // A true repeat is a sharp peak; streaks or a smooth texture only fade slowly with
+            // the shift (B390A: 82 % at 24 px, as much at 20 or 28 px).
+            var flank = 0.0;
+
+            foreach (var side in new[] { k - SharpnessDistance, k + SharpnessDistance })
+            {
+                if (side >= 0 &&
+                    side < scores.Count)
+                {
+                    flank = Math.Max(flank, scores[side].Score);
+                }
+            }
+
+            return scores[k].Score - flank >= MinimumSharpness
+                ? scores[k]
+                : (0, scores[k].Score);
         }
 
         return (0, best);
