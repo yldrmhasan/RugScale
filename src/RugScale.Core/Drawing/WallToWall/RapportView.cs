@@ -53,7 +53,8 @@ public static class RapportView
     /// <summary>
     /// Fills a <paramref name="viewWidth"/> x <paramref name="viewHeight"/> view: view pixel (x, y)
     /// shows design pixel ((x - offsetX) / zoom, (y - offsetY) / zoom) of the endless repeat.
-    /// With <paramref name="borders"/> the first view pixel of every repeat is tinted.
+    /// With <paramref name="borders"/> the first view pixel of every repeat is drawn in
+    /// <see cref="BorderColor"/> (a tint got lost on busy designs).
     /// </summary>
     public static void Render(
         int[] tile,
@@ -128,7 +129,7 @@ public static class RapportView
                 if (borders &&
                     (columnEdge[x] || (rowChanged && r == 0)))
                 {
-                    pixel = Blend(pixel, BorderColor);
+                    pixel = BorderColor;
                 }
 
                 view[line + x] = pixel;
@@ -153,19 +154,5 @@ public static class RapportView
         return m < 0
             ? m + size
             : m;
-    }
-
-    private static int Blend(
-        int a,
-        int b)
-    {
-        var r =
-            (((a >> 16) & 0xFF) + ((b >> 16) & 0xFF)) / 2;
-        var g =
-            (((a >> 8) & 0xFF) + ((b >> 8) & 0xFF)) / 2;
-        var bl =
-            ((a & 0xFF) + (b & 0xFF)) / 2;
-
-        return unchecked((int)(0xFF000000u | ((uint)r << 16) | ((uint)g << 8) | (uint)bl));
     }
 }
