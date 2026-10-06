@@ -2097,6 +2097,34 @@ B317B 640x700: line scores 1.69 / 1.46 (source 1.90 / 5.94), straight edges per 
 (source 58.5). Test: strokes ramping across (plain join visible) opened -> join below 1.5 and below
 the plain one. 168 tests pass.
 
+### 4.56 Rapport join of stroke designs: one stroke end per row — REPLACES the 4.55 blend
+
+User (screenshot of the 4.55 B390A join, circled): "bu rapor yeri kötü duruyor". The 4.55 join
+blended both ends over a 100 px overlap in random 40 x 3 patches: no straight line, but a torn,
+comb-like strip where every stroke frays.
+
+`StrokeEnds`: every row switches from the previous repeat's tail (A) to this repeat's start (B)
+exactly once, like a stroke ending and the next one starting.
+- Unary: tone of A over the 6 px before the switch against B over the 6 px after (3 rows).
+- Step between rows y and y + 1 switching at c and d: along |c - d| one row shows A, the other B.
+  It costs only what that horizontal edge adds over the rows' own contrast (half weight), so free
+  between strokes and expensive inside one (a stroke is not torn into teeth).
+- A gentle pull (1.5 tone units / px) towards a place that wanders with the rows
+  (sin y/23 x cos y/61, +-40 % of the overlap): with no better match the ends do not line up.
+- Exact minimum by dynamic programming (prefix / suffix minima, O(rows x band)), closed along.
+- On dithered designs a stroke end tapers over +-12 px of pixel noise.
+
+| attempt | result |
+|---|---|
+| 4.55 patches over the overlap | torn comb strip |
+| one switch per row, full step cost, overlap 99 px | strokes end bluntly on one near-vertical line |
+| + half step cost, wander pull, 12 px taper | ends taper, still gathered in a ~50 px strip |
+| + overlap target / 3 (200 px) | ends spread; but lengthening 400 px on a 399 px design repeated pieces (ladder) |
+| overlap target / 4 (150 px) | **kept**: staggered stroke ends, no ladder |
+
+B390A 600x800: vertical line score 1.59 (source 7.40), straight colour edges 0.0 / 10k px (source 7.8); B317B unchanged (no strokes).
+168 tests pass.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.

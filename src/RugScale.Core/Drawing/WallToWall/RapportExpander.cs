@@ -19,10 +19,10 @@ namespace RugScale.Core.Drawing.WallToWall;
 ///
 /// Every path and cut closes on itself, so the opened rapport repeats like the original. Where the
 /// original's own join is visible (B390A across: a straight line between the repeats), lengthening
-/// grows a quarter wider and then overlaps both ends, blended over the whole overlap. On dithered
-/// designs every transition is drawn as stroke-shaped patches (<see cref="PatchNoise"/>), not
-/// single pixels and not one straight cut. The original rapport keeps its content: only the bands
-/// along its edges can change.
+/// grows a quarter wider and then overlaps both ends: every row switches from one end to the other
+/// once, where its tones meet, the switch points staggered like stroke ends
+/// (<see cref="StrokeEnds"/>). The original rapport keeps its content: only the bands along its
+/// edges can change.
 /// </summary>
 public static class RapportExpander
 {
@@ -217,7 +217,8 @@ public static class RapportExpander
     /// Grows a rapport across to <paramref name="target"/> columns: by lengthening its strokes, or
     /// by splicing strips. Splicing closes the rapport's own join across (the strip's tail is cut
     /// into its start); lengthening does not, so a visible join (B390A: a straight line between
-    /// the repeats) is closed separately: grown a band wider, both ends then overlap.
+    /// the repeats) is closed separately: grown a quarter of the target wider, both ends then
+    /// overlap (a narrower overlap lined all stroke ends up in one strip).
     /// </summary>
     private static (byte[] Grid, int Width) Grow(
         byte[] grid,
@@ -244,7 +245,7 @@ public static class RapportExpander
             WrapRatio(Transpose(grid, gw, gh), gh, gw, rgb) >= SeamlessWrap;
         var b =
             visible
-                ? Math.Max(2, Math.Min(bandWanted > 0 ? bandWanted : Math.Clamp(gw / 4, 2, 400), (gw - 1) / 3))
+                ? Math.Max(2, bandWanted > 0 ? Math.Min(bandWanted, (gw - 1) / 3) : Math.Max(target / 4, 2))
                 : 0;
 
         (grid, gw) =
@@ -257,8 +258,9 @@ public static class RapportExpander
 
     /// <summary>
     /// Closes a rapport's join across by overlapping its last <paramref name="band"/> columns onto
-    /// its first: they are joined along a free-form minimum cut (dithered on dithered designs) and
-    /// the rapport becomes <paramref name="band"/> columns narrower.
+    /// its first, one switch per row (<see cref="StrokeEnds"/>), tapered in dither on dithered
+    /// designs; the rapport becomes <paramref name="band"/> columns narrower. Blending the ends
+    /// over the whole overlap in random patches looked torn (user: B390A join "kötü duruyor").
     /// </summary>
     private static (byte[] Grid, int Width) CloseWrap(
         byte[] grid,
@@ -268,31 +270,19 @@ public static class RapportExpander
         int[] rgb,
         Random random)
     {
-        // Left side of the cut: the previous repeat's tail; right side: this repeat's start.
-        var (_, left) =
-            SeamSide(
-                (x, y) => Difference(grid[y * gw + gw - band + x], grid[y * gw + x], rgb),
+        // Left of a row's switch point: the previous repeat's tail (A); right of it: this repeat's
+        // start (B). One switch per row, like a stroke ending and the next one starting.
+        var cut =
+            StrokeEnds(
+                (x, y) => grid[y * gw + gw - band + x],
+                (x, y) => grid[y * gw + x],
                 band,
-                gh);
+                gh,
+                rgb);
         var feather =
-            FeatherWidth(grid, gw, gh, band);
-        var mix =
-            Feather(left, band, gh, feather);
-
-        // A dithered design is made of soft dithered gradients: there the two ends are blended
-        // over the whole band, a gradient like the design's own, instead of meeting at one cut.
-        if (feather > 0)
-        {
-            for (var y = 0; y < gh; y++)
-            {
-                for (var x = 0; x < band; x++)
-                {
-                    // Linear: stroke ends spread over the whole band instead of lining up.
-                    mix[y * band + x] = (x + 0.5) / band;
-                }
-            }
-        }
-
+            FeatherWidth(grid, gw, gh, band) > 0
+                ? StrokeTaper
+                : 0;
         var salt =
             random.Next();
         var nw =
@@ -302,17 +292,19 @@ public static class RapportExpander
 
         for (var y = 0; y < gh; y++)
         {
+            var c =
+                cut[y];
+
             for (var x = 0; x < band; x++)
             {
-                // Patches drawn out along the strokes, not single pixels: they read as stroke
-                // fragments instead of salt and pepper.
-                var chance =
-                    feather > 0
-                        ? PatchNoise(x, y, salt, Grain.Across)
-                        : Noise(x, y, salt);
+                // A dithered stroke ends in thinning dither, not a hard edge.
+                var start =
+                    feather == 0
+                        ? x >= c
+                        : Noise(x, y, salt) < Math.Clamp((x - c + feather + 0.5) / (2.0 * feather), 0, 1);
 
                 result[y * nw + x] =
-                    chance < mix[y * band + x]
+                    start
                         ? grid[y * gw + x]
                         : grid[y * gw + gw - band + x];
             }
@@ -323,6 +315,312 @@ public static class RapportExpander
 
         return (result, nw);
     }
+
+    /// <summary>
+    /// Per row, where source A (left) hands over to source B (right) inside a band of horizontal
+    /// strokes. A row hands over where the tone of A just before matches the tone of B just after
+    /// (3 rows x <see cref="EndWindow"/> px). Neighbouring rows may hand over at different places,
+    /// but the step between them shows as a short horizontal edge between A and B: it costs what
+    /// that edge adds over the rows' own contrast, so it is free between strokes and expensive
+    /// inside one (a stroke must not be torn into teeth). Exact minimum by dynamic programming over
+    /// the rows, closing on itself along (row 0 follows the last row).
+    /// </summary>
+    private static int[] StrokeEnds(
+        Func<int, int, byte> sourceA,
+        Func<int, int, byte> sourceB,
+        int band,
+        int rows,
+        int[] rgb)
+    {
+        var lo = 1;
+        var hi = band - 1;
+
+        if (hi <= lo)
+            return Enumerable.Repeat(Math.Max(0, band / 2), rows).ToArray();
+
+        // Per-pixel colour, and colour summed over 3 rows (wrapping) with prefix sums along x.
+        var colorA =
+            new int[rows * band * 3];
+        var colorB =
+            new int[rows * band * 3];
+
+        for (var y = 0; y < rows; y++)
+        {
+            for (var x = 0; x < band; x++)
+            {
+                for (var channel = 0; channel < 3; channel++)
+                {
+                    colorA[(y * band + x) * 3 + channel] = rgb[sourceA(x, y) * 3 + channel];
+                    colorB[(y * band + x) * 3 + channel] = rgb[sourceB(x, y) * 3 + channel];
+                }
+            }
+        }
+
+        long[] RowSums(
+            int[] color)
+        {
+            var sums =
+                new long[rows * (band + 1) * 3];
+
+            for (var y = 0; y < rows; y++)
+            {
+                for (var x = 0; x < band; x++)
+                {
+                    for (var channel = 0; channel < 3; channel++)
+                    {
+                        long v = 0;
+
+                        for (var dy = -1; dy <= 1; dy++)
+                            v += color[((((y + dy) % rows) + rows) % rows * band + x) * 3 + channel];
+
+                        sums[(y * (band + 1) + x + 1) * 3 + channel] =
+                            sums[(y * (band + 1) + x) * 3 + channel] + v;
+                    }
+                }
+            }
+
+            return sums;
+        }
+
+        var sumA =
+            RowSums(colorA);
+        var sumB =
+            RowSums(colorB);
+
+        // Handing over before column c: A's tone over [c - w, c) against B's over [c, c + w).
+        var unary =
+            new long[rows * band];
+
+        for (var y = 0; y < rows; y++)
+        {
+            for (var c = lo; c <= hi; c++)
+            {
+                var wa =
+                    Math.Min(EndWindow, c);
+                var wb =
+                    Math.Min(EndWindow, band - c);
+                long cost = 0;
+
+                for (var channel = 0; channel < 3; channel++)
+                {
+                    var a =
+                        (sumA[(y * (band + 1) + c) * 3 + channel] - sumA[(y * (band + 1) + c - wa) * 3 + channel]) / (3.0 * wa);
+                    var b =
+                        (sumB[(y * (band + 1) + c + wb) * 3 + channel] - sumB[(y * (band + 1) + c) * 3 + channel]) / (3.0 * wb);
+                    cost += (long)Math.Abs(a - b);
+                }
+
+                // Stroke ends spread over the band: a gentle pull towards a place that wanders
+                // with the rows, so where no place matches better the ends do not line up.
+                var wander =
+                    band * (0.5 + 0.4 * Math.Sin(y / 23.0) * Math.Cos(y / 61.0 + 1.3));
+                cost += (long)(WanderPull * Math.Abs(c - wander));
+
+                unary[y * band + c] = cost;
+            }
+        }
+
+        // Step between row y and y + 1: what the edge between A in one row and B in the other adds
+        // over the rows' own contrast (colours averaged over 3 px across, so dither is not edge).
+        int Tone(
+            int[] color,
+            int x,
+            int y,
+            int channel)
+        {
+            var sum = 0;
+
+            for (var dx = -1; dx <= 1; dx++)
+                sum += color[(y * band + Math.Clamp(x + dx, 0, band - 1)) * 3 + channel];
+
+            return sum / 3;
+        }
+
+        int Contrast(
+            int[] upper,
+            int[] lower,
+            int x,
+            int y,
+            int next)
+        {
+            var sum = 0;
+
+            for (var channel = 0; channel < 3; channel++)
+                sum += Math.Abs(Tone(upper, x, y, channel) - Tone(lower, x, next, channel));
+
+            return sum;
+        }
+
+        // aboveA[y][x]: row y shows A and row y + 1 shows B at column x; aboveB the reverse.
+        var aboveA =
+            new long[rows * (band + 1)];
+        var aboveB =
+            new long[rows * (band + 1)];
+
+        for (var y = 0; y < rows; y++)
+        {
+            var next =
+                (y + 1) % rows;
+
+            for (var x = 0; x < band; x++)
+            {
+                var own =
+                    Math.Max(Contrast(colorA, colorA, x, y, next), Contrast(colorB, colorB, x, y, next));
+                aboveA[y * (band + 1) + x + 1] =
+                    aboveA[y * (band + 1) + x] + Math.Max(0, Contrast(colorA, colorB, x, y, next) - own) / 2;
+                aboveB[y * (band + 1) + x + 1] =
+                    aboveB[y * (band + 1) + x] + Math.Max(0, Contrast(colorB, colorA, x, y, next) - own) / 2;
+            }
+        }
+
+        // Row y hands over at c, row y + 1 at d: between them one row shows A, the other B.
+        long Step(
+            int y,
+            int c,
+            int d) =>
+            c > d
+                ? aboveA[y * (band + 1) + c] - aboveA[y * (band + 1) + d]
+                : aboveB[y * (band + 1) + d] - aboveB[y * (band + 1) + c];
+
+        int[] Solve(
+            int fixedStart,
+            out long total)
+        {
+            var cost =
+                new long[band];
+            var from =
+                new int[rows * band];
+            const long never = long.MaxValue / 4;
+
+            for (var c = 0; c < band; c++)
+            {
+                cost[c] =
+                    c < lo || c > hi || (fixedStart >= 0 && c != fixedStart)
+                        ? never
+                        : unary[c];
+            }
+
+            for (var y = 1; y < rows; y++)
+            {
+                var next =
+                    new long[band];
+                var prev =
+                    y - 1;
+
+                // From c >= d: cost[c] + aboveA[c] - aboveA[d] -> suffix minimum of cost + aboveA.
+                var suffix =
+                    new long[band + 1];
+                var suffixAt =
+                    new int[band + 1];
+                suffix[band] = never;
+
+                for (var c = band - 1; c >= 0; c--)
+                {
+                    var v =
+                        cost[c] >= never
+                            ? never
+                            : cost[c] + aboveA[prev * (band + 1) + c];
+                    suffix[c] = v < suffix[c + 1] ? v : suffix[c + 1];
+                    suffixAt[c] = v < suffix[c + 1] ? c : suffixAt[c + 1];
+                }
+
+                // From c <= d: cost[c] - aboveB[c] + aboveB[d] -> prefix minimum of cost - aboveB.
+                var prefix =
+                    never;
+                var prefixAt = -1;
+
+                for (var d = 0; d < band; d++)
+                {
+                    if (cost[d] < never)
+                    {
+                        var v =
+                            cost[d] - aboveB[prev * (band + 1) + d];
+
+                        if (prefixAt < 0 || v < prefix)
+                        {
+                            prefix = v;
+                            prefixAt = d;
+                        }
+                    }
+
+                    if (d < lo || d > hi)
+                    {
+                        next[d] = never;
+                        continue;
+                    }
+
+                    var fromAbove =
+                        suffix[d] >= never
+                            ? never
+                            : suffix[d] - aboveA[prev * (band + 1) + d];
+                    var fromBelow =
+                        prefixAt < 0
+                            ? never
+                            : prefix + aboveB[prev * (band + 1) + d];
+
+                    if (fromAbove <= fromBelow)
+                    {
+                        next[d] = fromAbove >= never ? never : fromAbove + unary[y * band + d];
+                        from[y * band + d] = suffixAt[d];
+                    }
+                    else
+                    {
+                        next[d] = fromBelow + unary[y * band + d];
+                        from[y * band + d] = prefixAt;
+                    }
+                }
+
+                cost = next;
+            }
+
+            // Close along: the last row steps into row 0.
+            var end = -1;
+            total = never;
+
+            for (var c = lo; c <= hi; c++)
+            {
+                if (cost[c] >= never)
+                    continue;
+
+                var v =
+                    cost[c] + (fixedStart >= 0 ? Step(rows - 1, c, fixedStart) : 0);
+
+                if (v < total)
+                {
+                    total = v;
+                    end = c;
+                }
+            }
+
+            var cuts =
+                new int[rows];
+
+            for (var y = rows - 1; y >= 0; y--)
+            {
+                cuts[y] = end;
+
+                if (y > 0)
+                    end = from[y * band + end];
+            }
+
+            return cuts;
+        }
+
+        // Free solution first; then closed on itself from its own start column.
+        var free =
+            Solve(-1, out _);
+
+        return Solve(free[0], out _);
+    }
+
+    /// <summary>Width (px) over which tones meet at a stroke end.</summary>
+    internal const int EndWindow = 6;
+
+    /// <summary>Half length (px) of a dithered stroke end.</summary>
+    internal const int StrokeTaper = 12;
+
+    /// <summary>Tone units per px away from the wandering place where stroke ends gather.</summary>
+    internal const double WanderPull = 1.5;
 
     /// <summary>
     /// Widens a design of horizontal strokes by lengthening them: along a top-to-bottom path

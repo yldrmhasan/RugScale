@@ -201,8 +201,10 @@ kurulmaz (resimsel, dither'lı zeminlerde bloklar dikdörtgen olarak görünüyo
 
 Her hat ve kesim kendi üzerine kapanır, açılmış rapor orijinal gibi tekrar eder. Orijinalin kendi
 enine birleşimi görünüyorsa (B390A: tekrarlar arasında düz çizgi), izler çeyrek fazla uzatılıp iki
-uç üst üste bindirilerek bu çizgi de kapatılır. Dither'lı desende geçişler tek pikselle ya da tek
-kesimle değil, iz yönünde uzun parçalarla yapılır; geçiş fırça ucu gibi görünür. Orijinal raporun
+uç üst üste bindirilerek bu çizgi de kapatılır: her satır bir uçtan diğerine tek bir noktada,
+tonların buluştuğu yerde geçer; geçiş noktaları satırdan satıra kayar, böylece izler fırça ucu gibi
+farklı yerlerde biter (bir iz içinde satırlar birlikte kalır). Dither'lı desende iz ucu ±12 px
+inceltilir. Orijinal raporun
 içeriği korunur; yalnızca kenar bantları değişebilir. Workbench'te açma sonrası hedef ölçü en az
 açılmış rapor kadar yapılır, Run açılmış raporu tekrarlar.
 
