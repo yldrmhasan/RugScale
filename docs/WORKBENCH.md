@@ -8,7 +8,8 @@ It intentionally does **not** reuse RugCAD's `DesignCanvas`, drawing tools, sele
 
 1. Open an uncompressed 8-bit indexed BMP.
 2. Choose target pixel size, source/target warp-weft quality and a RugScale mode
-   (curve-heavy designs: **RugScale Curve — neutral-first**).
+   (curve-heavy, line and classic designs: **RugScale Curve — neutral-first**;
+   abstract / distressed designs: **RugScale Texture — abstract / distressed**).
 3. Run the non-destructive preview.
 4. For motif/topology shrink training:
    - choose **Select broken motif** and drag a rectangle,

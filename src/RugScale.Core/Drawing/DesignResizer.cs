@@ -94,6 +94,13 @@ public enum ScaleMode
     /// </summary>
     CurveNeutral,
 
+    /// <summary>
+    /// RugScale Texture: for abstract / distressed designs. Large structure is scaled, the grain
+    /// (one-knot speckle, one-row scratch streaks) is copied 1:1 in overlapping blocks joined
+    /// along minimum-mismatch seams, so the texture keeps its fineness when enlarging or shrinking.
+    /// </summary>
+    Texture,
+
     /// <summary>Bilinearly blends the 4 nearest source pixels' colors, then snaps the blend to the closest colour the design already uses — softer diagonal/curve edges than NearestNeighbor at the cost of some colour bleeding.</summary>
     Smooth,
 
@@ -241,6 +248,11 @@ public static class DesignResizer
                     sourceWeftDensity,
                     targetWarpDensity,
                     targetWeftDensity);
+                break;
+            case ScaleMode.Texture:
+                TextureQuiltScaleEngine.Resize(
+                    source,
+                    result);
                 break;
             case ScaleMode.Smooth:
                 ScaleSmooth(source, result);

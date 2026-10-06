@@ -141,6 +141,30 @@ kordon olarak algılanmaz. `LineLayer` çizgileri renkten bağımsız, piksel ba
 
 B137A %160: kaynakta 1 hücre olup hedefte 2 piksel kalınlaşan çizgi pikselleri 0,99 M → 0,33 M.
 
+### RugScale Texture: soyut / eskitme desenler (B141C, B142C, B151C)
+
+Bu desenlerde 1 düğümlük kumlanma ve tek sıralık çizikler desenin kendisidir. Piksel eşleyen her
+mod bu dokuyu ölçekler: %160'ta taneler 1,6 kat irileşir, %80'de düzensizleşir.
+`ScaleMode.Texture` (CLI `texture`, Workbench "RugScale Texture — abstract / distressed") deseni
+iki katmana ayırır:
+1. **Yapı**: 7x7 çoğunluk filtresi (lekeler, bantlar, çerçeve). Nötr olarak ölçeklenir; bant
+   genişlikleri orantılı kalır.
+2. **Dikiş haritası**: hedef 24 piksellik üst üste binen bloklarla kaplanır. Her blok kaynaktan 1:1
+   alınır; blok, ölçeklenmiş konumun ±16 piksel çevresinde yapı yerleşimi en uygun ve komşularla
+   en iyi birleşen yerden seçilir. Birleşim, iki tarafın en iyi eşleştiği hattan kesilir.
+3. **Doku**: yapıdan farklı olan kaynak pikselleri harita üzerinden 1:1, yalnızca aynı yapı renginin
+   üzerine taşınır. Harita başka bir yapıya denk gelirse nötr piksel kullanılır.
+
+Kenardaki 1 piksellik teknik işaret sütunu (mavi) hedefin kenarında korunur.
+
+| Desen | %160 tane (nearest) | %80 tane (nearest) | renk oranı farkı |
+|---|---|---|---|
+| B141C | 1,02-1,05x (1,60x) | 0,76-0,80x (0,90x) | %0,05-0,47 |
+| B142C | 1,02-1,05x (1,60x) | 0,86-0,88x (0,90x) | %0,20-0,68 |
+| B151C | 1,01-1,02x (1,60x) | 0,82-0,84x (0,89x) | %0,15-0,63 |
+
+Büyütmede fark belirgin: doku kaynak gibi ince kalır. Küçültmede sonuç nearest'e yakındır.
+
 Legacy `ScaleMode.CurveFill` ve `LeafPetalArcs` karşılaştırma ve C069 eğitim kapıları için
 dondurulmuş halde duruyor (`CurveScaleAudit --engine legacy`). Yeni geliştirme neutral-first
 motor üzerinde yapılır.

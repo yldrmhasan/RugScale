@@ -41,6 +41,7 @@
                         <ComboBox x:Name="ModeCombo" SelectedIndex="0" Margin="0,4,0,10">
                             <ComboBoxItem Content="RugScale — motif &amp; topology" Tag="motif"/>
                             <ComboBoxItem Content="RugScale Curve — neutral-first" Tag="curve"/>
+                            <ComboBoxItem Content="RugScale Texture — abstract / distressed" Tag="texture"/>
                             <ComboBoxItem Content="Curve &amp; Fill (legacy)" Tag="curve-fill"/>
                             <ComboBoxItem Content="Leaf / Petal Arcs" Tag="leaf-petal"/>
                             <ComboBoxItem Content="Nearest Neighbor" Tag="nearest"/>

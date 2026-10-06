@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** section 4.50 — classic floral designs (B137A): per-pixel line layer, one-pixel outlines in fill colours.
+**Last documented experiment:** section 4.51 — abstract / distressed designs (B141C, B142C, B151C): new RugScale Texture mode.
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1898,6 +1898,48 @@ shapes match the source cell for cell with one-pixel lines.
   A023A output byte-identical; 153 tests pass.
 
 Decision: **KEEP**.
+
+### 4.51 Abstract / distressed designs: RugScale Texture mode — NEW MODE
+
+User designs `B141C_BLUE_N65`, `B142C_BEIGE_N65`, `B151C_BEIGE_N65` (960x2250, 4-5 colours plus the
+blue technical marker column): washed grounds, one-knot speckle, one-row scratch streaks, ragged
+splotches; B141C also has a straight frame of ~12 px bands. Here the grain is the drawing. Every
+pixel-mapping mode scales it: at 160 % mean run length is 1.58-1.60x the source (speckle and
+streaks one or two knots thick), at 80 % 0.83-0.92x; motif mode also shifts colour proportions
+when shrinking (2.66 %, B142C).
+
+Metrics (`texstats.py`, kept with the scratch tools): colour-histogram difference; mean horizontal /
+vertical run length vs source (grain; ideal 1.0x); structure = mean L1 between per-cell colour
+histograms on a 24x56 grid ("fine" on 48x112).
+
+Steps measured on the way (B142C 160 % unless noted):
+- plain quilting (blocks copied 1:1 near the scaled position, min-cut seams): grain 1.01x but
+  structure 3.6 % (32 px) / 2.1 % (12 px), and visible repetition (the same patch stamped in a grid),
+- guided quilting (candidates within 16 px ranked by guide layout): repetition reduced, structure
+  2.5 %, but B141C frame bands broke into repeated stripes (blocks cannot scale a 12 px band),
+- structure / grain layers (7x7 majority = structure, scaled; grain carried 1:1 through the quilt
+  map onto the same structure colour): B141C frame clean, structure 1.8 %,
+- grain only from structure interiors: REJECTED (grain lost, histogram error 1.5-3.4 %),
+- 5x5 structure window: REJECTED (grain coarsened to 1.6-2.1x),
+- fallback to the neutral pixel where the quilt lands on another structure: histogram error
+  0.05-0.68 % (was 0.4-1.6 %). KEEP.
+
+Final (`TextureQuiltScaleEngine`, blocks 24/overlap 6, search 16, 7x7 structure):
+
+| Design | 160 % grain (nearest) | 160 % hist / struct | 80 % grain (nearest) | 80 % hist / struct |
+|---|---|---|---|---|
+| B141C | 1.02-1.05x (1.58-1.60x) | 0.47 % / 1.63 % | 0.76-0.80x (0.90x) | 0.05 % / 2.09 % |
+| B142C | 1.02-1.05x (1.60x) | 0.68 % / 1.95 % | 0.86-0.88x (0.89-0.92x) | 0.20 % / 2.50 % |
+| B151C | 1.01-1.02x (1.60x) | 0.63 % / 1.74 % | 0.82-0.84x (0.88-0.89x) | 0.15 % / 2.40 % |
+
+Enlarging is where the mode pays off (grain stays one knot; at 1:1 the result reads like the source,
+nearest reads coarse). Shrinking is close to nearest: slightly better colour proportions, slightly
+finer grain. Structure differences of 1.6-2.5 % come from the 1:1 blocks; frames and bands stay in
+place. Runs in 1.5-4.5 s for 960x2250.
+
+Tests: `TextureQuiltScaleEngineTests` (grain ratio < 1.2 while nearest > 1.4, halves stay in place
+with their speckle density, technical marker column only on the target edge; shrink keeps colour
+proportions); the palette theory covers `ScaleMode.Texture`. 156 tests pass.
 
 ## 5. Do-not-repeat rules
 

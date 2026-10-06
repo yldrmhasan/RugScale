@@ -182,6 +182,7 @@ public partial class MainWindow : Window
         return tag switch
         {
             "curve" => ScaleMode.CurveNeutral,
+            "texture" => ScaleMode.Texture,
             "curve-fill" => ScaleMode.CurveFill,
             "leaf-petal" => ScaleMode.LeafPetalArcs,
             "nearest" => ScaleMode.NearestNeighbor,

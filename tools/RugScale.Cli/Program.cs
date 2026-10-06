@@ -22,6 +22,7 @@ static int Usage(
           motif
           curve-fill
           curve          (neutral-first curve redraw)
+          texture        (abstract / distressed designs: grain kept 1:1)
           leaf-petal
           smooth
           area-average
@@ -130,6 +131,9 @@ static ScaleMode ParseMode(
         "curve" or
         "curve-neutral" =>
             ScaleMode.CurveNeutral,
+
+        "texture" =>
+            ScaleMode.Texture,
 
         "leaf-petal" or
         "leaf-petal-arcs" =>
