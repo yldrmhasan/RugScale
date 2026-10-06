@@ -44,6 +44,17 @@ public partial class MainWindow : Window
     private RapportTile? _rapportTile;
     private DesignDocument? _openedRapport;
 
+    // Rapor görünümü: the preview repeated without end.
+    private int[]? _viewTile;
+    private int _viewTileWidth;
+    private int _viewTileHeight;
+    private int _viewDrop;
+    private double _viewOffsetX;
+    private double _viewOffsetY;
+    private Point? _viewPan;
+    private WriteableBitmap? _viewBitmap;
+    private int[] _viewPixels = [];
+
     public MainWindow()
     {
         InitializeComponent();
@@ -221,6 +232,7 @@ public partial class MainWindow : Window
         ZoomText.Text = $"{e.NewValue * 100:0}%";
         RenderPreviewSize();
         UpdateSelectionVisual(ActiveSelection());
+        RenderRapportView();
     }
 
     private void RenderPreview()
@@ -234,6 +246,205 @@ public partial class MainWindow : Window
         PreviewImage.Source = RenderDocument(_preview);
         RenderPreviewSize();
         UpdateSelectionVisual(ActiveSelection());
+
+        if (RapportViewCheck.IsChecked == true)
+        {
+            BuildRapportViewTile();
+            RenderRapportView();
+        }
+    }
+
+    private void OnRapportViewToggled(object sender, RoutedEventArgs e)
+    {
+        var on = RapportViewCheck.IsChecked == true;
+        PreviewScroll.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
+        RapportViewHost.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!on)
+            return;
+
+        BuildRapportViewTile();
+        RenderRapportView();
+
+        if (_viewTile is not null)
+        {
+            StatusText.Text =
+                $"Rapor görünümü: {_viewTileWidth}×{_viewTileHeight}" +
+                (_viewDrop == 0 ? "" : $", kaydırma {_viewDrop}") +
+                " sonsuz tekrar. Sürükleyerek gezin, fare tekerleğiyle yakınlaştırın. Alan seçmek için görünümü kapatın.";
+        }
+    }
+
+    private void OnRapportViewOptionChanged(object sender, RoutedEventArgs e) =>
+        RenderRapportView();
+
+    private void OnRapportViewSizeChanged(object sender, SizeChangedEventArgs e) =>
+        RenderRapportView();
+
+    /// <summary>Selections are drawn on the normal preview: leave the rapport view first.</summary>
+    private void LeaveRapportView()
+    {
+        if (RapportViewCheck.IsChecked == true)
+            RapportViewCheck.IsChecked = false;
+    }
+
+    /// <summary>
+    /// What repeats: the opened rapport (with the drop), the chosen rapport area when the source
+    /// is shown (without the edge marker columns), otherwise the whole preview.
+    /// </summary>
+    private void BuildRapportViewTile()
+    {
+        _viewTile = null;
+        var document = _preview;
+
+        if (document is null)
+            return;
+
+        var region = new RapportTile(0, 0, document.Width, document.Height);
+        var drop = 0;
+
+        if (_openedRapport is not null && ReferenceEquals(document, _openedRapport))
+        {
+            drop = ParseDrop();
+        }
+        else if (_sourceImage is not null &&
+                 ReferenceEquals(document, _sourceImage.Document) &&
+                 _rapportTile is not null)
+        {
+            region = _rapportTile;
+            drop = ParseDrop();
+        }
+
+        var (pixels, width, height) = RapportView.TilePixels(document, region);
+        _viewTile = pixels;
+        _viewTileWidth = width;
+        _viewTileHeight = height;
+        _viewDrop = drop;
+    }
+
+    private void RenderRapportView()
+    {
+        if (RapportViewHost is null ||
+            RapportViewHost.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        if (_viewTile is null)
+        {
+            RapportViewImage.Source = null;
+            return;
+        }
+
+        // Drawn in device pixels, so the repeat stays crisp on scaled displays.
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var scale = dpi.PixelsPerDip;
+        var width = (int)Math.Ceiling(RapportViewHost.ActualWidth * scale);
+        var height = (int)Math.Ceiling(RapportViewHost.ActualHeight * scale);
+
+        if (width <= 0 || height <= 0)
+            return;
+
+        if (_viewBitmap is null ||
+            _viewBitmap.PixelWidth != width ||
+            _viewBitmap.PixelHeight != height)
+        {
+            _viewBitmap = new WriteableBitmap(
+                width,
+                height,
+                dpi.PixelsPerInchX,
+                dpi.PixelsPerInchY,
+                PixelFormats.Bgra32,
+                null);
+            _viewPixels = new int[width * height];
+            RapportViewImage.Source = _viewBitmap;
+        }
+
+        var zoom = Math.Clamp(ZoomSlider.Value, 0.05, 16);
+        RapportView.Render(
+            _viewTile,
+            _viewTileWidth,
+            _viewTileHeight,
+            _viewDrop,
+            zoom * scale,
+            _viewOffsetX * scale,
+            _viewOffsetY * scale,
+            RapportGridCheck.IsChecked == true,
+            _viewPixels,
+            width,
+            height);
+        _viewBitmap.WritePixels(new Int32Rect(0, 0, width, height), _viewPixels, width * 4, 0);
+    }
+
+    private void OnRapportViewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _viewPan = e.GetPosition(RapportViewHost);
+        RapportViewHost.CaptureMouse();
+    }
+
+    private void OnRapportViewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_viewPan is null || e.LeftButton != MouseButtonState.Pressed)
+            return;
+
+        var position = e.GetPosition(RapportViewHost);
+        _viewOffsetX += position.X - _viewPan.Value.X;
+        _viewOffsetY += position.Y - _viewPan.Value.Y;
+        _viewPan = position;
+        WrapViewOffsets();
+        RenderRapportView();
+    }
+
+    private void OnRapportViewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        _viewPan = null;
+        RapportViewHost.ReleaseMouseCapture();
+    }
+
+    private void OnRapportViewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        // Zoom around the cursor: the design pixel under it stays put.
+        var position = e.GetPosition(RapportViewHost);
+        var old = ZoomSlider.Value;
+        var next = Math.Clamp(
+            e.Delta > 0 ? old * 1.15 : old / 1.15,
+            ZoomSlider.Minimum,
+            ZoomSlider.Maximum);
+        _viewOffsetX = position.X - (position.X - _viewOffsetX) * next / old;
+        _viewOffsetY = position.Y - (position.Y - _viewOffsetY) * next / old;
+        WrapViewOffsets();
+        ZoomSlider.Value = next;
+        RenderRapportView();
+        e.Handled = true;
+    }
+
+    /// <summary>Keeps the pan within one repeat (the view looks the same; numbers stay small).</summary>
+    private void WrapViewOffsets()
+    {
+        if (_viewTile is null)
+            return;
+
+        var zoom = Math.Clamp(ZoomSlider.Value, 0.05, 16);
+        var tileWidth = _viewTileWidth * zoom;
+        var tileHeight = _viewTileHeight * zoom;
+
+        // One repeat across further also means one drop further along.
+        while (_viewOffsetX > 0)
+        {
+            _viewOffsetX -= tileWidth;
+            _viewOffsetY -= _viewDrop * zoom;
+        }
+
+        while (_viewOffsetX <= -tileWidth)
+        {
+            _viewOffsetX += tileWidth;
+            _viewOffsetY += _viewDrop * zoom;
+        }
+
+        _viewOffsetY %= tileHeight;
+
+        if (_viewOffsetY > 0)
+            _viewOffsetY -= tileHeight;
     }
 
     private void RenderPreviewSize()
@@ -377,6 +588,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        LeaveRapportView();
         _selectionPurpose = SelectionPurpose.Rapport;
         ShowSourceOnCanvas();
         StatusText.Text = "Kaynak üzerinde tekrar edilecek rapor alanını sürükleyerek seçin.";
@@ -542,6 +754,7 @@ public partial class MainWindow : Window
 
     private void OnSelectMotif(object sender, RoutedEventArgs e)
     {
+        LeaveRapportView();
         _selectionPurpose = SelectionPurpose.Detection;
         UpdateSelectionVisual(_detectionSelection);
         StatusText.Text = "Drag a rectangle around the broken motif, then press Detect motif.";
@@ -549,6 +762,7 @@ public partial class MainWindow : Window
 
     private void OnSelectTarget(object sender, RoutedEventArgs e)
     {
+        LeaveRapportView();
         _selectionPurpose = SelectionPurpose.Target;
         UpdateSelectionVisual(_targetSelection);
         StatusText.Text = "Drag the area where the repaired source motif must fit.";

@@ -2156,6 +2156,19 @@ B390A / B317B re-checked: line scores 1.32 / 1.80 vertical, no straight colour e
 Test: a stroke design with visible joins opened at its own size keeps its size and repeats below
 1.5. 169 tests pass.
 
+### 4.58 Workbench: rapport view (endless repeat preview) — NEW UI
+
+User: add a rapport view to the preview that repeats the design as if endless.
+
+`RapportView` (Core): `TilePixels` (rapport region as ARGB) and `Render` (view pixel (x, y) shows
+design pixel floor((x - offset) / zoom) of the endless repeat; every next column of repeats drops
+by the drop; optional tinted first pixel of every repeat). Workbench: "Rapor görünümü (sonsuz
+tekrar)" and "Rapor sınırları" above the result canvas; drag to pan, wheel zooms around the cursor
+(zoom minimum 10 %), drawn in device pixels into a `WriteableBitmap`; pan offsets wrap within one
+repeat (one repeat across also moves one drop along). Repeats the opened rapport, the rapport area
+on the source, or the whole result. Tests: 6 (endless repeat, any pan distance, zoom, drop, borders,
+region). The WPF part is built only by the Windows workflow.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.

@@ -114,7 +114,7 @@
 
                         <TextBlock Text="Preview navigation" FontSize="16" FontWeight="SemiBold"/>
                         <TextBlock Text="Zoom" Margin="0,8,0,2"/>
-                        <Slider x:Name="ZoomSlider" Minimum="0.25" Maximum="4" Value="1"
+                        <Slider x:Name="ZoomSlider" Minimum="0.1" Maximum="4" Value="1"
                                 TickFrequency="0.25" IsSnapToTickEnabled="False"
                                 ValueChanged="OnZoomChanged"/>
                         <TextBlock x:Name="ZoomText" Text="100%" Foreground="#BFC5CC" Margin="0,2,0,10"/>
@@ -157,6 +157,18 @@
                         </Grid.RowDefinitions>
                         <DockPanel Margin="2,0,0,6">
                             <TextBlock Text="Result / training canvas" FontWeight="SemiBold"/>
+                            <CheckBox x:Name="RapportGridCheck" DockPanel.Dock="Right"
+                                      Content="Rapor sınırları" Foreground="#F1F1F1"
+                                      VerticalAlignment="Center" Margin="10,0,0,0"
+                                      ToolTip="Rapor görünümünde her tekrarın kenarını ince çizgiyle göster"
+                                      Checked="OnRapportViewOptionChanged"
+                                      Unchecked="OnRapportViewOptionChanged"/>
+                            <CheckBox x:Name="RapportViewCheck" DockPanel.Dock="Right"
+                                      Content="Rapor görünümü (sonsuz tekrar)" Foreground="#F1F1F1"
+                                      VerticalAlignment="Center" Margin="10,0,0,0"
+                                      ToolTip="Önizlemedeki deseni (açılmış rapor / seçili rapor / sonuç) her yöne sonsuz tekrarla. Sürükleyerek gez, tekerlekle yakınlaştır."
+                                      Checked="OnRapportViewToggled"
+                                      Unchecked="OnRapportViewToggled"/>
                             <TextBlock x:Name="SelectionInfoText" DockPanel.Dock="Right"
                                        HorizontalAlignment="Right" Foreground="#AFC7FF"/>
                         </DockPanel>
@@ -178,6 +190,17 @@
                                 </Canvas>
                             </Grid>
                         </ScrollViewer>
+                        <Border Grid.Row="1" x:Name="RapportViewHost" Visibility="Collapsed"
+                                Background="#383A3D" ClipToBounds="True" Cursor="SizeAll"
+                                SizeChanged="OnRapportViewSizeChanged"
+                                MouseLeftButtonDown="OnRapportViewMouseDown"
+                                MouseMove="OnRapportViewMouseMove"
+                                MouseLeftButtonUp="OnRapportViewMouseUp"
+                                MouseWheel="OnRapportViewMouseWheel">
+                            <Image x:Name="RapportViewImage" Stretch="None" IsHitTestVisible="False"
+                                   HorizontalAlignment="Left" VerticalAlignment="Top"
+                                   RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                        </Border>
                     </Grid>
                 </Border>
             </Grid>

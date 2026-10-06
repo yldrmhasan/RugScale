@@ -62,3 +62,10 @@ The workbench is a RugScale-only host. General RugCAD editor responsibilities (P
    default values) it only closes visible joins: a design whose top and bottom or left and right
    edges do not meet (H312B) then repeats without bands or lines.
 
+8. **Rapor görünümü (sonsuz tekrar)** (checkbox above the result canvas): the preview is shown
+   repeated in every direction without end. What repeats: the opened rapport (with the drop), the
+   chosen / detected rapport area while the source is shown (edge marker columns left out), or
+   else the whole result. Drag to pan (it never runs out), turn the mouse wheel to zoom around the
+   cursor (down to 10 %, to see many repeats at once). **Rapor sınırları** draws the edge of every
+   repeat as a thin line. Selecting an area (rapport, motif, target) switches the view off, as
+   selections are drawn on the normal preview. Drawing is `RapportView.Render` in Core.
