@@ -1,4 +1,5 @@
 using RugScale.Core.Drawing;
+using RugScale.Core.Drawing.WallToWall;
 using RugScale.Core.IO;
 
 static int Usage(
@@ -23,6 +24,9 @@ static int Usage(
           curve-fill
           curve          (neutral-first curve redraw)
           texture        (abstract / distressed designs: grain kept 1:1)
+          wall-to-wall   (roll designs: rapport repeated, not scaled)
+                         [--repeat both|width|length] [--rapport x,y,w,h] [--drop px]
+                         [--seamless false] [--seam-band px]
           leaf-petal
           smooth
           area-average
@@ -135,6 +139,11 @@ static ScaleMode ParseMode(
         "texture" =>
             ScaleMode.Texture,
 
+        "wall-to-wall" or
+        "w2w" or
+        "roll" =>
+            ScaleMode.WallToWall,
+
         "leaf-petal" or
         "leaf-petal-arcs" =>
             ScaleMode.LeafPetalArcs,
@@ -222,6 +231,68 @@ try
     var loaded =
         IndexedBmpCodec.Read(
             input);
+
+    if (mode == ScaleMode.WallToWall)
+    {
+        var detection =
+            RapportDetector.Detect(
+                loaded.Document);
+        var tile =
+            detection.Tile;
+
+        if (options.TryGetValue("rapport", out var rapportRaw))
+        {
+            var parts =
+                rapportRaw
+                    .Split(',')
+                    .Select(int.Parse)
+                    .ToArray();
+            tile = new RapportTile(parts[0], parts[1], parts[2], parts[3], tile.Drop);
+        }
+
+        if (options.TryGetValue("drop", out var dropRaw))
+            tile = tile with { Drop = int.Parse(dropRaw) };
+
+        var direction =
+            (options.TryGetValue("repeat", out var repeatRaw) ? repeatRaw : "both").ToLowerInvariant() switch
+            {
+                "width" or "en" or "enden" => RapportDirection.Width,
+                "length" or "boy" or "boydan" => RapportDirection.Length,
+                _ => RapportDirection.Both,
+            };
+        var seamless =
+            !options.TryGetValue("seamless", out var seamlessRaw) ||
+            !string.Equals(seamlessRaw, "false", StringComparison.OrdinalIgnoreCase);
+        var rendered =
+            WallToWallRepeat.Render(
+                loaded.Document,
+                tile,
+                width,
+                height,
+                new RapportOptions(
+                    direction,
+                    seamless,
+                    options.TryGetValue("seam-band", out var bandRaw) ? int.Parse(bandRaw) : new RapportOptions().SeamBand));
+
+        Console.WriteLine(
+            $"Rapport detected: {detection.Tile.Width}x{detection.Tile.Height} @ {detection.Tile.X},{detection.Tile.Y}, drop {detection.Tile.Drop} " +
+            $"(across {(detection.HorizontalFound ? "repeat" : "whole width")} {detection.HorizontalScore:P1}, " +
+            $"along {(detection.VerticalFound ? "repeat" : "whole height")} {detection.VerticalScore:P1}; " +
+            $"markers {(detection.Markers is null ? "none" : $"{detection.Markers.Left}+{detection.Markers.Right}")})");
+        Console.WriteLine(
+            $"Rapport used: {tile.Width}x{tile.Height} @ {tile.X},{tile.Y}, drop {tile.Drop}, repeat {direction}, seamless {seamless}; " +
+            $"period {rendered.PeriodWidth}x{rendered.PeriodHeight}; seam across {rendered.SeamAcross:F2}, along {rendered.SeamAlong:F2}" +
+            (rendered.SeamAcross > WallToWallRepeat.VisibleSeam ? " (repeat across leaves a visible join)" : "") +
+            (rendered.SeamAlong > WallToWallRepeat.VisibleSeam ? " (repeat along leaves a visible join)" : ""));
+
+        IndexedBmpCodec.Write(
+            output,
+            rendered.Design,
+            loaded.XPixelsPerMeter,
+            loaded.YPixelsPerMeter);
+        Console.WriteLine($"Output: {output}");
+        return 0;
+    }
 
     var resized =
         DesignResizer.Scale(

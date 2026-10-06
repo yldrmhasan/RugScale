@@ -101,6 +101,13 @@ public enum ScaleMode
     /// </summary>
     Texture,
 
+    /// <summary>
+    /// Wall to Wall / roll designs: the rapport (repeat unit) is detected and repeated across and
+    /// along the target instead of scaling the design, joined seamlessly where its edges do not
+    /// meet. Pattern size stays the same; a bigger carpet shows more repeats.
+    /// </summary>
+    WallToWall,
+
     /// <summary>Bilinearly blends the 4 nearest source pixels' colors, then snaps the blend to the closest colour the design already uses — softer diagonal/curve edges than NearestNeighbor at the cost of some colour bleeding.</summary>
     Smooth,
 
@@ -248,6 +255,17 @@ public static class DesignResizer
                     sourceWeftDensity,
                     targetWarpDensity,
                     targetWeftDensity);
+                break;
+            case ScaleMode.WallToWall:
+                result =
+                    WallToWall.WallToWallRepeat.Repeat(
+                        source,
+                        WallToWall.RapportDetector.Detect(source).Tile,
+                        newWidth,
+                        newHeight,
+                        new WallToWall.RapportOptions(
+                            WallToWall.RapportDirection.Both,
+                            Seamless: true));
                 break;
             case ScaleMode.Texture:
                 TextureQuiltScaleEngine.Resize(

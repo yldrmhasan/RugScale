@@ -165,6 +165,27 @@ Kenardaki 1 piksellik teknik işaret sütunu (mavi) hedefin kenarında korunur.
 
 Büyütmede fark belirgin: doku kaynak gibi ince kalır. Küçültmede sonuç nearest'e yakındır.
 
+### Wall to Wall / rulo desenler: rapor tekrarı
+
+Rulo halılarda desen ölçeklenmez; rapor (tekrar birimi) halının enine ve boyuna tekrar eder.
+`ScaleMode.WallToWall` (CLI `wall-to-wall`, Workbench "Wall to Wall — rulo / rapor tekrarı"):
+1. `RapportDetector`: yatay ve dikey periyodu, kaydırmayı (half-drop dahil) ve kenardaki teknik
+   işaret sütunlarını bulur. Periyot yoksa desenin tamamı o eksende rapordur.
+2. `WallToWallRepeat`: raporu **enden**, **boydan** veya **her ikisinden** tekrar eder. Tekrar
+   edilmeyen eksende satırlar/sütunlar kaynaktan okunur. İşaret sütunları hedefin kenarlarında
+   korunur.
+3. **Dikişsiz birleştirme**: uçları uymayan raporlarda birleşim, 12 piksellik bant içinde en az
+   uyumsuz hattan kesilir (kaynakta rapor dışı içerik varsa periyot değişmez).
+
+| Desen | Rapor | Dikiş en / boy (düz → dikişsiz) |
+|---|---|---|
+| des3 | 1000 × 1150 (boydan %100) | 6,03 → 2,31 (uyarı) / 1,00 |
+| H312 | 565 × 2299 (tüm desen) | 1,88 → 0,98 / 3,26 → 0,88 |
+| M29 | 650 × 1239, kaydırma -3, 4+4 işaret | 0,65 → 0,40 / 1,52 → 0,98 |
+
+Dikiş oranı ~1 ise birleşim görünmez. 1,5'in üstünde arayüz uyarı verir; örneğin des3 yalnızca
+boydan tekrar için tasarlanmış.
+
 Legacy `ScaleMode.CurveFill` ve `LeafPetalArcs` karşılaştırma ve C069 eğitim kapıları için
 dondurulmuş halde duruyor (`CurveScaleAudit --engine legacy`). Yeni geliştirme neutral-first
 motor üzerinde yapılır.

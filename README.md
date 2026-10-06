@@ -11,6 +11,7 @@ RGB colours that do not exist in the source design.
 - **Motif & Topology RugScale** — motif families, branches, repeat/rapport, symmetry and topology.
 - **RugScale Curve (neutral-first)** — reads like a neutral enlargement of the source; only removes block staircases and uneven Pixel-Cord weight.
 - **RugScale Texture** — abstract / distressed designs: structure is scaled, one-knot grain and scratch streaks keep their fineness (enlarge and shrink).
+- **Wall to Wall / roll** — the rapport (repeat unit) is detected or selected and repeated across (en), along (boy) or both, with drop and seamless joins; the pattern is not scaled.
 - **Curve & Fill (legacy)** — source-guided contour/fill reconstruction with ribbon/arc refitting.
 - **Leaf / Petal Arcs** — specialist floral-curve refinement with paired-boundary fitting.
 - **Tool-faithful redraw** — RugScale Curve, Pixel Cord and ellipse raster behaviour.
@@ -111,6 +112,7 @@ Available CLI modes:
 | `motif` | `ScaleMode.RugScale` | motif/topology designs |
 | `curve` | `ScaleMode.CurveNeutral` | **curve-heavy designs (recommended)**: neutral-first, faithful to the source |
 | `texture` | `ScaleMode.Texture` | **abstract / distressed designs**: structure scaled, grain kept 1:1 |
+| `wall-to-wall` | `ScaleMode.WallToWall` | **roll / wall-to-wall designs**: rapport repeated (`--repeat both\|width\|length`, `--rapport x,y,w,h`, `--drop`, `--seamless false`) |
 | `curve-fill` | `ScaleMode.CurveFill` | legacy curve redraw (ribbon/arc refitting), kept for comparison |
 | `leaf-petal` | `ScaleMode.LeafPetalArcs` | elongated floral leaf/petal curves |
 | `nearest` | `NearestNeighbor` | exact categorical nearest baseline |

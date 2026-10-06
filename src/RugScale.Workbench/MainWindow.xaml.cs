@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using RugScale.Core.Drawing;
+using RugScale.Core.Drawing.WallToWall;
 using RugScale.Core.IO;
 using RugScale.Core.Models;
 using RugScale.Core.Services;
@@ -17,6 +18,7 @@ public partial class MainWindow : Window
     {
         Detection,
         Target,
+        Rapport,
     }
 
     private sealed record AcceptedRepair(
@@ -39,6 +41,7 @@ public partial class MainWindow : Window
     private readonly List<AcceptedRepair> _accepted = [];
     private SelectionPurpose _selectionPurpose = SelectionPurpose.Detection;
     private Point? _dragStart;
+    private RapportTile? _rapportTile;
 
     public MainWindow()
     {
@@ -69,6 +72,8 @@ public partial class MainWindow : Window
             _preview = loaded.Document;
             _accepted.Clear();
             ResetMotifSession(clearSelections: true);
+            _rapportTile = null;
+            RapportText.Text = "Rapor: seçilmedi (otomatik bulunacak).";
 
             WidthBox.Text = loaded.Document.Width.ToString();
             HeightBox.Text = loaded.Document.Height.ToString();
@@ -139,6 +144,13 @@ public partial class MainWindow : Window
         }
 
         var mode = SelectedMode();
+
+        if (mode == ScaleMode.WallToWall)
+        {
+            await RunWallToWall(width, height);
+            return;
+        }
+
         try
         {
             IsEnabled = false;
@@ -183,6 +195,7 @@ public partial class MainWindow : Window
         {
             "curve" => ScaleMode.CurveNeutral,
             "texture" => ScaleMode.Texture,
+            "wall-to-wall" => ScaleMode.WallToWall,
             "curve-fill" => ScaleMode.CurveFill,
             "leaf-petal" => ScaleMode.LeafPetalArcs,
             "nearest" => ScaleMode.NearestNeighbor,
@@ -205,10 +218,7 @@ public partial class MainWindow : Window
 
         ZoomText.Text = $"{e.NewValue * 100:0}%";
         RenderPreviewSize();
-        UpdateSelectionVisual(
-            _selectionPurpose == SelectionPurpose.Target
-                ? _targetSelection
-                : _detectionSelection);
+        UpdateSelectionVisual(ActiveSelection());
     }
 
     private void RenderPreview()
@@ -221,10 +231,7 @@ public partial class MainWindow : Window
 
         PreviewImage.Source = RenderDocument(_preview);
         RenderPreviewSize();
-        UpdateSelectionVisual(
-            _selectionPurpose == SelectionPurpose.Target
-                ? _targetSelection
-                : _detectionSelection);
+        UpdateSelectionVisual(ActiveSelection());
     }
 
     private void RenderPreviewSize()
@@ -274,6 +281,167 @@ public partial class MainWindow : Window
         bitmap.Freeze();
         return bitmap;
     }
+
+    private MotifSelection? ActiveSelection() =>
+        _selectionPurpose switch
+        {
+            SelectionPurpose.Target => _targetSelection,
+            SelectionPurpose.Rapport => _rapportTile is null
+                ? null
+                : new MotifSelection(
+                    _rapportTile.X,
+                    _rapportTile.Y,
+                    _rapportTile.Width,
+                    _rapportTile.Height),
+            _ => _detectionSelection,
+        };
+
+    private RapportDirection SelectedRepeatDirection() =>
+        ((RepeatDirectionCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString()) switch
+        {
+            "width" => RapportDirection.Width,
+            "length" => RapportDirection.Length,
+            _ => RapportDirection.Both,
+        };
+
+    private int ParseDrop() =>
+        int.TryParse(DropBox.Text, out var drop)
+            ? drop
+            : 0;
+
+    /// <summary>Shows the source on the canvas so a rapport can be picked in source pixels.</summary>
+    private void ShowSourceOnCanvas()
+    {
+        if (_sourceImage is null)
+            return;
+
+        _basePreview = _sourceImage.Document;
+        _preview = _sourceImage.Document;
+        _accepted.Clear();
+        ResetMotifSession(clearSelections: true);
+        RenderPreview();
+    }
+
+    private async void OnDetectRapport(object sender, RoutedEventArgs e)
+    {
+        if (_sourceImage is null)
+        {
+            StatusText.Text = "Open a source BMP first.";
+            return;
+        }
+
+        try
+        {
+            IsEnabled = false;
+            StatusText.Text = "Rapor aranıyor...";
+            var document = _sourceImage.Document;
+            var detection = await Task.Run(() => RapportDetector.Detect(document));
+            _rapportTile = detection.Tile;
+            DropBox.Text = detection.Tile.Drop.ToString();
+            _selectionPurpose = SelectionPurpose.Rapport;
+            ShowSourceOnCanvas();
+
+            var across = detection.HorizontalFound
+                ? $"enden {detection.Tile.Width} px (%{detection.HorizontalScore * 100:0} eşleşme)"
+                : $"enden tekrar yok, tüm genişlik {detection.Tile.Width} px";
+            var along = detection.VerticalFound
+                ? $"boydan {detection.Tile.Height} px (%{detection.VerticalScore * 100:0} eşleşme)"
+                : $"boydan tekrar yok, tüm uzunluk {detection.Tile.Height} px";
+            var markers = detection.Markers is null
+                ? ""
+                : $", kenar işaretleri {detection.Markers.Left}+{detection.Markers.Right} sütun";
+            RapportText.Text =
+                $"Rapor (otomatik): {detection.Tile.Width}×{detection.Tile.Height} @ {detection.Tile.X},{detection.Tile.Y}; {across}; {along}; kaydırma {detection.Tile.Drop}{markers}.";
+            StatusText.Text = "Rapor bulundu ve kaynak üzerinde gösterildi. Gerekirse 'Rapor alanı seç' ile düzeltin.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Rapor bulunamadı: {ex.Message}";
+        }
+        finally
+        {
+            IsEnabled = true;
+        }
+    }
+
+    private void OnSelectRapport(object sender, RoutedEventArgs e)
+    {
+        if (_sourceImage is null)
+        {
+            StatusText.Text = "Open a source BMP first.";
+            return;
+        }
+
+        _selectionPurpose = SelectionPurpose.Rapport;
+        ShowSourceOnCanvas();
+        StatusText.Text = "Kaynak üzerinde tekrar edilecek rapor alanını sürükleyerek seçin.";
+    }
+
+    private async Task RunWallToWall(
+        int width,
+        int height)
+    {
+        if (_sourceImage is null)
+            return;
+
+        var source = _sourceImage.Document;
+        var direction = SelectedRepeatDirection();
+        var seamless = SeamlessCheck.IsChecked == true;
+        var drop = ParseDrop();
+
+        try
+        {
+            IsEnabled = false;
+            StatusText.Text = "Rapor tekrarlanıyor...";
+            var tile = _rapportTile is null
+                ? await Task.Run(() => RapportDetector.Detect(source).Tile)
+                : _rapportTile with { Drop = drop };
+            _rapportTile = tile;
+            var result = await Task.Run(() =>
+                WallToWallRepeat.Render(
+                    source,
+                    tile,
+                    width,
+                    height,
+                    new RapportOptions(direction, seamless)));
+
+            _basePreview = result.Design;
+            _preview = result.Design;
+            _accepted.Clear();
+            ResetMotifSession(clearSelections: true);
+            _selectionPurpose = SelectionPurpose.Detection;
+            RenderPreview();
+
+            var warnings = new List<string>();
+
+            if (result.SeamAcross > WallToWallRepeat.VisibleSeam)
+                warnings.Add("enden tekrarda dikiş izi görünüyor (bu desen boydan tekrar için tasarlanmış olabilir)");
+
+            if (result.SeamAlong > WallToWallRepeat.VisibleSeam)
+                warnings.Add("boydan tekrarda dikiş izi görünüyor");
+
+            RapportText.Text =
+                $"Rapor: {tile.Width}×{tile.Height} @ {tile.X},{tile.Y}, kaydırma {tile.Drop}; periyot {result.PeriodWidth}×{result.PeriodHeight}; " +
+                $"dikiş en {FormatSeam(result.SeamAcross)}, boy {FormatSeam(result.SeamAlong)}." +
+                (warnings.Count == 0 ? "" : " Uyarı: " + string.Join("; ", warnings) + ".");
+            StatusText.Text =
+                $"Wall to Wall hazır: {width}×{height}, {direction}, dikişsiz {(seamless ? "açık" : "kapalı")}.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Wall to Wall failed: {ex.Message}";
+            MessageBox.Show(this, ex.Message, "Wall to Wall failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsEnabled = true;
+        }
+    }
+
+    private static string FormatSeam(double ratio) =>
+        double.IsNaN(ratio)
+            ? "—"
+            : ratio.ToString("0.00");
 
     private void OnSelectMotif(object sender, RoutedEventArgs e)
     {
@@ -359,7 +527,20 @@ public partial class MainWindow : Window
             x1 - x0,
             y1 - y0);
 
-        if (_selectionPurpose == SelectionPurpose.Detection)
+        if (_selectionPurpose == SelectionPurpose.Rapport)
+        {
+            _rapportTile = new RapportTile(
+                selection.X,
+                selection.Y,
+                selection.Width,
+                selection.Height,
+                ParseDrop());
+            RapportText.Text =
+                $"Rapor (seçim): {selection.Width}×{selection.Height} @ {selection.X},{selection.Y}, kaydırma {_rapportTile.Drop}.";
+            StatusText.Text =
+                "Rapor alanı seçildi. Hedef ölçüyü ve tekrar yönünü seçip Run'a basın.";
+        }
+        else if (_selectionPurpose == SelectionPurpose.Detection)
         {
             _detectionSelection = selection;
             _targetSelection ??= selection;

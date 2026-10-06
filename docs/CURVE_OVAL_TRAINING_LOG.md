@@ -3,7 +3,7 @@
 **Purpose:** persistent continuation state for Curve & Fill / RugScale oval, spiral and pixel-faithful redraw training.  
 **Active training branch:** `chatgpt/curve-oval-training-2026-09-24`  
 **Main policy:** do not merge this calibration branch into `main` until explicitly requested.  
-**Last documented experiment:** section 4.51 — abstract / distressed designs (B141C, B142C, B151C): new RugScale Texture mode.
+**Last documented experiment:** section 4.52 — Wall to Wall / roll designs: rapport detection and repeat (des3, H312, M29).
 
 This file is intentionally both a progress log and a **do-not-repeat list**. Future work must read it
 before changing curve fitting. A visually attractive result is the authority; aggregate pixel F1 is
@@ -1940,6 +1940,53 @@ place. Runs in 1.5-4.5 s for 960x2250.
 Tests: `TextureQuiltScaleEngineTests` (grain ratio < 1.2 while nearest > 1.4, halves stay in place
 with their speckle density, technical marker column only on the target edge; shrink keeps colour
 proportions); the palette theory covers `ScaleMode.Texture`. 156 tests pass.
+
+### 4.52 Wall to Wall / roll designs: rapport detection and repeat — NEW MODE
+
+User request: a mode for roll / wall-to-wall designs, trained on `des3_brown_hb0_kat3_v2`
+(1000x1920), `H312_BEIGE_HB0_yeni` (565x2299) and `M29_HB13A_HB12_0008` (1600x1500), and in the
+Workbench a selected area repeated as a rapport across (enden), along (boydan) or both.
+
+On a roll the pattern keeps its size: a wider or longer carpet shows more repeats. So the mode
+does not scale; it finds or takes a rapport and repeats it (`RapportDetector`,
+`WallToWallRepeat`, `ScaleMode.WallToWall`, CLI `wall-to-wall`, Workbench panel).
+
+Detection (share of equal pixels between x and x + shift on a 3 px grid; a period must score >= 0.75
+and beat the median shift by 0.2; the smallest shift within 0.02 of the best is the fundamental):
+
+| Design | across | along | drop | markers |
+|---|---|---|---|---|
+| des3 | none (whole width 1000) | 1150 (100 %) | 0 | none |
+| H312 | none (whole width 565) | none (whole height 2299) | 0 | none |
+| M29 | 650 (86 %) | 1239 (96 %) | -3 | 4 + 4 blue columns |
+
+des3 holds one rapport plus 770 rows of the next; M29's 650 x 1239 rapport sits inside technical
+blue marker columns, which are kept on the target edges. A half-drop repeat has no straight
+horizontal period (it matches straight at twice its width), so half / third / quarter drops are
+searched and the fundamental rapport with its drop is preferred (unit test with a 15 px half-drop).
+
+Seams (mismatch across a join / mean mismatch between neighbouring columns inside the rapport;
+about 1 = reads like the design):
+
+| Design | plain repeat across / along | seamless across / along |
+|---|---|---|
+| des3 | 6.03 / 1.00 | 2.31 / 1.00 (warning: made to repeat along only) |
+| H312 | 1.88 / 3.26 | 0.98 / 0.88 |
+| M29 | 0.65 / 1.52 | 0.40 / 0.98 |
+
+Seamless join: inside a 12 px band each row switches, along the minimum-mismatch path, between the
+rapport and the source content that really continues across the join (left / right or above /
+below the rapport, read with the drop). Without such content (rapport = whole design) the two ends
+are overlapped and the period shortens by the band (H312: 553 x 2287). A join that is exactly the
+design's own continuation is judged against the source's transition there (des3 along 3.59 -> 1.00:
+a streak edge falls on the rapport border).
+
+Rejected on the way: a join that ignored the drop (M29 across 0.65 -> 4.16), a 24-40 px band for
+whole-design joins (des3 cut more visibly, H312 worse).
+
+Tests: `WallToWallRepeatTests` (detection of periods, half-drop and markers; exact continuation and
+drop when tiling; across-only and along-only repeats; seamless join lowers the seam; the
+WallToWall scale mode repeats instead of scaling). 162 tests pass.
 
 ## 5. Do-not-repeat rules
 

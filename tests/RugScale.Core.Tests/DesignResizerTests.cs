@@ -105,6 +105,7 @@ public class DesignResizerTests
     [InlineData(ScaleMode.CurveFill)]
     [InlineData(ScaleMode.CurveNeutral)]
     [InlineData(ScaleMode.Texture)]
+    [InlineData(ScaleMode.WallToWall)]
     [InlineData(ScaleMode.LeafPetalArcs)]
     [InlineData(ScaleMode.Smooth)]
     [InlineData(ScaleMode.AreaAverage)]
