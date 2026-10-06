@@ -4,25 +4,23 @@ namespace RugScale.Core.Drawing.WallToWall;
 
 /// <summary>
 /// "Rapor açma": grows a rapport to a larger width and / or length the way a designer opens one by
-/// hand, from the rapport's own content, never rebuilt from small blocks (dithered, painterly
-/// grounds like B390A came out as rectangles that way).
+/// hand: strips of the rapport's own content are spliced in at their own size. Nothing is
+/// stretched (lengthening B390A's strokes made the opened rapport look resized) and nothing is
+/// rebuilt from small blocks (dithered grounds came out as rectangles).
 ///
-/// - <b>Along the strokes</b> (a design of horizontal brush strokes widened, see
-///   <see cref="GrainOf"/>): the strokes are lengthened. Along a top-to-bottom path where every
-///   row continues smoothly, each row gets a short piece of its own content once more; dither
-///   and texture are copied, not stretched.
-/// - <b>Otherwise</b>: the rapport is cut open at its edge (or, when it wraps seamlessly, where a
-///   strip fits best) and a strip of its own content is spliced in. The strip is chosen by
-///   <b>tone</b> (mean colour of <see cref="Cell"/> x <see cref="Cell"/> cells, so dither does not
-///   count) and joined along a free-form minimum cut inside a band of up to <see cref="Band"/>
-///   px; on a dithered design the cut is dissolved into a dithered transition.
+/// The rapport is cut open at its edge (or, when it wraps seamlessly, where a strip fits best) and
+/// a strip is inserted. Strips are chosen by <b>tone</b> (mean colour of <see cref="Cell"/> x
+/// <see cref="Cell"/> cells, so dither does not count); a strip whose rows only repeat the rows
+/// beside it costs more, so the added content differs. The joins follow the strokes
+/// (<see cref="GrainOf"/>):
+/// - a seam <b>across</b> the strokes switches once per row, where the tones meet, staggered like
+///   stroke ends and tapered in dither (<see cref="StrokeEnds"/>);
+/// - a seam <b>along</b> the strokes is a clean free-form cut between them;
+/// - without strokes, a free-form minimum cut, dissolved on dithered designs.
 ///
-/// Every path and cut closes on itself, so the opened rapport repeats like the original. Where the
-/// original's own join is visible (B390A across: a straight line between the repeats), lengthening
-/// grows a quarter wider and then overlaps both ends: every row switches from one end to the other
-/// once, where its tones meet, the switch points staggered like stroke ends
-/// (<see cref="StrokeEnds"/>). The original rapport keeps its content: only the bands along its
-/// edges can change.
+/// Every cut closes on itself, so the opened rapport repeats like the original; a visible join of
+/// the original is closed even when nothing is added. The original keeps its content: only the
+/// bands along its edges can change.
 /// </summary>
 public static class RapportExpander
 {
@@ -98,15 +96,20 @@ public static class RapportExpander
         var gw = tw;
         var gh = th;
 
-        // Streaks: a design of horizontal brush strokes is widened by lengthening its strokes
-        // (vertical strokes: lengthened along); across the strokes, strips are spliced in.
+        // Stroke direction: decides how each splice is joined.
         var grain =
             GrainOf(grid, tw, th, rgb);
 
+        // A splice leaves its own axis seamless: the splices on the other axis may then shift
+        // their strips along it (the wrap ratio of a clean cut between strokes still reads high).
+        var alongClosed = false;
+        var acrossClosed = false;
+
         void Widen()
         {
-            (grid, gw) =
-                Grow(grid, gw, gh, newWidth, grain, band, rgb, random);
+            (grid, gw, var spliced) =
+                Grow(grid, gw, gh, newWidth, grain, alongClosed, band, rgb, random);
+            acrossClosed |= spliced;
         }
 
         // Length: the same on the transposed rapport.
@@ -116,8 +119,9 @@ public static class RapportExpander
                 Transpose(grid, gw, gh);
             var tgw = gh;
 
-            (turned, tgw) =
-                Grow(turned, tgw, gw, newHeight, Turn(grain), band, rgb, random);
+            (turned, tgw, var spliced) =
+                Grow(turned, tgw, gw, newHeight, Turn(grain), acrossClosed, band, rgb, random);
+            alongClosed |= spliced;
 
             gh = tgw;
             grid = Transpose(turned, gh, gw);
@@ -131,9 +135,10 @@ public static class RapportExpander
         var wrapAcross =
             WrapRatio(Transpose(grid, gw, gh), gh, gw, rgb);
 
-        // The stroke-lengthening axis first: it needs no shift, and leaves its join closed so
-        // the splices across the strokes are free to shift.
-        if (grain == Grain.Along ||
+        // The axis whose seams run along the strokes first (clean cuts between strokes); it
+        // leaves its join closed, so the strips spliced across the strokes may come from other
+        // rows (B390A: otherwise the same ovals line up side by side).
+        if (grain == Grain.Across ||
             (grain == Grain.None && wrapAcross < wrapAlong))
         {
             Extend();
@@ -213,18 +218,18 @@ public static class RapportExpander
     internal const int StreakDistance = 8;
 
     /// <summary>
-    /// Grows a rapport across to <paramref name="target"/> columns: by lengthening its strokes, or
-    /// by splicing strips. Splicing closes the rapport's own join across (the strip's tail is cut
-    /// into its start); lengthening does not, so a visible join (B390A: a straight line between
-    /// the repeats) is closed separately: grown a quarter of the target wider, both ends then
-    /// overlap (a narrower overlap lined all stroke ends up in one strip).
+    /// Grows a rapport across to <paramref name="target"/> columns by splicing in strips of its own
+    /// content at their own size (lengthening the strokes instead stretched B390A's ovals: the
+    /// opened rapport looked resized). A splice also closes the rapport's own join across, so a
+    /// visible join is closed even when nothing is added.
     /// </summary>
-    private static (byte[] Grid, int Width) Grow(
+    private static (byte[] Grid, int Width, bool Spliced) Grow(
         byte[] grid,
         int gw,
         int gh,
         int target,
         Grain strokes,
+        bool crossClosed,
         int bandWanted,
         int[] rgb,
         Random random)
@@ -235,94 +240,21 @@ public static class RapportExpander
         if (gw >= target &&
             !visible)
         {
-            return (grid, gw);
+            return (grid, gw, false);
         }
 
-        if (strokes != Grain.Across)
+        // A splice closes the join it is cut into. Nothing to add but a visible join: a strip of
+        // the rapport's own content is spliced over the join alone (size unchanged).
+        if (gw >= target)
         {
-            // A splice closes the join it is cut into. Nothing to add but a visible join: a strip
-            // of the rapport's own content is spliced over the join alone (width unchanged; H312B
-            // across, between vertical strokes).
-            if (gw >= target)
-                return Splice(grid, gw, gh, 0, bandWanted, strokes, rgb, random);
-
-            while (gw < target)
-                (grid, gw) = Splice(grid, gw, gh, target - gw, bandWanted, strokes, rgb, random);
-
-            return (grid, gw);
+            (grid, gw) = Splice(grid, gw, gh, 0, bandWanted, strokes, crossClosed, rgb, random);
+            return (grid, gw, true);
         }
 
-        var b =
-            visible
-                ? Math.Max(2, bandWanted > 0 ? Math.Min(bandWanted, (gw - 1) / 3) : Math.Max(target / 4, 2))
-                : 0;
+        while (gw < target)
+            (grid, gw) = Splice(grid, gw, gh, target - gw, bandWanted, strokes, crossClosed, rgb, random);
 
-        (grid, gw) =
-            Lengthen(grid, gw, gh, target - gw + b, rgb);
-
-        return visible
-            ? CloseWrap(grid, gw, gh, b, rgb, random)
-            : (grid, gw);
-    }
-
-    /// <summary>
-    /// Closes a rapport's join across by overlapping its last <paramref name="band"/> columns onto
-    /// its first, one switch per row (<see cref="StrokeEnds"/>), tapered in dither on dithered
-    /// designs; the rapport becomes <paramref name="band"/> columns narrower. Blending the ends
-    /// over the whole overlap in random patches looked torn (user: B390A join "kötü duruyor").
-    /// </summary>
-    private static (byte[] Grid, int Width) CloseWrap(
-        byte[] grid,
-        int gw,
-        int gh,
-        int band,
-        int[] rgb,
-        Random random)
-    {
-        // Left of a row's switch point: the previous repeat's tail (A); right of it: this repeat's
-        // start (B). One switch per row, like a stroke ending and the next one starting.
-        var cut =
-            StrokeEnds(
-                (x, y) => grid[y * gw + gw - band + x],
-                (x, y) => grid[y * gw + x],
-                band,
-                gh,
-                rgb);
-        var feather =
-            FeatherWidth(grid, gw, gh, band) > 0
-                ? StrokeTaper
-                : 0;
-        var salt =
-            random.Next();
-        var nw =
-            gw - band;
-        var result =
-            new byte[nw * gh];
-
-        for (var y = 0; y < gh; y++)
-        {
-            var c =
-                cut[y];
-
-            for (var x = 0; x < band; x++)
-            {
-                // A dithered stroke ends in thinning dither, not a hard edge.
-                var start =
-                    feather == 0
-                        ? x >= c
-                        : Noise(x, y, salt) < Math.Clamp((x - c + feather + 0.5) / (2.0 * feather), 0, 1);
-
-                result[y * nw + x] =
-                    start
-                        ? grid[y * gw + x]
-                        : grid[y * gw + gw - band + x];
-            }
-
-            for (var x = band; x < nw; x++)
-                result[y * nw + x] = grid[y * gw + x];
-        }
-
-        return (result, nw);
+        return (grid, gw, true);
     }
 
     /// <summary>
@@ -334,7 +266,7 @@ public static class RapportExpander
     /// inside one (a stroke must not be torn into teeth). Exact minimum by dynamic programming over
     /// the rows, closing on itself along (row 0 follows the last row).
     /// </summary>
-    private static int[] StrokeEnds(
+    private static (int[] Cuts, long Cost) StrokeEnds(
         Func<int, int, byte> sourceA,
         Func<int, int, byte> sourceB,
         int band,
@@ -345,7 +277,7 @@ public static class RapportExpander
         var hi = band - 1;
 
         if (hi <= lo)
-            return Enumerable.Repeat(Math.Max(0, band / 2), rows).ToArray();
+            return (Enumerable.Repeat(Math.Max(0, band / 2), rows).ToArray(), 0);
 
         // Per-pixel colour, and colour summed over 3 rows (wrapping) with prefix sums along x.
         var colorA =
@@ -618,8 +550,10 @@ public static class RapportExpander
         // Free solution first; then closed on itself from its own start column.
         var free =
             Solve(-1, out _);
+        var cuts =
+            Solve(free[0], out var total);
 
-        return Solve(free[0], out _);
+        return (cuts, total);
     }
 
     /// <summary>Width (px) over which tones meet at a stroke end.</summary>
@@ -630,265 +564,6 @@ public static class RapportExpander
 
     /// <summary>Tone units per px away from the wandering place where stroke ends gather.</summary>
     internal const double WanderPull = 1.5;
-
-    /// <summary>
-    /// Widens a design of horizontal strokes by lengthening them: along a top-to-bottom path
-    /// where every row continues smoothly <c>k</c> px further on, each row gets the k pixels just
-    /// before the path once more. Dither and texture are copied, not stretched; a path never
-    /// runs through a stroke end (that is where a row does not continue), and later paths keep
-    /// away from earlier ones, so the added width is spread out. Every path closes on itself
-    /// along, so the rapport still wraps.
-    /// </summary>
-    private static (byte[] Grid, int Width) Lengthen(
-        byte[] grid,
-        int gw,
-        int gh,
-        int wanted,
-        int[] rgb)
-    {
-        var k =
-            Math.Clamp(gw / 12, 4, 32);
-
-        // The original column every pixel shows: a copy is fine once; content that already shows
-        // twice nearby must not be copied again (three identical pieces side by side beat).
-        var columns =
-            gw;
-        var origin =
-            new int[gw * gh];
-
-        for (var at = 0; at < origin.Length; at++)
-            origin[at] = at % gw;
-
-        var seen =
-            new int[columns];
-
-        while (wanted > 0)
-        {
-            var piece =
-                Math.Min(k, wanted);
-
-            if (gw <= piece + 2)
-            {
-                // Too narrow: plain repeat of the last columns.
-                piece = Math.Min(piece, gw);
-            }
-
-            var tone =
-                ToneMap(grid, gw, gh, rgb);
-
-            // Inserting before column x: row continues from x - 1 into the copy starting at
-            // x - piece; the copy's end joins x naturally.
-            var energy =
-                new long[gw * gh];
-            double mean = 0;
-
-            for (var y = 0; y < gh; y++)
-            {
-                for (var x = piece; x < gw; x++)
-                {
-                    var at =
-                        y * gw + x;
-                    var e =
-                        (long)Distance(tone, at - 1, at - piece);
-                    energy[at] = e;
-                    mean += e;
-                }
-            }
-
-            mean /= Math.Max(1, (gw - piece) * gh);
-
-            // Keep away from earlier insertions: a pixel whose content shows again within
-            // Repeat px is doubled already. Copying doubled content makes a beat; next to doubled
-            // content the added width bunches up.
-            var doubled =
-                new bool[gw];
-            var doubledBefore =
-                new int[gw + 1];
-            var reach =
-                3 * piece;
-
-            for (var y = 0; y < gh; y++)
-            {
-                Array.Fill(seen, int.MinValue / 2);
-                Array.Clear(doubled);
-
-                for (var x = 0; x < gw; x++)
-                {
-                    var o =
-                        origin[y * gw + x];
-
-                    if (x - seen[o] <= reach)
-                    {
-                        doubled[x] = true;
-                        doubled[seen[o]] = true;
-                    }
-
-                    seen[o] = x;
-                }
-
-                for (var x = 0; x < gw; x++)
-                    doubledBefore[x + 1] = doubledBefore[x] + (doubled[x] ? 1 : 0);
-
-                int Doubled(
-                    int a,
-                    int b) =>
-                    doubledBefore[Math.Clamp(b, 0, gw)] - doubledBefore[Math.Clamp(a, 0, gw)];
-
-                for (var x = piece; x < gw; x++)
-                {
-                    if (Doubled(x - piece, x) > piece / 4)
-                        energy[y * gw + x] += (long)(50 * mean) + 1;
-                    else if (Doubled(x - 2 * piece, x + piece) > 0)
-                        energy[y * gw + x] += (long)(4 * mean) + 1;
-                }
-            }
-
-            var path =
-                CyclicPath(energy, gw, gh, piece, gw - 1);
-            var nw =
-                gw + piece;
-            var next =
-                new byte[nw * gh];
-            var nextOrigin =
-                new int[nw * gh];
-
-            // The copy joins the row where it continues smoothly in tone; on a dithered design the
-            // dither itself still breaks there, along a near-vertical line. So the join is a
-            // transition of stroke-shaped patches: left of it the row (A = row[x]), right of it
-            // the row shifted by the copy (B = row[x - piece]).
-            var feather =
-                FeatherWidth(grid, gw, gh, piece);
-            var salt =
-                gw * 7919 + wanted;
-
-            for (var y = 0; y < gh; y++)
-            {
-                var x0 =
-                    path[y];
-                var to =
-                    y * nw;
-                var f =
-                    Math.Max(0, Math.Min(feather, Math.Min(x0 - piece, gw - x0)));
-
-                for (var x = 0; x < nw; x++)
-                {
-                    bool shifted;
-
-                    if (x < x0 - f)
-                    {
-                        shifted = false;
-                    }
-                    else if (x >= x0 + f)
-                    {
-                        shifted = true;
-                    }
-                    else
-                    {
-                        var ramp =
-                            (x - (x0 - f) + 0.5) / (2.0 * f);
-                        shifted = PatchNoise(x, y, salt, Grain.Across) < ramp;
-                    }
-
-                    next[to + x] =
-                        shifted
-                            ? grid[y * gw + x - piece]
-                            : grid[y * gw + x];
-                    nextOrigin[to + x] =
-                        shifted
-                            ? origin[y * gw + x - piece]
-                            : origin[y * gw + x];
-                }
-            }
-
-            grid = next;
-            origin = nextOrigin;
-            gw = nw;
-            wanted -= piece;
-        }
-
-        return (grid, gw);
-    }
-
-    /// <summary>
-    /// Minimum-energy top-to-bottom path (one column per row, moving at most one column per row)
-    /// within [from, to], ending next to where it starts so it wraps along.
-    /// </summary>
-    private static int[] CyclicPath(
-        long[] energy,
-        int gw,
-        int gh,
-        int from,
-        int to)
-    {
-        from = Math.Min(from, to);
-
-        int[] Run(
-            int start)
-        {
-            var span =
-                to - from + 1;
-            var cost =
-                new long[span * gh];
-            var back =
-                new int[span * gh];
-
-            for (var i = 0; i < span; i++)
-            {
-                cost[i] =
-                    start < 0 || i == start
-                        ? energy[from + i]
-                        : long.MaxValue / 4;
-            }
-
-            for (var y = 1; y < gh; y++)
-            {
-                for (var i = 0; i < span; i++)
-                {
-                    var best = i;
-
-                    for (var j = Math.Max(0, i - 1); j <= Math.Min(span - 1, i + 1); j++)
-                    {
-                        if (cost[(y - 1) * span + j] < cost[(y - 1) * span + best])
-                            best = j;
-                    }
-
-                    cost[y * span + i] = cost[(y - 1) * span + best] + energy[y * gw + from + i];
-                    back[y * span + i] = best;
-                }
-            }
-
-            // End within one column of the start (the path continues into row 0).
-            var end = -1;
-
-            for (var i = 0; i < span; i++)
-            {
-                if (start >= 0 && Math.Abs(i - start) > 1)
-                    continue;
-
-                if (end < 0 ||
-                    cost[(gh - 1) * span + i] < cost[(gh - 1) * span + end])
-                {
-                    end = i;
-                }
-            }
-
-            var path =
-                new int[gh];
-
-            for (var y = gh - 1; y >= 0; y--)
-            {
-                path[y] = from + end;
-                end = back[y * span + end];
-            }
-
-            return path;
-        }
-
-        var free =
-            Run(-1);
-
-        return Run(free[gh - 1] - from);
-    }
 
     /// <summary>Mean colour over 5 x 5 (wrapping), per pixel, as R, G, B.</summary>
     private static int[] ToneMap(
@@ -960,6 +635,7 @@ public static class RapportExpander
         int wanted,
         int bandWanted,
         Grain strokes,
+        bool crossClosed,
         int[] rgb,
         Random random)
     {
@@ -978,10 +654,14 @@ public static class RapportExpander
             return (plain, nw0);
         }
 
+        // Across the strokes the joins are staggered stroke ends, which need room to spread (a
+        // narrow band lined them all up in one strip).
         var b =
             bandWanted > 0
                 ? bandWanted
-                : Math.Clamp(gw / 6, 2, Band);
+                : strokes == Grain.Across
+                    ? Math.Clamp(gw / 4, 2, StrokeBand)
+                    : Math.Clamp(gw / 6, 2, Band);
         b = Math.Max(1, Math.Min(b, (gw - 1) / 3));
 
         var added =
@@ -992,15 +672,17 @@ public static class RapportExpander
         // A strip is shifted along, or the rapport opened elsewhere than at its edge, only where
         // the rapport wraps seamlessly that way: otherwise its own join would move inside.
         var freeAlong =
+            crossClosed ||
             WrapRatio(grid, gw, gh, rgb) < SeamlessWrap;
         var freeAcross =
             WrapRatio(Transpose(grid, gw, gh), gh, gw, rgb) < SeamlessWrap;
+        // Coarser when strips may also shift or open elsewhere (many more combinations).
         var cell =
-            freeAlong && freeAcross
+            freeAlong || freeAcross
                 ? 2 * Cell
                 : Cell;
         var step =
-            freeAlong && freeAcross
+            freeAlong || freeAcross
                 ? 2 * Step
                 : Step;
         // At most MaxShifts x MaxOpenings combinations: a long rapport free both ways took a minute.
@@ -1101,23 +783,61 @@ public static class RapportExpander
             long.MaxValue;
         const int keep = 8;
 
+        // A strip from the very rows it is set beside matches best, but only repeats them: the
+        // opened rapport would read as the old one twice (B390A: the same ovals side by side).
+        // Shifts whose rows repeat the rows already there cost more.
+        var repeatPenalty =
+            new Dictionary<int, double>();
+
+        foreach (var shift in shifts)
+        {
+            var same = 0;
+            var total = 0;
+
+            for (var y = 0; y < gh; y += 3)
+            {
+                for (var x = 0; x < gw; x += 3)
+                {
+                    total++;
+
+                    if (grid[y * gw + x] == grid[((y + shift) % gh) * gw + x])
+                        same++;
+                }
+            }
+
+            var repeated =
+                same / (double)Math.Max(1, total);
+            repeatPenalty[shift] =
+                shifts.Length > 1
+                    ? 1 + RepeatPenalty * Math.Max(0, repeated - 0.35) / 0.65
+                    : 1;
+        }
+
         foreach (var open in openings)
         {
             foreach (var shift in shifts)
             {
+                var factor =
+                    repeatPenalty[shift];
+
                 for (var s = 0; s + length <= gw; s += step)
                 {
+                    var limit =
+                        bound == long.MaxValue
+                            ? long.MaxValue
+                            : (long)(bound / factor);
                     var cost =
-                        Cost((open + gw - b) % gw, (open + s) % gw, shift, bound);
+                        Cost((open + gw - b) % gw, (open + s) % gw, shift, limit);
 
-                    if (cost > bound)
+                    if (cost > limit)
                         continue;
 
-                    cost += Cost(open, (open + s + added + b) % gw, shift, bound - cost);
+                    cost += Cost(open, (open + s + added + b) % gw, shift, limit - cost);
 
-                    if (cost > bound)
+                    if (cost > limit)
                         continue;
 
+                    cost = (long)(cost * factor);
                     candidates.Add((cost, open, s, shift));
 
                     if (candidates.Count >= keep * 8)
@@ -1151,6 +871,19 @@ public static class RapportExpander
                 int y) =>
                 grid[((y + shift) % gh) * gw + (open + start + x) % gw];
 
+            if (strokes == Grain.Across)
+            {
+                // Seams across the strokes: one switch per row, where the tones meet, staggered
+                // like stroke ends (a vertical cut through horizontal strokes reads as a line).
+                var (leftCuts, leftEnds) =
+                    StrokeEnds((x, y) => Rapport(gw - b + x, y), (x, y) => At(x, y), b, gh, rgb);
+                var (rightCuts, rightEnds) =
+                    StrokeEnds((x, y) => At(added + b + x, y), (x, y) => Rapport(x, y), b, gh, rgb);
+
+                joined.Add(((long)((leftEnds + rightEnds) * repeatPenalty[shift]), open, start, shift, Sides(leftCuts, b), Sides(rightCuts, b)));
+                continue;
+            }
+
             // Left band: rapport on the left side of the cut, strip on the right.
             var (leftCost, left) =
                 SeamSide(
@@ -1165,7 +898,7 @@ public static class RapportExpander
                     b,
                     gh);
 
-            joined.Add((leftCost + rightCost, open, start, shift, left, right));
+            joined.Add(((long)((leftCost + rightCost) * repeatPenalty[shift]), open, start, shift, left, right));
         }
 
         joined.Sort((p, q) =>
@@ -1193,11 +926,14 @@ public static class RapportExpander
         // A seam that runs along the strokes lies between strokes already: only its edge is
         // softened like a stroke edge (a few px, pixel noise); a wide transition of patches would
         // break the strokes into dashes.
+        // Across the strokes, a dithered stroke end thins out over StrokeTaper px.
         var feather =
             FeatherWidth(grid, gw, gh, b);
 
         if (strokes == Grain.Along)
             feather = Math.Min(feather, StrokeEdge);
+        else if (strokes == Grain.Across)
+            feather = Math.Min(feather, StrokeTaper);
 
 
         var leftMix =
@@ -1590,20 +1326,41 @@ public static class RapportExpander
         return mix;
     }
 
+    /// <summary>Widest band (px) for stroke-end joins across the strokes.</summary>
+    internal const int StrokeBand = 160;
+
+    /// <summary>Left-of-cut mask from one switch column per row.</summary>
+    private static bool[] Sides(
+        int[] cuts,
+        int band)
+    {
+        var left =
+            new bool[cuts.Length * band];
+
+        for (var y = 0; y < cuts.Length; y++)
+            for (var x = 0; x < band && x < cuts[y]; x++)
+                left[y * band + x] = true;
+
+        return left;
+    }
+
     internal const int MaxShifts = 64;
+
+    /// <summary>Extra cost factor for a strip whose rows fully repeat the rows beside it.</summary>
+    internal const double RepeatPenalty = 3;
 
     internal const int MaxOpenings = 32;
 
     /// <summary>Half width (px) of the softened edge where a seam runs along the strokes.</summary>
     internal const int StrokeEdge = 4;
 
-    /// <summary>Noise for a splice transition: pixel noise along the strokes, patches otherwise.</summary>
+    /// <summary>Noise for a splice transition: pixel noise at stroke edges and ends, patches otherwise.</summary>
     private static double Chance(
         int x,
         int y,
         int salt,
         Grain strokes) =>
-        strokes == Grain.Along
+        strokes != Grain.None
             ? Noise(x, y, salt)
             : PatchNoise(x, y, salt, strokes);
 

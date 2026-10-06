@@ -2169,6 +2169,33 @@ repeat (one repeat across also moves one drop along). Repeats the opened rapport
 on the source, or the whole result. Tests: 7 (endless repeat, any pan distance, zoom, drop, borders,
 region, borders still visible when zoomed out). The WPF part is built only by the Windows workflow.
 
+### 4.59 Rapport opening must not scale: no stroke lengthening — REPLACES 4.54 lengthening
+
+User (Workbench screenshot, B390A 398x500 -> 800x1000 in rapport view): "raporu aç tıkladığımda
+sanki ebatlandırıyor; ebatlandırmaması gerekiyor". Lengthening the horizontal strokes to fill the
+width made every oval twice as long: the opened rapport looked resized.
+
+Now every axis is opened by splicing strips of the rapport's own content at their own size:
+- seams across the strokes use `StrokeEnds` (one switch per row, staggered, tapered 12 px in
+  dither; band width / 4, max 160 px); seams along the strokes stay clean cuts; the same splice
+  over the join alone closes a visible join at unchanged size (replaces `Lengthen`, `CloseWrap`);
+- the axis whose seams run along the strokes goes first; once an axis is spliced its join counts
+  as closed (`crossClosed`), so the other axis may shift its strips (the wrap ratio of a clean cut
+  between strokes still reads high, and blocked every shift);
+- a strip whose rows repeat the rows beside it costs up to 4x (`RepeatPenalty`): with shift 0 the
+  800x1000 rapport was the original laid out 2 x 2;
+- search coarser (8 px cells, 4 px steps) whenever strips may shift or open elsewhere.
+
+| B390A 800x1000 | look | vertical / horizontal line score |
+|---|---|---|
+| 4.56-4.58 (lengthening) | ovals twice as long, looks resized | 1.44 / 3.51 |
+| splice, shift 0 | ovals at size, but the original 2 x 2 | 1.35 / 3.59 |
+| **4.59** | ovals at size, staggered, joins invisible | 1.35 / 2.30 (source 7.40 / 3.50) |
+
+H312B 565x1149 / 700x1500: 1.54 / 1.27 and 1.30 / 1.30 (about 3 s each); B317B unchanged. Test
+replaced: opening a stroke design to twice its width keeps how fast its tone changes across
+(> 80 % of the source; a stretch halves it). 176 tests pass.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.

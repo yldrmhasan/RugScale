@@ -382,8 +382,10 @@ public sealed class WallToWallRepeatTests
     }
 
     [Fact]
-    public void OpenRapport_LengthensHorizontalStrokesInsteadOfCuttingThem()
+    public void OpenRapport_KeepsTheStrokeScaleInsteadOfStretching()
     {
+        // B390A-like: opening must add strokes at their own size, not lengthen them (the opened
+        // rapport looked resized).
         var source =
             Strokes();
         var grid =
@@ -405,33 +407,51 @@ public sealed class WallToWallRepeatTests
             RapportExpander.Expand(
                 source,
                 new RapportTile(0, 0, 160, 120),
-                240,
+                320,
                 120);
 
-        Assert.Equal(240, opened.Width);
+        Assert.Equal(320, opened.Width);
         Assert.Equal(120, opened.Height);
 
-        double Dark(DesignDocument d, int y)
+        // How fast the darkness changes across (8 px apart, rows averaged over 9 px): a stretch
+        // to twice the width would halve it.
+        double Change(DesignDocument d)
         {
+            double sum = 0;
             var n = 0;
 
-            for (var x = 0; x < d.Width; x++)
-                if (d.GetPixel(x, y) == 2)
-                    n++;
+            double Dark(int x, int y)
+            {
+                var k = 0;
 
-            return n / (double)d.Width;
+                for (var dx = -4; dx <= 4; dx++)
+                    if (d.GetPixel(((x + dx) % d.Width + d.Width) % d.Width, y) == 2)
+                        k++;
+
+                return k / 9.0;
+            }
+
+            for (var y = 0; y < d.Height; y += 2)
+            {
+                for (var x = 0; x < d.Width; x += 2)
+                {
+                    sum += Math.Abs(Dark((x + 8) % d.Width, y) - Dark(x, y));
+                    n++;
+                }
+            }
+
+            return sum / n;
         }
 
-        // Every row stays a continuation of its own stroke: same darkness, no other row's tone
-        // spliced in (away from the band where the rapport's own join along is closed).
-        for (var y = 120 / 6; y < 120 - 120 / 6; y++)
-            Assert.InRange(Dark(opened, y), Dark(source, y) - 0.08, Dark(source, y) + 0.08);
+        Assert.True(
+            Change(opened) > 0.8 * Change(source),
+            $"opened {Change(opened):F3}, source {Change(source):F3}");
 
         var tiled =
             WallToWallRepeat.Render(
                 opened,
-                new RapportTile(0, 0, 240, 120),
-                720,
+                new RapportTile(0, 0, 320, 120),
+                960,
                 240,
                 new RapportOptions(RapportDirection.Both, KeepEdgeMarkers: false));
 

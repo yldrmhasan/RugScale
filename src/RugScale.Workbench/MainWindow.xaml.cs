@@ -724,7 +724,7 @@ public partial class MainWindow : Window
             RenderPreview();
 
             RapportText.Text =
-                $"Açılmış rapor: {tile.Width}×{tile.Height} → {openWidth}×{openHeight} (eklenen alan desenin kendi içeriğinden: fırça izli desende izler uzatılır, diğerlerinde şerit eklenir; kenarları dikişsiz). Hedef ölçü {WidthBox.Text}×{HeightBox.Text}; Run bu raporu tekrarlar.";
+                $"Açılmış rapor: {tile.Width}×{tile.Height} → {openWidth}×{openHeight} (desen ölçeklenmez: desenin kendi içeriğinden şeritler kendi boyunda eklenir, izler arasından ya da iz uçlarından birleştirilir; kenarları dikişsiz). Hedef ölçü {WidthBox.Text}×{HeightBox.Text}; Run bu raporu tekrarlar.";
             StatusText.Text = "Rapor açıldı. Kaydetmek için 'Save preview', tekrar için Run.";
         }
         catch (Exception ex)

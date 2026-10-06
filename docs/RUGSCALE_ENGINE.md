@@ -190,10 +190,9 @@ boydan tekrar için tasarlanmış.
 (B317B 400×400) desenin kendi içeriğiyle enine/boyuna büyütülür; küçük bloklardan yeniden
 kurulmaz (resimsel, dither'lı zeminlerde bloklar dikdörtgen olarak görünüyordu).
 
-- **Fırça izi yönünde** (yatay izli B390A eninde): izler uzatılır. Yukarıdan aşağı, her satırın
-  yumuşakça devam ettiği bir hat boyunca her satıra kendi içeriğinden kısa bir parça bir kez daha
-  eklenir; dither ve doku kopyalanır, gerilmez. Aynı parça yan yana tekrar edilmez, eklemeler
-  desene yayılır.
+- **Desen ölçeklenmez**: izler uzatılmaz (B390A'da ovaller uzayıp rapor ebatlandırılmış gibi
+  görünüyordu); eklenen her şerit desenin kendi içeriğinden, kendi boyundadır. Yan yana aynı
+  satırları tekrar eden şerit daha pahalıdır, böylece eklenen alan farklı içerik taşır.
 - **Diğer durumlarda**: rapor kenarından (rapor dikişsiz sarıyorsa en uygun yerden) açılır ve
   kendi içeriğinden bir şerit eklenir. Şerit ton eşleşmesiyle (4×4 hücre ortalama rengi; dither
   sayılmaz) seçilir, serbest biçimli en az uyumsuz kesimle birleştirilir; dither'lı desende kesim
