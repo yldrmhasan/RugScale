@@ -187,12 +187,21 @@ Dikiş oranı ~1 ise birleşim görünmez. 1,5'in üstünde arayüz uyarı verir
 boydan tekrar için tasarlanmış.
 
 **Rapor açma** (`RapportExpander`, Workbench "Raporu aç", CLI `--expand GxB`): küçük bir rapor
-(B317B 400×400) desenin kendi dokusundan üretilen içerikle enine/boyuna büyütülür. Orijinal rapor
-sol üstte aynen kalır (yalnızca kenar bantlarında dikiş geçebilir). Eklenen alan kaynaktan 1:1
-alınan bloklarla, en iyi eşleşen 5 aday arasından seçilerek ve dört kenarda en az uyumsuz hattan
-kesilerek doldurulur. Tuval halka kabul edildiği için açılmış rapor dikişsiz tekrar eder.
-Durağan dokularda (B317B) çok iyi sonuç verir; uzun fırça geçişli resimsel desenlerde (B390A)
-blok izleri görünür, bu desenler olduğu gibi tekrar edilmelidir.
+(B317B 400×400) desenin kendi içeriğiyle enine/boyuna büyütülür; küçük bloklardan yeniden
+kurulmaz (resimsel, dither'lı zeminlerde bloklar dikdörtgen olarak görünüyordu).
+
+- **Fırça izi yönünde** (yatay izli B390A eninde): izler uzatılır. Yukarıdan aşağı, her satırın
+  yumuşakça devam ettiği bir hat boyunca her satıra kendi içeriğinden kısa bir parça bir kez daha
+  eklenir; dither ve doku kopyalanır, gerilmez. Aynı parça yan yana tekrar edilmez, eklemeler
+  desene yayılır.
+- **Diğer durumlarda**: rapor kenarından (rapor dikişsiz sarıyorsa en uygun yerden) açılır ve
+  kendi içeriğinden bir şerit eklenir. Şerit ton eşleşmesiyle (4×4 hücre ortalama rengi; dither
+  sayılmaz) seçilir, serbest biçimli en az uyumsuz kesimle birleştirilir; dither'lı desende kesim
+  dither'lı bir geçişe dönüştürülür.
+
+Her hat ve kesim kendi üzerine kapanır, açılmış rapor orijinal gibi tekrar eder. Orijinal raporun
+içeriği korunur; yalnızca kenar bantları değişebilir. Workbench'te açma sonrası hedef ölçü en az
+açılmış rapor kadar yapılır, Run açılmış raporu tekrarlar.
 
 Legacy `ScaleMode.CurveFill` ve `LeafPetalArcs` karşılaştırma ve C069 eğitim kapıları için
 dondurulmuş halde duruyor (`CurveScaleAudit --engine legacy`). Yeni geliştirme neutral-first

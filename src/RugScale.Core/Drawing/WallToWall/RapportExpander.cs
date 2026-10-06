@@ -3,29 +3,39 @@ using RugScale.Core.Models;
 namespace RugScale.Core.Drawing.WallToWall;
 
 /// <summary>
-/// "Rapor açma": grows a rapport to a larger width and / or length with new content made from the
-/// design's own texture, so a small rapport (B317B: 400 x 400) repeats less visibly on a roll.
+/// "Rapor açma": grows a rapport to a larger width and / or length the way a designer opens one by
+/// hand, from the rapport's own content, never rebuilt from small blocks (dithered, painterly
+/// grounds like B390A came out as rectangles that way).
 ///
-/// The original rapport stays in the top-left corner (only the band of <see cref="Overlap"/> px
-/// along its edges can be crossed by a seam). The added area is filled in raster
-/// order with <see cref="BlockSize"/> blocks copied 1:1 from the source design (anywhere in its
-/// content area). Every block is chosen among the candidates that best match the pixels already
-/// placed in its overlap; the canvas is treated as a torus on the expanding axes, so the blocks at
-/// the far edge must also match the rapport's opposite edge and the expanded rapport repeats
-/// seamlessly. Inside the left and top overlaps the new block is cut in along the minimum-mismatch
-/// path. To avoid stamping the same patch over and over, the block is drawn at random (fixed
-/// seed, reproducible) from the <see cref="Shortlist"/> best candidates.
+/// - <b>Along the strokes</b> (a design of horizontal brush strokes widened, see
+///   <see cref="GrainOf"/>): the strokes are lengthened. Along a top-to-bottom path where every
+///   row continues smoothly, each row gets a short piece of its own content once more; dither
+///   and texture are copied, not stretched.
+/// - <b>Otherwise</b>: the rapport is cut open at its edge (or, when it wraps seamlessly, where a
+///   strip fits best) and a strip of its own content is spliced in. The strip is chosen by
+///   <b>tone</b> (mean colour of <see cref="Cell"/> x <see cref="Cell"/> cells, so dither does not
+///   count) and joined along a free-form minimum cut inside a band of up to <see cref="Band"/>
+///   px; on a dithered design the cut is dissolved into a dithered transition.
+///
+/// Every path and cut closes on itself, so the opened rapport repeats like the original. The
+/// original rapport keeps its content: only the bands along its edges can change.
 /// </summary>
 public static class RapportExpander
 {
-    internal const int BlockSize = 32;
+    /// <summary>Widest seam band (px).</summary>
+    internal const int Band = 64;
 
-    internal const int Overlap = 8;
+    /// <summary>Tone cells (px) on which strips are compared.</summary>
+    internal const int Cell = 4;
 
-    /// <summary>Candidate positions are tried on a grid with this step (source px).</summary>
-    internal const int CandidateStep = 3;
+    /// <summary>Strip start / shift positions are tried with this step (px).</summary>
+    internal const int Step = 2;
 
-    internal const int Shortlist = 5;
+    /// <summary>
+    /// A rapport whose own wrap join reads below this ratio (see
+    /// <see cref="WallToWallRepeat.VisibleSeam"/>) may be shifted across while splicing.
+    /// </summary>
+    internal const double SeamlessWrap = 1.15;
 
     public static DesignDocument Expand(
         DesignDocument source,
@@ -33,7 +43,7 @@ public static class RapportExpander
         int newWidth,
         int newHeight,
         int seed = 1,
-        int blockSize = 0)
+        int band = 0)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(tile);
@@ -59,411 +69,1105 @@ public static class RapportExpander
                 $"The opened rapport ({newWidth}x{newHeight}) must be at least the rapport size ({tw}x{th}).");
         }
 
-        var src =
-            new byte[w * h];
+        var palette =
+            source.Palette;
+        var rgb =
+            new int[256 * 3];
 
-        for (var y = 0; y < h; y++)
-            for (var x = 0; x < w; x++)
-                src[y * w + x] = source.GetPixel(x, y);
+        for (var index = 0; index < palette.Count && index < 256; index++)
+        {
+            rgb[index * 3] = palette[index].R;
+            rgb[index * 3 + 1] = palette[index].G;
+            rgb[index * 3 + 2] = palette[index].B;
+        }
 
-        // Candidate blocks come from the content area (technical marker columns excluded).
-        var markers =
-            RapportDetector.FindEdgeMarkers(source);
-        var cx0 =
-            markers?.Left ?? 0;
-        var cx1 =
-            w - (markers?.Right ?? 0);
-
-        var W =
-            newWidth;
-        var H =
-            newHeight;
-        var canvas =
-            new byte[W * H];
-        var placed =
-            new bool[W * H];
+        var grid =
+            new byte[tw * th];
 
         for (var y = 0; y < th; y++)
-        {
             for (var x = 0; x < tw; x++)
-            {
-                canvas[y * W + x] = src[(ty + y) * w + tx + x];
-                placed[y * W + x] = true;
-            }
-        }
+                grid[y * tw + x] = source.GetPixel(tx + x, ty + y);
 
-        if (W == tw &&
-            H == th)
-        {
-            return ToDocument(canvas, W, H, source.Palette);
-        }
-
-        // Blocks scale with the rapport: large splotches need large blocks to keep their shape.
-        var wanted =
-            blockSize > 0
-                ? blockSize
-                : Math.Clamp(Math.Min(tw, th) / 6, BlockSize, 96);
-        var block =
-            Math.Min(wanted, Math.Min(Math.Min(cx1 - cx0, h), Math.Min(W, H)));
-        var overlap =
-            Math.Max(2, block / 4);
-        var step =
-            block - overlap;
         var random =
             new Random(seed);
-        var candidates =
-            new List<(int Cost, int X, int Y)>();
-        var take =
-            new bool[block * block];
-        var error =
-            new int[block * block];
-        var mirrored =
-            new int[block * block];
-        var constraintAt =
-            new int[block * block];
-        var constraintOffset =
-            new int[block * block];
+        var gw = tw;
+        var gh = th;
 
-        int Wrap(
-            int value,
-            int size) =>
-            ((value % size) + size) % size;
+        // Streaks: a design of horizontal brush strokes is widened by lengthening its strokes
+        // (vertical strokes: lengthened along); across the strokes, strips are spliced in.
+        var grain =
+            GrainOf(grid, tw, th, rgb);
 
-        // Block grids anchored so that a block's first overlap band lies on the original rapport's
-        // end; the last block reaches one band past the far edge, i.e. onto the rapport start.
-        static List<int> Grid(
-            int anchor,
-            int size,
-            int block,
-            int overlap,
-            int step)
+        void Widen()
         {
-            var positions =
-                new List<int>();
-            var start =
-                anchor - overlap;
-
-            while (start > -block + overlap)
-                start -= step;
-
-            for (var p = start; p + block < size + overlap; p += step)
-                positions.Add(p);
-
-            positions.Add(size + overlap - block);
-            return positions.Distinct().OrderBy(p => p).ToList();
-        }
-
-        var xs =
-            Grid(tw, W, block, overlap, step);
-        var ys =
-            Grid(th, H, block, overlap, step);
-
-        foreach (var by in ys)
-        {
-            foreach (var bx in xs)
+            while (gw < newWidth)
             {
-                var missing = false;
-
-                for (var y = 0; y < block && !missing; y++)
-                {
-                    for (var x = 0; x < block; x++)
-                    {
-                        if (!placed[Wrap(by + y, H) * W + Wrap(bx + x, W)])
-                        {
-                            missing = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (!missing)
-                    continue;
-
-                // Only placed pixels constrain the choice: list them once per block.
-                var constraintCount = 0;
-
-                for (var y = 0; y < block; y++)
-                {
-                    for (var x = 0; x < block; x++)
-                    {
-                        var at =
-                            Wrap(by + y, H) * W + Wrap(bx + x, W);
-
-                        if (!placed[at])
-                            continue;
-
-                        constraintAt[constraintCount] = at;
-                        constraintOffset[constraintCount] = y * w + x;
-                        constraintCount++;
-                    }
-                }
-
-                candidates.Clear();
-                var bound =
-                    int.MaxValue;
-
-                for (var sy = 0; sy + block <= h; sy += CandidateStep)
-                {
-                    for (var sx = cx0; sx + block <= cx1; sx += CandidateStep)
-                    {
-                        var origin =
-                            sy * w + sx;
-                        var cost = 0;
-
-                        for (var k = 0; k < constraintCount && cost <= bound; k++)
-                        {
-                            if (canvas[constraintAt[k]] != src[origin + constraintOffset[k]])
-                                cost++;
-                        }
-
-                        if (cost > bound)
-                            continue;
-
-                        candidates.Add((cost, sx, sy));
-
-                        if (candidates.Count >= Shortlist * 8)
-                        {
-                            candidates.Sort(Order);
-                            candidates.RemoveRange(Shortlist, candidates.Count - Shortlist);
-                            bound = candidates[^1].Cost;
-                        }
-                    }
-                }
-
-                candidates.Sort(Order);
-                var pick =
-                    candidates[random.Next(Math.Min(Shortlist, candidates.Count))];
-
-                // Which edges of the block already hold pixels: each such band gets a seam.
-                bool leftBand = false, rightBand = false, topBand = false, bottomBand = false;
-
-                for (var y = 0; y < block; y++)
-                {
-                    for (var x = 0; x < block; x++)
-                    {
-                        var at =
-                            Wrap(by + y, H) * W + Wrap(bx + x, W);
-                        var isPlaced =
-                            placed[at];
-                        error[y * block + x] =
-                            isPlaced &&
-                            canvas[at] != src[(pick.Y + y) * w + pick.X + x]
-                                ? 1
-                                : 0;
-                        mirrored[y * block + block - 1 - x] = error[y * block + x];
-
-                        if (!isPlaced)
-                            continue;
-
-                        leftBand |= x < overlap;
-                        rightBand |= x >= block - overlap;
-                        topBand |= y < overlap;
-                        bottomBand |= y >= block - overlap;
-                    }
-                }
-
-                var cutLeft =
-                    VerticalCut(error, block, overlap);
-                var cutRight =
-                    VerticalCut(mirrored, block, overlap);
-                var cutTop =
-                    HorizontalCut(error, block, overlap);
-                var mirroredRows =
-                    new int[block * block];
-
-                for (var y = 0; y < block; y++)
-                    for (var x = 0; x < block; x++)
-                        mirroredRows[(block - 1 - y) * block + x] = error[y * block + x];
-
-                var cutBottom =
-                    HorizontalCut(mirroredRows, block, overlap);
-
-                for (var y = 0; y < block; y++)
-                {
-                    for (var x = 0; x < block; x++)
-                    {
-                        var cx =
-                            Wrap(bx + x, W);
-                        var cy =
-                            Wrap(by + y, H);
-                        var at =
-                            cy * W + cx;
-
-                        if (!placed[at])
-                        {
-                            take[y * block + x] = true;
-                            continue;
-                        }
-
-                        // The original rapport may only be crossed by a seam in the band along its
-                        // own edges, never inside.
-                        if (cx >= overlap &&
-                            cx < tw - overlap &&
-                            cy >= overlap &&
-                            cy < th - overlap)
-                        {
-                            take[y * block + x] = false;
-                            continue;
-                        }
-
-                        var inBand =
-                            (leftBand && x < overlap) ||
-                            (rightBand && x >= block - overlap) ||
-                            (topBand && y < overlap) ||
-                            (bottomBand && y >= block - overlap);
-
-                        take[y * block + x] =
-                            inBand &&
-                            (!leftBand || x >= cutLeft[y]) &&
-                            (!rightBand || block - 1 - x >= cutRight[y]) &&
-                            (!topBand || y >= cutTop[x]) &&
-                            (!bottomBand || block - 1 - y >= cutBottom[x]);
-                    }
-                }
-
-                for (var y = 0; y < block; y++)
-                {
-                    for (var x = 0; x < block; x++)
-                    {
-                        if (!take[y * block + x])
-                            continue;
-
-                        var at =
-                            Wrap(by + y, H) * W + Wrap(bx + x, W);
-                        canvas[at] = src[(pick.Y + y) * w + pick.X + x];
-                        placed[at] = true;
-                    }
-                }
+                (grid, gw) =
+                    grain == Grain.Across
+                        ? Lengthen(grid, gw, gh, newWidth - gw, rgb)
+                        : Splice(grid, gw, gh, newWidth - gw, band, rgb, random);
             }
         }
 
-        return ToDocument(canvas, W, H, source.Palette);
-    }
-
-    /// <summary>Per row, the first column (within the left overlap) where the new block takes over.</summary>
-    private static int[] VerticalCut(
-        int[] error,
-        int block,
-        int overlap)
-    {
-        var cost =
-            new double[block * overlap];
-        var from =
-            new int[block * overlap];
-
-        for (var x = 0; x < overlap; x++)
-            cost[x] = error[x];
-
-        for (var y = 1; y < block; y++)
+        // Length: the same on the transposed rapport.
+        void Extend()
         {
-            for (var x = 0; x < overlap; x++)
+            if (gh >= newHeight)
+                return;
+
+            var turned =
+                Transpose(grid, gw, gh);
+            var tgw = gh;
+
+            while (tgw < newHeight)
             {
-                var best = x;
-
-                for (var px = Math.Max(0, x - 1); px <= Math.Min(overlap - 1, x + 1); px++)
-                {
-                    if (cost[(y - 1) * overlap + px] < cost[(y - 1) * overlap + best])
-                        best = px;
-                }
-
-                cost[y * overlap + x] = cost[(y - 1) * overlap + best] + error[y * block + x];
-                from[y * overlap + x] = best;
+                (turned, tgw) =
+                    grain == Grain.Along
+                        ? Lengthen(turned, tgw, gw, newHeight - tgw, rgb)
+                        : Splice(turned, tgw, gw, newHeight - tgw, band, rgb, random);
             }
+
+            gh = tgw;
+            grid = Transpose(turned, gh, gw);
         }
 
-        var cut =
-            new int[block];
-        var end = 0;
+        // A strip may be shifted across the splice only where the rapport wraps seamlessly that
+        // way; every splice leaves its own axis seamless. So the axis whose cross-wrap is the
+        // cleaner one goes first, and the second one is then free to shift.
+        var wrapAlong =
+            WrapRatio(grid, gw, gh, rgb);
+        var wrapAcross =
+            WrapRatio(Transpose(grid, gw, gh), gh, gw, rgb);
 
-        for (var x = 1; x < overlap; x++)
+        if (newHeight > th &&
+            wrapAcross < wrapAlong)
         {
-            if (cost[(block - 1) * overlap + x] < cost[(block - 1) * overlap + end])
-                end = x;
+            Extend();
+            Widen();
         }
-
-        for (var y = block - 1; y >= 0; y--)
+        else
         {
-            cut[y] = end;
-            end = from[y * overlap + end];
+            Widen();
+            Extend();
         }
 
-        return cut;
-    }
-
-    /// <summary>Per column, the first row (within the top overlap) where the new block takes over.</summary>
-    private static int[] HorizontalCut(
-        int[] error,
-        int block,
-        int overlap)
-    {
-        var cost =
-            new double[block * overlap];
-        var from =
-            new int[block * overlap];
-
-        for (var y = 0; y < overlap; y++)
-            cost[y * block] = error[y * block];
-
-        for (var x = 1; x < block; x++)
-        {
-            for (var y = 0; y < overlap; y++)
-            {
-                var best = y;
-
-                for (var py = Math.Max(0, y - 1); py <= Math.Min(overlap - 1, y + 1); py++)
-                {
-                    if (cost[py * block + x - 1] < cost[best * block + x - 1])
-                        best = py;
-                }
-
-                cost[y * block + x] = cost[best * block + x - 1] + error[y * block + x];
-                from[y * block + x] = best;
-            }
-        }
-
-        var cut =
-            new int[block];
-        var end = 0;
-
-        for (var y = 1; y < overlap; y++)
-        {
-            if (cost[y * block + block - 1] < cost[end * block + block - 1])
-                end = y;
-        }
-
-        for (var x = block - 1; x >= 0; x--)
-        {
-            cut[x] = end;
-            end = from[end * block + x];
-        }
-
-        return cut;
-    }
-
-    private static int Order(
-        (int Cost, int X, int Y) a,
-        (int Cost, int X, int Y) b) =>
-        a.Cost != b.Cost
-            ? a.Cost.CompareTo(b.Cost)
-            : a.Y != b.Y
-                ? a.Y.CompareTo(b.Y)
-                : a.X.CompareTo(b.X);
-
-    private static DesignDocument ToDocument(
-        byte[] canvas,
-        int W,
-        int H,
-        Palette palette)
-    {
         var result =
             new DesignDocument(
-                W,
-                H,
+                gw,
+                gh,
                 palette);
 
-        for (var y = 0; y < H; y++)
-            for (var x = 0; x < W; x++)
-                result.SetPixel(x, y, canvas[y * W + x]);
+        for (var y = 0; y < gh; y++)
+            for (var x = 0; x < gw; x++)
+                result.SetPixel(x, y, grid[y * gw + x]);
+
+        return result;
+    }
+
+    internal enum Grain
+    {
+        None,
+
+        /// <summary>Strokes run across (horizontal streaks).</summary>
+        Across,
+
+        /// <summary>Strokes run along (vertical streaks).</summary>
+        Along,
+    }
+
+    /// <summary>Tone changes this much more across the strokes than along them: streaked.</summary>
+    internal const double StreakRatio = 1.6;
+
+    /// <summary>
+    /// Direction of the strokes, from the tone (5 x 5 mean colour, so dither does not count)
+    /// <see cref="StreakDistance"/> px apart across and along.
+    /// </summary>
+    internal static Grain GrainOf(
+        byte[] grid,
+        int gw,
+        int gh,
+        int[] rgb)
+    {
+        if (gw <= 2 * StreakDistance ||
+            gh <= 2 * StreakDistance)
+        {
+            return Grain.None;
+        }
+
+        var tone =
+            ToneMap(grid, gw, gh, rgb);
+        double across = 0, along = 0;
+
+        for (var y = 0; y + StreakDistance < gh; y += 2)
+        {
+            for (var x = 0; x + StreakDistance < gw; x += 2)
+            {
+                var at =
+                    y * gw + x;
+                across += Distance(tone, at, at + StreakDistance);
+                along += Distance(tone, at, at + StreakDistance * gw);
+            }
+        }
+
+        return along > across * StreakRatio
+            ? Grain.Across
+            : across > along * StreakRatio
+                ? Grain.Along
+                : Grain.None;
+    }
+
+    internal const int StreakDistance = 8;
+
+    /// <summary>
+    /// Widens a design of horizontal strokes by lengthening them: along a top-to-bottom path
+    /// where every row continues smoothly <c>k</c> px further on, each row gets the k pixels just
+    /// before the path once more. Dither and texture are copied, not stretched; a path never
+    /// runs through a stroke end (that is where a row does not continue), and later paths keep
+    /// away from earlier ones, so the added width is spread out. Every path closes on itself
+    /// along, so the rapport still wraps.
+    /// </summary>
+    private static (byte[] Grid, int Width) Lengthen(
+        byte[] grid,
+        int gw,
+        int gh,
+        int wanted,
+        int[] rgb)
+    {
+        var k =
+            Math.Clamp(gw / 12, 4, 32);
+        var used =
+            new bool[gw * gh];
+
+        while (wanted > 0)
+        {
+            var piece =
+                Math.Min(k, wanted);
+
+            if (gw <= piece + 2)
+            {
+                // Too narrow: plain repeat of the last columns.
+                piece = Math.Min(piece, gw);
+            }
+
+            var tone =
+                ToneMap(grid, gw, gh, rgb);
+
+            // Inserting before column x: row continues from x - 1 into the copy starting at
+            // x - piece; the copy's end joins x naturally.
+            var energy =
+                new long[gw * gh];
+            double mean = 0;
+
+            for (var y = 0; y < gh; y++)
+            {
+                for (var x = piece; x < gw; x++)
+                {
+                    var at =
+                        y * gw + x;
+                    var e =
+                        (long)Distance(tone, at - 1, at - piece);
+                    energy[at] = e;
+                    mean += e;
+                }
+            }
+
+            mean /= Math.Max(1, (gw - piece) * gh);
+
+            // Keep away from earlier insertions: copying a copy again repeats the same piece
+            // side by side (a visible beat); next to one, the added width bunches up.
+            var copiedBefore =
+                new int[gw + 1];
+
+            for (var y = 0; y < gh; y++)
+            {
+                for (var x = 0; x < gw; x++)
+                    copiedBefore[x + 1] = copiedBefore[x] + (used[y * gw + x] ? 1 : 0);
+
+                int Copied(
+                    int a,
+                    int b) =>
+                    copiedBefore[Math.Clamp(b, 0, gw)] - copiedBefore[Math.Clamp(a, 0, gw)];
+
+                for (var x = piece; x < gw; x++)
+                {
+                    if (Copied(x - piece, x) > 0)
+                        energy[y * gw + x] += (long)(50 * mean) + 1;
+                    else if (Copied(x - 2 * piece, x + piece) > 0)
+                        energy[y * gw + x] += (long)(4 * mean) + 1;
+                }
+            }
+
+            var path =
+                CyclicPath(energy, gw, gh, piece, gw - 1);
+            var nw =
+                gw + piece;
+            var next =
+                new byte[nw * gh];
+            var nextUsed =
+                new bool[nw * gh];
+
+            for (var y = 0; y < gh; y++)
+            {
+                var x0 =
+                    path[y];
+                var to =
+                    y * nw;
+
+                for (var x = 0; x < x0; x++)
+                {
+                    next[to + x] = grid[y * gw + x];
+                    nextUsed[to + x] = used[y * gw + x];
+                }
+
+                for (var x = 0; x < piece; x++)
+                {
+                    next[to + x0 + x] = grid[y * gw + x0 - piece + x];
+                    nextUsed[to + x0 + x] = true;
+                }
+
+                for (var x = x0; x < gw; x++)
+                {
+                    next[to + x + piece] = grid[y * gw + x];
+                    nextUsed[to + x + piece] = used[y * gw + x];
+                }
+            }
+
+            grid = next;
+            used = nextUsed;
+            gw = nw;
+            wanted -= piece;
+        }
+
+        return (grid, gw);
+    }
+
+    /// <summary>
+    /// Minimum-energy top-to-bottom path (one column per row, moving at most one column per row)
+    /// within [from, to], ending next to where it starts so it wraps along.
+    /// </summary>
+    private static int[] CyclicPath(
+        long[] energy,
+        int gw,
+        int gh,
+        int from,
+        int to)
+    {
+        from = Math.Min(from, to);
+
+        int[] Run(
+            int start)
+        {
+            var span =
+                to - from + 1;
+            var cost =
+                new long[span * gh];
+            var back =
+                new int[span * gh];
+
+            for (var i = 0; i < span; i++)
+            {
+                cost[i] =
+                    start < 0 || i == start
+                        ? energy[from + i]
+                        : long.MaxValue / 4;
+            }
+
+            for (var y = 1; y < gh; y++)
+            {
+                for (var i = 0; i < span; i++)
+                {
+                    var best = i;
+
+                    for (var j = Math.Max(0, i - 1); j <= Math.Min(span - 1, i + 1); j++)
+                    {
+                        if (cost[(y - 1) * span + j] < cost[(y - 1) * span + best])
+                            best = j;
+                    }
+
+                    cost[y * span + i] = cost[(y - 1) * span + best] + energy[y * gw + from + i];
+                    back[y * span + i] = best;
+                }
+            }
+
+            // End within one column of the start (the path continues into row 0).
+            var end = -1;
+
+            for (var i = 0; i < span; i++)
+            {
+                if (start >= 0 && Math.Abs(i - start) > 1)
+                    continue;
+
+                if (end < 0 ||
+                    cost[(gh - 1) * span + i] < cost[(gh - 1) * span + end])
+                {
+                    end = i;
+                }
+            }
+
+            var path =
+                new int[gh];
+
+            for (var y = gh - 1; y >= 0; y--)
+            {
+                path[y] = from + end;
+                end = back[y * span + end];
+            }
+
+            return path;
+        }
+
+        var free =
+            Run(-1);
+
+        return Run(free[gh - 1] - from);
+    }
+
+    /// <summary>Mean colour over 5 x 5 (wrapping), per pixel, as R, G, B.</summary>
+    private static int[] ToneMap(
+        byte[] grid,
+        int gw,
+        int gh,
+        int[] rgb)
+    {
+        const int radius = 2;
+        var rows =
+            new int[gw * gh * 3];
+
+        for (var y = 0; y < gh; y++)
+        {
+            for (var x = 0; x < gw; x++)
+            {
+                for (var channel = 0; channel < 3; channel++)
+                {
+                    var sum = 0;
+
+                    for (var dx = -radius; dx <= radius; dx++)
+                        sum += rgb[grid[y * gw + ((x + dx) % gw + gw) % gw] * 3 + channel];
+
+                    rows[(y * gw + x) * 3 + channel] = sum;
+                }
+            }
+        }
+
+        var tone =
+            new int[gw * gh * 3];
+
+        for (var y = 0; y < gh; y++)
+        {
+            for (var x = 0; x < gw; x++)
+            {
+                for (var channel = 0; channel < 3; channel++)
+                {
+                    var sum = 0;
+
+                    for (var dy = -radius; dy <= radius; dy++)
+                        sum += rows[((((y + dy) % gh + gh) % gh) * gw + x) * 3 + channel];
+
+                    tone[(y * gw + x) * 3 + channel] = sum / 25;
+                }
+            }
+        }
+
+        return tone;
+    }
+
+    private static int Distance(
+        int[] tone,
+        int a,
+        int b) =>
+        Math.Abs(tone[a * 3] - tone[b * 3]) +
+        Math.Abs(tone[a * 3 + 1] - tone[b * 3 + 1]) +
+        Math.Abs(tone[a * 3 + 2] - tone[b * 3 + 2]);
+
+    /// <summary>
+    /// Inserts one vertical strip into a <paramref name="gw"/> x <paramref name="gh"/> rapport:
+    /// at most <paramref name="wanted"/> columns wider. The rapport is cut open at its right edge,
+    /// or, when it wraps seamlessly across, at the column where a strip fits best (the result is
+    /// then the rapport rotated to start right after the strip, which repeats the same way).
+    /// </summary>
+    private static (byte[] Grid, int Width) Splice(
+        byte[] grid,
+        int gw,
+        int gh,
+        int wanted,
+        int bandWanted,
+        int[] rgb,
+        Random random)
+    {
+        if (gw < 4)
+        {
+            // Too narrow to splice: plain repeat.
+            var nw0 =
+                gw + wanted;
+            var plain =
+                new byte[nw0 * gh];
+
+            for (var y = 0; y < gh; y++)
+                for (var x = 0; x < nw0; x++)
+                    plain[y * nw0 + x] = grid[y * gw + x % gw];
+
+            return (plain, nw0);
+        }
+
+        var b =
+            bandWanted > 0
+                ? bandWanted
+                : Math.Clamp(gw / 6, 2, Band);
+        b = Math.Max(1, Math.Min(b, (gw - 1) / 3));
+
+        var added =
+            Math.Min(wanted, gw - 2 * b);
+        var length =
+            added + 2 * b;
+
+        // A strip is shifted along, or the rapport opened elsewhere than at its edge, only where
+        // the rapport wraps seamlessly that way: otherwise its own join would move inside.
+        var freeAlong =
+            WrapRatio(grid, gw, gh, rgb) < SeamlessWrap;
+        var freeAcross =
+            WrapRatio(Transpose(grid, gw, gh), gh, gw, rgb) < SeamlessWrap;
+        var cell =
+            freeAlong && freeAcross
+                ? 2 * Cell
+                : Cell;
+        var step =
+            freeAlong && freeAcross
+                ? 2 * Step
+                : Step;
+        var shifts =
+            freeAlong
+                ? Enumerable.Range(0, (gh + step - 1) / step).Select(k => k * step).ToArray()
+                : [0];
+        var openings =
+            freeAcross
+                ? Enumerable.Range(0, (gw + step - 1) / step).Select(k => k * step).ToArray()
+                : [0];
+
+        // Tone of cells via summed-area tables over the rapport tiled 2 x 2 (indices wrap).
+        var stride =
+            2 * gw + 1;
+        var sums =
+            new long[3][];
+
+        for (var channel = 0; channel < 3; channel++)
+        {
+            var table =
+                new long[stride * (2 * gh + 1)];
+
+            for (var y = 0; y < 2 * gh; y++)
+            {
+                long row = 0;
+
+                for (var x = 0; x < 2 * gw; x++)
+                {
+                    row += rgb[grid[(y % gh) * gw + x % gw] * 3 + channel];
+                    table[(y + 1) * stride + x + 1] = table[y * stride + x + 1] + row;
+                }
+            }
+
+            sums[channel] = table;
+        }
+
+        long Tone(
+            int x,
+            int y,
+            int cw,
+            int channel)
+        {
+            var table =
+                sums[channel];
+
+            return table[(y + cell) * stride + x + cw] -
+                   table[y * stride + x + cw] -
+                   table[(y + cell) * stride + x] +
+                   table[y * stride + x];
+        }
+
+        // Band of b columns starting at rapport column bandX, against the strip columns from
+        // stripX, shifted along by shift.
+        long Cost(
+            int bandX,
+            int stripX,
+            int shift,
+            long bound)
+        {
+            long cost = 0;
+
+            for (var cy = 0; cy + cell <= gh && cost <= bound; cy += cell)
+            {
+                for (var cx = 0; cx < b; cx += cell)
+                {
+                    var cw =
+                        Math.Min(cell, b - cx);
+
+                    for (var channel = 0; channel < 3; channel++)
+                    {
+                        cost += Math.Abs(
+                            Tone(bandX + cx, cy, cw, channel) -
+                            Tone(stripX + cx, cy + shift, cw, channel));
+                    }
+                }
+            }
+
+            return cost;
+        }
+
+        // Opened at column p (the rapport then reads from p on): the strip's first b columns
+        // overlap the rapport's last b before p, its last b the first b from p. The strip is taken
+        // from the rapport as read from p, so it never crosses p.
+        var candidates =
+            new List<(long Cost, int Open, int Start, int Shift)>();
+        var bound =
+            long.MaxValue;
+        const int keep = 8;
+
+        foreach (var open in openings)
+        {
+            foreach (var shift in shifts)
+            {
+                for (var s = 0; s + length <= gw; s += step)
+                {
+                    var cost =
+                        Cost((open + gw - b) % gw, (open + s) % gw, shift, bound);
+
+                    if (cost > bound)
+                        continue;
+
+                    cost += Cost(open, (open + s + added + b) % gw, shift, bound - cost);
+
+                    if (cost > bound)
+                        continue;
+
+                    candidates.Add((cost, open, s, shift));
+
+                    if (candidates.Count >= keep * 8)
+                    {
+                        candidates.Sort();
+                        candidates.RemoveRange(keep, candidates.Count - keep);
+                        bound = candidates[^1].Cost;
+                    }
+                }
+            }
+        }
+
+        candidates.Sort();
+
+        if (candidates.Count > keep)
+            candidates.RemoveRange(keep, candidates.Count - keep);
+
+        // Among the best strips by tone, the one whose actual seams cost least.
+        var joined =
+            new List<(long Cost, int Open, int Start, int Shift, bool[] Left, bool[] Right)>();
+
+        foreach (var (_, open, start, shift) in candidates)
+        {
+            byte Rapport(
+                int x,
+                int y) =>
+                grid[y * gw + (open + x) % gw];
+
+            byte At(
+                int x,
+                int y) =>
+                grid[((y + shift) % gh) * gw + (open + start + x) % gw];
+
+            // Left band: rapport on the left side of the cut, strip on the right.
+            var (leftCost, left) =
+                SeamSide(
+                    (x, y) => Difference(Rapport(gw - b + x, y), At(x, y), rgb),
+                    b,
+                    gh);
+
+            // Right band (over the rapport's first columns): strip on the left side.
+            var (rightCost, right) =
+                SeamSide(
+                    (x, y) => Difference(At(added + b + x, y), Rapport(x, y), rgb),
+                    b,
+                    gh);
+
+            joined.Add((leftCost + rightCost, open, start, shift, left, right));
+        }
+
+        joined.Sort((p, q) =>
+            p.Cost != q.Cost
+                ? p.Cost.CompareTo(q.Cost)
+                : (p.Open, p.Start, p.Shift).CompareTo((q.Open, q.Start, q.Shift)));
+        var pick =
+            joined[random.Next(Math.Min(2, joined.Count))];
+
+        byte Source(
+            int x,
+            int y) =>
+            grid[y * gw + (pick.Open + x) % gw];
+
+        byte Strip(
+            int x,
+            int y) =>
+            grid[((y + pick.Shift) % gh) * gw + (pick.Open + pick.Start + x) % gw];
+
+        // Dithered designs are themselves made of mixed-colour transitions: there the seam is
+        // dissolved into one (a hard cut through brush strokes would read as a straight line).
+        var feather =
+            FeatherWidth(grid, gw, gh, b);
+        var leftMix =
+            Feather(pick.Left, b, gh, feather);
+        var rightMix =
+            Feather(pick.Right, b, gh, feather);
+        var salt =
+            random.Next();
+
+        var nw =
+            gw + added;
+        var result =
+            new byte[nw * gh];
+
+        for (var y = 0; y < gh; y++)
+        {
+            for (var x = 0; x < gw - b; x++)
+                result[y * nw + x] = Source(x, y);
+
+            // Left band: the strip lies right of the cut.
+            for (var x = 0; x < b; x++)
+            {
+                result[y * nw + gw - b + x] =
+                    Noise(x, y, salt) < leftMix[y * b + x]
+                        ? Strip(x, y)
+                        : Source(gw - b + x, y);
+            }
+
+            for (var x = b; x < added + b; x++)
+                result[y * nw + gw - b + x] = Strip(x, y);
+
+            // The strip's tail lies over the rapport's first columns (wrap), left of the cut.
+            for (var x = 0; x < b; x++)
+            {
+                if (Noise(x, y, salt + 1) >= rightMix[y * b + x])
+                    result[y * nw + x] = Strip(added + b + x, y);
+            }
+        }
+
+        return (result, nw);
+    }
+
+    /// <summary>
+    /// Minimum cut through a band of <paramref name="band"/> columns that wraps along: which
+    /// pixels lie on its left side. The cut is the shortest top-to-bottom path between the pixels
+    /// (the planar dual of a minimum graph cut), free to run sideways and back up along a streak.
+    /// Cutting between two pixels costs the colour difference of both, measured over 3 x 3, so a
+    /// dithered ground does not steer the path. The path ends in the column it starts in.
+    /// </summary>
+    private static (long Cost, bool[] Left) SeamSide(
+        Func<int, int, int> rawError,
+        int band,
+        int rows)
+    {
+        var raw =
+            new int[band * rows];
+
+        for (var y = 0; y < rows; y++)
+            for (var x = 0; x < band; x++)
+                raw[y * band + x] = rawError(x, y);
+
+        var error =
+            new long[band * rows];
+
+        for (var y = 0; y < rows; y++)
+        {
+            for (var x = 0; x < band; x++)
+            {
+                long sum = 0;
+                var n = 0;
+
+                for (var dy = -1; dy <= 1; dy++)
+                {
+                    var yy =
+                        (y + dy + rows) % rows;
+
+                    for (var xx = Math.Max(0, x - 1); xx <= Math.Min(band - 1, x + 1); xx++)
+                    {
+                        sum += raw[yy * band + xx];
+                        n++;
+                    }
+                }
+
+                // + 1: no free wandering through identical areas.
+                error[y * band + x] = sum / n + 1;
+            }
+        }
+
+        if (band < 3)
+        {
+            // Too narrow for a path: cut down the middle.
+            var middle =
+                new bool[band * rows];
+
+            for (var y = 0; y < rows; y++)
+                for (var x = 0; x < band / 2 + (band == 1 ? 1 : 0); x++)
+                    middle[y * band + x] = true;
+
+            return (0, middle);
+        }
+
+        // Path corners: column i in [1, band - 1] (between pixels i - 1 and i), row j in [0, rows].
+        var corners =
+            band + 1;
+
+        long Pixel(
+            int x,
+            int y) =>
+            error[((y % rows + rows) % rows) * band + x];
+
+        (long[] Distance, int[] Previous) Run(
+            int startColumn)
+        {
+            var distance =
+                new long[corners * (rows + 1)];
+            var previous =
+                new int[corners * (rows + 1)];
+            Array.Fill(distance, long.MaxValue);
+            Array.Fill(previous, -1);
+            var queue =
+                new PriorityQueue<int, long>();
+
+            for (var i = 1; i < band; i++)
+            {
+                if (startColumn >= 0 && i != startColumn)
+                    continue;
+
+                distance[i] = 0;
+                queue.Enqueue(i, 0);
+            }
+
+            while (queue.TryDequeue(out var node, out var d))
+            {
+                if (d > distance[node])
+                    continue;
+
+                var i =
+                    node % corners;
+                var j =
+                    node / corners;
+
+                if (j == rows)
+                    continue;
+
+                void Relax(
+                    int ni,
+                    int nj,
+                    long step)
+                {
+                    var next =
+                        nj * corners + ni;
+
+                    if (d + step < distance[next])
+                    {
+                        distance[next] = d + step;
+                        previous[next] = node;
+                        queue.Enqueue(next, d + step);
+                    }
+                }
+
+                // Down / up: separates pixel (i - 1) from pixel i in that row.
+                Relax(i, j + 1, Pixel(i - 1, j) + Pixel(i, j));
+
+                if (j > 0)
+                    Relax(i, j - 1, Pixel(i - 1, j - 1) + Pixel(i, j - 1));
+
+                // Sideways: separates the pixel above from the pixel below (wraps along).
+                if (i + 1 < band)
+                    Relax(i + 1, j, Pixel(i, j - 1) + Pixel(i, j));
+
+                if (i - 1 >= 1)
+                    Relax(i - 1, j, Pixel(i - 1, j - 1) + Pixel(i - 1, j));
+            }
+
+            return (distance, previous);
+        }
+
+        // Free path first; then the path forced to start and end in its free end column.
+        var (free, _) =
+            Run(-1);
+        var column = 1;
+
+        for (var i = 2; i < band; i++)
+        {
+            if (free[rows * corners + i] < free[rows * corners + column])
+                column = i;
+        }
+
+        var (forced, from) =
+            Run(column);
+
+        // Walls: the pixel links the path crosses.
+        var wallRight =
+            new bool[band * rows];
+        var wallDown =
+            new bool[band * rows];
+        var at =
+            rows * corners + column;
+
+        while (from[at] >= 0)
+        {
+            var back =
+                from[at];
+            int i0 = back % corners, j0 = back / corners;
+            int i1 = at % corners, j1 = at / corners;
+
+            if (i0 == i1)
+            {
+                // Vertical step: between pixel (i - 1) and i of row min(j0, j1).
+                wallRight[Math.Min(j0, j1) % rows * band + i0 - 1] = true;
+            }
+            else
+            {
+                // Sideways step in corner row j: between pixel rows j - 1 and j, column min(i).
+                var row =
+                    ((j0 - 1) % rows + rows) % rows;
+                wallDown[row * band + Math.Min(i0, i1)] = true;
+            }
+
+            at = back;
+        }
+
+        // Left side: everything reached from the band's first column without crossing the path.
+        var left =
+            new bool[band * rows];
+        var stack =
+            new Stack<int>();
+
+        for (var y = 0; y < rows; y++)
+        {
+            left[y * band] = true;
+            stack.Push(y * band);
+        }
+
+        while (stack.Count > 0)
+        {
+            var p =
+                stack.Pop();
+            var x =
+                p % band;
+            var y =
+                p / band;
+
+            void Visit(
+                int q)
+            {
+                if (!left[q])
+                {
+                    left[q] = true;
+                    stack.Push(q);
+                }
+            }
+
+            if (x + 1 < band && !wallRight[p])
+                Visit(p + 1);
+
+            if (x > 0 && !wallRight[p - 1])
+                Visit(p - 1);
+
+            var down =
+                (y + 1) % rows;
+
+            if (!wallDown[p])
+                Visit(down * band + x);
+
+            var up =
+                (y - 1 + rows) % rows;
+
+            if (!wallDown[up * band + x])
+                Visit(up * band + x);
+        }
+
+        return (forced[rows * corners + column], left);
+    }
+
+    /// <summary>
+    /// Half width (px) of the dithered transition across a seam: none for flat colour areas,
+    /// up to half the band for a fully dithered design (B390A changes colour at 59 % of pixels).
+    /// </summary>
+    internal static int FeatherWidth(
+        byte[] grid,
+        int gw,
+        int gh,
+        int band)
+    {
+        long changes = 0;
+
+        for (var y = 0; y < gh; y++)
+            for (var x = 1; x < gw; x++)
+                if (grid[y * gw + x] != grid[y * gw + x - 1])
+                    changes++;
+
+        var share =
+            changes / (double)Math.Max(1, (gw - 1) * gh);
+        var strength =
+            Math.Clamp((share - 0.15) / 0.3, 0, 1);
+
+        return (int)Math.Round(strength * band / 2);
+    }
+
+    /// <summary>
+    /// Per band pixel, the chance to take the source on the right side of the cut: 0 / 1 away
+    /// from it, rising across <paramref name="feather"/> px on either side, and pure at the band
+    /// edges.
+    /// </summary>
+    private static double[] Feather(
+        bool[] left,
+        int band,
+        int rows,
+        int feather)
+    {
+        var mix =
+            new double[band * rows];
+
+        if (feather <= 0)
+        {
+            for (var k = 0; k < mix.Length; k++)
+                mix[k] = left[k] ? 0 : 1;
+
+            return mix;
+        }
+
+        // Distance (4-connected, wrapping along) to the other side of the cut.
+        var distance =
+            new int[band * rows];
+        Array.Fill(distance, int.MaxValue);
+        var queue =
+            new Queue<int>();
+
+        IEnumerable<int> Neighbours(
+            int p)
+        {
+            var x =
+                p % band;
+            var y =
+                p / band;
+
+            if (x > 0)
+                yield return p - 1;
+
+            if (x + 1 < band)
+                yield return p + 1;
+
+            yield return ((y + 1) % rows) * band + x;
+            yield return ((y - 1 + rows) % rows) * band + x;
+        }
+
+        for (var p = 0; p < mix.Length; p++)
+        {
+            if (Neighbours(p).Any(q => left[q] != left[p]))
+            {
+                distance[p] = 1;
+                queue.Enqueue(p);
+            }
+        }
+
+        while (queue.Count > 0)
+        {
+            var p =
+                queue.Dequeue();
+
+            foreach (var q in Neighbours(p))
+            {
+                if (left[q] == left[p] &&
+                    distance[q] > distance[p] + 1)
+                {
+                    distance[q] = distance[p] + 1;
+                    queue.Enqueue(q);
+                }
+            }
+        }
+
+        for (var p = 0; p < mix.Length; p++)
+        {
+            var x =
+                p % band;
+            var reach =
+                Math.Min(1.0, (distance[p] - 0.5) / feather);
+            var value =
+                left[p]
+                    ? 0.5 - 0.5 * reach
+                    : 0.5 + 0.5 * reach;
+
+            value = Math.Min(value, x / (double)feather);
+            value = Math.Max(value, 1 - (band - 1 - x) / (double)feather);
+            mix[p] = Math.Clamp(value, 0, 1);
+        }
+
+        return mix;
+    }
+
+    /// <summary>Deterministic per-pixel noise in [0, 1).</summary>
+    private static double Noise(
+        int x,
+        int y,
+        int salt)
+    {
+        unchecked
+        {
+            var hash =
+                (uint)(x * 73856093) ^ (uint)(y * 19349663) ^ (uint)(salt * 83492791);
+            hash ^= hash >> 13;
+            hash *= 0x5bd1e995;
+            hash ^= hash >> 15;
+            return (hash & 0xFFFFFF) / (double)0x1000000;
+        }
+    }
+
+    /// <summary>How visible the rapport's own join along is (last row against the first).</summary>
+    private static double WrapRatio(
+        byte[] grid,
+        int gw,
+        int gh,
+        int[] rgb)
+    {
+        if (gh < 3)
+            return double.PositiveInfinity;
+
+        double Rows(
+            int a,
+            int b)
+        {
+            long sum = 0;
+
+            for (var x = 0; x < gw; x++)
+                sum += Difference(grid[a * gw + x], grid[b * gw + x], rgb);
+
+            return sum / (double)gw;
+        }
+
+        double inside = 0;
+        var count = 0;
+
+        for (var y = 0; y + 1 < gh; y += Math.Max(1, gh / 64))
+        {
+            inside += Rows(y, y + 1);
+            count++;
+        }
+
+        return Rows(gh - 1, 0) / Math.Max(1e-6, inside / count);
+    }
+
+    private static int Difference(
+        byte a,
+        byte b,
+        int[] rgb) =>
+        Math.Abs(rgb[a * 3] - rgb[b * 3]) +
+        Math.Abs(rgb[a * 3 + 1] - rgb[b * 3 + 1]) +
+        Math.Abs(rgb[a * 3 + 2] - rgb[b * 3 + 2]);
+
+    private static byte[] Transpose(
+        byte[] grid,
+        int gw,
+        int gh)
+    {
+        var result =
+            new byte[gw * gh];
+
+        for (var y = 0; y < gh; y++)
+            for (var x = 0; x < gw; x++)
+                result[x * gh + y] = grid[y * gw + x];
 
         return result;
     }

@@ -2016,6 +2016,52 @@ long streaks (B390A) the block copies show, and the design is better repeated as
 Tests: three new (original kept away from its edge bands, own colours in similar proportions,
 opened rapport joins far less than a plain repeat, smaller size rejected); 166 tests pass.
 
+### 4.54 Rapport opening rebuilt: strokes lengthened, strips spliced — REPLACES 4.53 blocks
+
+User report (Workbench screenshot, `B390A_COFFE_N70`, 399x500 -> 600x800): the opened rapport
+"breaks", and Run brings back the old design.
+
+Run: the target width / height stayed at the source size (400x500), so Run tiled the opened
+600x800 rapport into 400x500 and showed only its corner, the old design. "Raporu aç" now raises the
+target to at least the opened rapport (plus edge marker columns).
+
+Opening: the 4.53 block synthesis compared candidates by exact pixels. On a dithered painterly
+ground that rewards the right dither phase in the wrong tone, so blocks of the wrong tone landed
+as grey rectangles. Tried and rejected on B390A:
+
+| attempt | result |
+|---|---|
+| blocks compared by 4x4 tone, grain-shaped (wide, flat) blocks | still patchy, more fragmented |
+| strip splice, 1-px-per-row seam in a 32 px band | organic, but straight vertical seams through the strokes |
+| + free-form minimum cut (shortest path in the dual grid), wider band | still straight: every row must cross somewhere |
+| + free opening column, both shifts | worse: the original's own width join (wrap ratio 1.29) moved inside |
+| + dithered dissolve of the cut | seam becomes a noisy column, still visible |
+
+Kept:
+- `GrainOf`: stroke direction from 5x5 tone differences 8 px apart; along > 1.6 x across means
+  horizontal strokes (B390A), and vice versa. Raw-pixel run lengths cannot see it: dither changes
+  colour at 59 % of B390A's pixels both ways.
+- Along the strokes: **stroke lengthening**. A top-to-bottom minimum-energy path (energy = tone
+  difference between x - 1 and x - k, i.e. where the row continues smoothly k px further on) gets
+  the k px before it inserted once more in every row (k = width / 12, 4-32). Copying a copy again
+  repeats one piece side by side (a visible beat): 50x mean penalty; next to an earlier insertion
+  4x. The path closes on itself (wraps along).
+- Otherwise: **strip splice** at the rapport edge (or the best column when it wraps seamlessly),
+  strip chosen by tone, then the 8 best re-ranked by their actual free-form cut cost; band =
+  width / 6 (max 64). A strip is shifted across, or the rapport opened elsewhere, only when that
+  wrap ratio is < 1.15 (1.5 let B390A's 1.29 join in). The axis whose cross-wrap is cleaner goes
+  first; a splice leaves its own axis seamless. On dithered designs (pixel change rate > 0.15) the
+  cut dissolves into a dithered transition of up to band / 2.
+
+| | B390A 399x500 -> 600x800 | B317B 399x400 -> 640x700 |
+|---|---|---|
+| 4.53 blocks | grey rectangles, block edges | rectangular "pillars", straight edges |
+| 4.54 | strokes lengthened, ovals longer, no straight lines; seams 1.46 / 1.02 (plain repeat 1.33 / 1.34: the original's own width join) | strip splice keeps the design's shapes; seams 0.94 / 1.03 (plain 2.45 / 3.19) |
+
+CLI: `--expand-band px` (old `--expand-block` still accepted). Tests: stroke design detected as
+horizontal grain, every row keeps its own darkness after widening, joins under 1.5; original kept
+away from its bands (a sixth of the rapport). 167 tests pass.
+
 ## 5. Do-not-repeat rules
 
 1. Do not globally pre-smooth the recovered source centerline.

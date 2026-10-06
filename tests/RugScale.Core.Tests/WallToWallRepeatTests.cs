@@ -262,9 +262,10 @@ public sealed class WallToWallRepeatTests
         Assert.Equal(190, opened.Width);
         Assert.Equal(170, opened.Height);
 
-        // The original rapport is untouched away from the seam bands along its edges.
-        for (var y = 12; y < 110 - 12; y++)
-            for (var x = 12; x < 120 - 12; x++)
+        // The original rapport is untouched away from the seam bands along its edges (a sixth of
+        // its width / height).
+        for (var y = 110 / 6; y < 110 - 110 / 6; y++)
+            for (var x = 120 / 6; x < 120 - 120 / 6; x++)
                 Assert.Equal(source.GetPixel(x, y), opened.GetPixel(x, y));
 
         // Only the design's own colours, in similar proportions.
@@ -322,6 +323,116 @@ public sealed class WallToWallRepeatTests
             tiled.SeamAcross < 2 &&
             tiled.SeamAlong < 2,
             $"opened {tiled.SeamAcross:F2} / {tiled.SeamAlong:F2}, plain {plain.SeamAcross:F2} / {plain.SeamAlong:F2}");
+    }
+
+    /// <summary>
+    /// Dithered horizontal brush strokes (B390A-like): bands of rows whose darkness drifts slowly
+    /// across, seamless across.
+    /// </summary>
+    private static DesignDocument Strokes()
+    {
+        var design =
+            new DesignDocument(160, 120, Palette());
+        var random =
+            new Random(5);
+        var y0 = 0;
+
+        while (y0 < 120)
+        {
+            var height =
+                random.Next(5, 15);
+            var level =
+                random.NextDouble();
+            var swing =
+                random.NextDouble() * 0.4;
+            var phase =
+                random.NextDouble() * 2 * Math.PI;
+
+            for (var y = y0; y < Math.Min(120, y0 + height); y++)
+            {
+                for (var x = 0; x < 160; x++)
+                {
+                    var tone =
+                        Math.Clamp(level + swing * Math.Sin(2 * Math.PI * x / 160 + phase), 0, 1);
+                    design.SetPixel(x, y, random.NextDouble() < tone ? (byte)2 : (byte)0);
+                }
+            }
+
+            y0 += height;
+        }
+
+        return design;
+    }
+
+    private static byte[] Pixels(DesignDocument design)
+    {
+        var grid =
+            new byte[design.Width * design.Height];
+
+        for (var y = 0; y < design.Height; y++)
+            for (var x = 0; x < design.Width; x++)
+                grid[y * design.Width + x] = design.GetPixel(x, y);
+
+        return grid;
+    }
+
+    [Fact]
+    public void OpenRapport_LengthensHorizontalStrokesInsteadOfCuttingThem()
+    {
+        var source =
+            Strokes();
+        var grid =
+            Pixels(source);
+        var rgb =
+            new int[256 * 3];
+
+        for (var c = 0; c < source.Palette.Count; c++)
+        {
+            rgb[c * 3] = source.Palette[c].R;
+            rgb[c * 3 + 1] = source.Palette[c].G;
+            rgb[c * 3 + 2] = source.Palette[c].B;
+        }
+
+        Assert.Equal(RapportExpander.Grain.Across, RapportExpander.GrainOf(grid, 160, 120, rgb));
+        Assert.Equal(RapportExpander.Grain.None, RapportExpander.GrainOf(Pixels(Blobs()), 120, 110, rgb));
+
+        var opened =
+            RapportExpander.Expand(
+                source,
+                new RapportTile(0, 0, 160, 120),
+                240,
+                120);
+
+        Assert.Equal(240, opened.Width);
+        Assert.Equal(120, opened.Height);
+
+        double Dark(DesignDocument d, int y)
+        {
+            var n = 0;
+
+            for (var x = 0; x < d.Width; x++)
+                if (d.GetPixel(x, y) == 2)
+                    n++;
+
+            return n / (double)d.Width;
+        }
+
+        // Every row stays a continuation of its own stroke: same darkness, no other row's tone
+        // spliced in.
+        for (var y = 0; y < 120; y++)
+            Assert.InRange(Dark(opened, y), Dark(source, y) - 0.08, Dark(source, y) + 0.08);
+
+        var tiled =
+            WallToWallRepeat.Render(
+                opened,
+                new RapportTile(0, 0, 240, 120),
+                720,
+                240,
+                new RapportOptions(RapportDirection.Both, KeepEdgeMarkers: false));
+
+        Assert.True(
+            tiled.SeamAcross < WallToWallRepeat.VisibleSeam,
+            $"seam across {tiled.SeamAcross:F2}");
     }
 
     [Fact]

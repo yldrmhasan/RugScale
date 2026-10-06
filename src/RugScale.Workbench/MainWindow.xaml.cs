@@ -492,6 +492,17 @@ public partial class MainWindow : Window
                     openHeight));
             _openedRapport = opened;
 
+            // Run renders at the target size: it must hold at least the whole opened rapport
+            // (with the edge marker columns), or Run shows only its corner, i.e. the old design.
+            var markers = RapportDetector.FindEdgeMarkers(source);
+            var fullWidth = openWidth + (markers is null ? 0 : markers.Left + markers.Right);
+
+            if (!TryPositiveInt(WidthBox.Text, out var targetWidth) || targetWidth < fullWidth)
+                WidthBox.Text = fullWidth.ToString();
+
+            if (!TryPositiveInt(HeightBox.Text, out var targetHeight) || targetHeight < openHeight)
+                HeightBox.Text = openHeight.ToString();
+
             // Show the opened rapport; "Save preview" saves it as a BMP.
             _basePreview = opened;
             _preview = opened;
@@ -501,7 +512,7 @@ public partial class MainWindow : Window
             RenderPreview();
 
             RapportText.Text =
-                $"Açılmış rapor: {tile.Width}×{tile.Height} → {openWidth}×{openHeight} (orijinal sol üstte, eklenen alan desenin kendi dokusundan, kenarları dikişsiz). Run bu raporu tekrarlar.";
+                $"Açılmış rapor: {tile.Width}×{tile.Height} → {openWidth}×{openHeight} (eklenen alan desenin kendi içeriğinden: fırça izli desende izler uzatılır, diğerlerinde şerit eklenir; kenarları dikişsiz). Hedef ölçü {WidthBox.Text}×{HeightBox.Text}; Run bu raporu tekrarlar.";
             StatusText.Text = "Rapor açıldı. Kaydetmek için 'Save preview', tekrar için Run.";
         }
         catch (Exception ex)

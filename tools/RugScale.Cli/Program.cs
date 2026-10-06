@@ -27,7 +27,7 @@ static int Usage(
           wall-to-wall   (roll designs: rapport repeated, not scaled)
                          [--repeat both|width|length] [--rapport x,y,w,h] [--drop px]
                          [--seamless false] [--seam-band px]
-                         [--expand WxH] [--expanded-output rapport.bmp]   (rapor açma)
+                         [--expand WxH] [--expanded-output rapport.bmp] [--expand-band px]   (rapor açma)
           leaf-petal
           smooth
           area-average
@@ -286,7 +286,10 @@ try
                     size[0],
                     size[1],
                     options.TryGetValue("seed", out var seedRaw) ? int.Parse(seedRaw) : 1,
-                    options.TryGetValue("expand-block", out var blockRaw) ? int.Parse(blockRaw) : 0);
+                    options.TryGetValue("expand-band", out var expandBand) ||
+                    options.TryGetValue("expand-block", out expandBand)
+                        ? int.Parse(expandBand)
+                        : 0);
             Console.WriteLine(
                 $"Rapport opened: {tile.Width}x{tile.Height} -> {size[0]}x{size[1]}");
 
